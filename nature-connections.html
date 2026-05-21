@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BioPlanet — Conexiones de la Naturaleza</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Space+Grotesk:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --green:#00FF88;--green-d:rgba(0,255,136,0.12);--green-dim:rgba(0,255,136,0.04);
+  --cyan:#00D4FF;--amber:#FFB800;--red:#FF4444;--purple:#AA88FF;--orange:#FF8800;
+  --bg:#030A06;--bg2:#050F08;--bg3:#071408;
+  --border:rgba(0,255,136,0.15);--border2:rgba(0,255,136,0.3);
+  --text:#C8F0D8;--muted:#4A7A5A;--dim:#1A3020;
+  --font-mono:'Share Tech Mono',monospace;
+  --font-title:'Orbitron',monospace;
+  --font-body:'Space Grotesk',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-mono);overflow:hidden;}
+
+/* SCANLINE effect */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:9999;}
+
+/* GRID background */
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,136,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+
+.hud-border{border:0.5px solid var(--border);position:relative;}
+.hud-border::before{content:'';position:absolute;top:-1px;left:10px;right:10px;height:1px;background:linear-gradient(90deg,transparent,var(--green),transparent);}
+.hud-corner{position:absolute;width:8px;height:8px;border-color:var(--green);border-style:solid;}
+.hud-corner.tl{top:-1px;left:-1px;border-width:1px 0 0 1px;}
+.hud-corner.tr{top:-1px;right:-1px;border-width:1px 1px 0 0;}
+.hud-corner.bl{bottom:-1px;left:-1px;border-width:0 0 1px 1px;}
+.hud-corner.br{bottom:-1px;right:-1px;border-width:0 1px 1px 0;}
+
+.panel{background:var(--bg2);border:0.5px solid var(--border);position:relative;padding:10px;}
+.panel-title{font-family:var(--font-title);font-size:9px;color:var(--green);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px;padding-bottom:6px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:6px;}
+.panel-title::before{content:'▶';font-size:7px;color:var(--green);animation:blink 2s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+.data-row{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;border-bottom:0.5px solid rgba(0,255,136,0.05);}
+.data-label{font-size:9px;color:var(--muted);}
+.data-val{font-size:10px;color:var(--green);font-weight:500;}
+.data-val.amber{color:var(--amber);}
+.data-val.cyan{color:var(--cyan);}
+.data-val.red{color:var(--red);}
+.data-val.purple{color:var(--purple);}
+
+.tag{display:inline-block;font-size:8px;padding:1px 6px;border-radius:2px;font-family:var(--font-mono);}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes flow{0%{stroke-dashoffset:100}100%{stroke-dashoffset:0}}
+@keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 3px currentColor)}50%{filter:drop-shadow(0 0 8px currentColor)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes scanline{0%{top:-10%}100%{top:110%}}
+
+.node{cursor:pointer;transition:all .2s;}
+.node:hover .node-circle{filter:drop-shadow(0 0 12px currentColor);transform:scale(1.15);}
+.node-circle{transition:all .2s;}
+
+.connection-line{stroke-dasharray:6,3;animation:flow 3s linear infinite;}
+
+.status-dot{width:6px;height:6px;border-radius:50%;display:inline-block;animation:pulse 1.5s ease infinite;}
+
+.scroll-panel{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--green) transparent;}
+.scroll-panel::-webkit-scrollbar{width:3px;}
+.scroll-panel::-webkit-scrollbar-thumb{background:var(--green);border-radius:2px;}
+
+.connection-card{border:0.5px solid var(--border);background:var(--bg3);padding:8px 10px;margin-bottom:6px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;}
+.connection-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;}
+.connection-card:hover{background:var(--green-dim);border-color:var(--border2);}
+.connection-card.active{background:var(--green-d);border-color:var(--green);}
+
+.hud-value{font-family:var(--font-mono);font-size:11px;color:var(--green);}
+.hud-label{font-family:var(--font-mono);font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+
+.counter{font-family:var(--font-title);font-size:22px;font-weight:700;color:var(--green);line-height:1;}
+
+.blip{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--green);animation:pulse 1s ease infinite;}
+
+.radar-sweep{transform-origin:center;animation:spin 4s linear infinite;}
+
+/* Flashing warning */
+.warn{animation:pulse .8s step-end infinite;color:var(--amber);}
+</style>
+</head>
+<body>
+
+<div style="display:grid;grid-template-columns:220px 1fr 220px;grid-template-rows:48px 1fr 180px;height:100vh;gap:1px;background:rgba(0,255,136,0.05);position:relative;z-index:1;">
+
+  <!-- HEADER -->
+  <div style="grid-column:1/-1;background:var(--bg);border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="position:relative;width:32px;height:32px;">
+        <svg viewBox="0 0 32 32" width="32" height="32">
+          <circle cx="16" cy="16" r="14" fill="none" stroke="#00FF88" stroke-width="0.8"/>
+          <circle cx="16" cy="16" r="8" fill="none" stroke="#00FF88" stroke-width="0.5" stroke-dasharray="2 2"/>
+          <circle cx="16" cy="16" r="3" fill="#00FF88" opacity=".6"/>
+          <line x1="2" y1="16" x2="30" y2="16" stroke="#00FF88" stroke-width="0.3" opacity=".5"/>
+          <line x1="16" y1="2" x2="16" y2="30" stroke="#00FF88" stroke-width="0.3" opacity=".5"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-family:var(--font-title);font-size:12px;color:var(--green);letter-spacing:.15em;">BIOPLANET <span style="color:var(--cyan);">//</span> NATURE CONNECTIONS</div>
+        <div style="font-size:8px;color:var(--muted);letter-spacing:.1em;">SISTEMA DE ANÁLISIS DE CONEXIONES NATURALES v3.0</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;align-items:center;">
+      <div style="text-align:center;">
+        <div class="hud-label">Conexiones activas</div>
+        <div class="counter" id="active-count">47</div>
+      </div>
+      <div style="text-align:center;">
+        <div class="hud-label">Nodos</div>
+        <div class="counter" style="color:var(--cyan);">18</div>
+      </div>
+      <div style="text-align:center;">
+        <div class="hud-label">Estado</div>
+        <div style="display:flex;align-items:center;gap:5px;"><span class="status-dot" style="background:var(--green);"></span><span style="font-size:10px;color:var(--green);">NOMINAL</span></div>
+      </div>
+      <div id="clock" style="font-family:var(--font-title);font-size:11px;color:var(--green);letter-spacing:.1em;"></div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button onclick="setFilter('all')" id="btn-all" style="font-family:var(--font-mono);font-size:9px;padding:4px 10px;border:0.5px solid var(--green);background:var(--green-d);color:var(--green);cursor:pointer;letter-spacing:.06em;">TODOS</button>
+      <button onclick="setFilter('energy')" id="btn-energy" style="font-family:var(--font-mono);font-size:9px;padding:4px 10px;border:0.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.06em;">ENERGÍA</button>
+      <button onclick="setFilter('mineral')" id="btn-mineral" style="font-family:var(--font-mono);font-size:9px;padding:4px 10px;border:0.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.06em;">MINERALES</button>
+      <button onclick="setFilter('life')" id="btn-life" style="font-family:var(--font-mono);font-size:9px;padding:4px 10px;border:0.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.06em;">VIDA</button>
+      <button onclick="setFilter('water')" id="btn-water" style="font-family:var(--font-mono);font-size:9px;padding:4px 10px;border:0.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.06em;">AGUA</button>
+    </div>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <div style="background:var(--bg);border-right:0.5px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
+    <div class="panel" style="margin:6px;flex-shrink:0;">
+      <div class="panel-title">Nodo seleccionado</div>
+      <div id="node-detail">
+        <div style="text-align:center;padding:16px 0;color:var(--muted);font-size:9px;">
+          <div style="font-size:24px;margin-bottom:6px;animation:pulse 2s ease infinite;">◎</div>
+          Selecciona un nodo<br>en el grafo
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin:6px;margin-top:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="panel-title">Parámetros de flujo</div>
+      <div class="scroll-panel" style="flex:1;">
+        <div id="flow-params">
+          <div class="data-row"><span class="data-label">Fotones/m²/s</span><span class="data-val">1361</span></div>
+          <div class="data-row"><span class="data-label">Efic. fotosíntesis</span><span class="data-val amber">6.3%</span></div>
+          <div class="data-row"><span class="data-label">CO₂ atm (ppm)</span><span class="data-val">421</span></div>
+          <div class="data-row"><span class="data-label">O₂ atm (%)</span><span class="data-val">20.95</span></div>
+          <div class="data-row"><span class="data-label">N₂ atm (%)</span><span class="data-val">78.09</span></div>
+          <div class="data-row"><span class="data-label">H₂O océanos (%)</span><span class="data-val cyan">71</span></div>
+          <div class="data-row"><span class="data-label">T° media (°C)</span><span class="data-val">15.0</span></div>
+          <div class="data-row"><span class="data-label">pH océano</span><span class="data-val amber">8.1</span></div>
+          <div class="data-row"><span class="data-label">Ca suelo (ppm)</span><span class="data-val">41,500</span></div>
+          <div class="data-row"><span class="data-label">Fe suelo (ppm)</span><span class="data-val amber">56,300</span></div>
+          <div class="data-row"><span class="data-label">P suelo (ppm)</span><span class="data-val">1,050</span></div>
+          <div class="data-row"><span class="data-label">Mg suelo (ppm)</span><span class="data-val">23,300</span></div>
+          <div class="data-row"><span class="data-label">Mo suelo (ppm)</span><span class="data-val cyan">1.2</span></div>
+          <div class="data-row"><span class="data-label">Cu suelo (ppm)</span><span class="data-val cyan">60</span></div>
+          <div class="data-row"><span class="data-label">Biomasa total (Gt)</span><span class="data-val">550</span></div>
+          <div class="data-row"><span class="data-label">GPP (Gt C/año)</span><span class="data-val">120</span></div>
+          <div class="data-row"><span class="data-label">Ciclo N (Mt/año)</span><span class="data-val purple">140</span></div>
+          <div class="data-row"><span class="data-label">Ciclo P (Mt/año)</span><span class="data-val amber">9</span></div>
+          <div class="data-row"><span class="data-label">Ciclo Fe (Mt/año)</span><span class="data-val amber">1400</span></div>
+          <div class="data-row"><span class="data-label">Especies conocidas</span><span class="data-val">8.7M</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER - GRAPH -->
+  <div style="background:var(--bg);position:relative;overflow:hidden;">
+    <canvas id="graph-canvas" style="width:100%;height:100%;"></canvas>
+    <!-- Overlay info -->
+    <div style="position:absolute;top:8px;left:8px;font-size:8px;color:var(--muted);pointer-events:none;">
+      <div>REF BODY: TIERRA</div>
+      <div id="coord-display">LAT: 0°00'00" LON: 0°00'00"</div>
+    </div>
+    <div style="position:absolute;top:8px;right:8px;font-size:8px;color:var(--muted);pointer-events:none;text-align:right;">
+      <div>MODO: ANÁLISIS BIOLÓGICO</div>
+      <div id="connection-count">CONEXIONES: 47 ACTIVAS</div>
+    </div>
+    <!-- Tooltip -->
+    <div id="tooltip" style="position:absolute;display:none;background:rgba(3,10,6,0.95);border:0.5px solid var(--green);padding:8px 12px;font-size:9px;pointer-events:none;max-width:200px;z-index:10;"></div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div style="background:var(--bg);border-left:0.5px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
+    <div class="panel" style="margin:6px;flex-shrink:0;">
+      <div class="panel-title">Parámetros orbitales</div>
+      <div class="data-row"><span class="data-label">Distancia al sol</span><span class="data-val">149.6M km</span></div>
+      <div class="data-row"><span class="data-label">Período orbital</span><span class="data-val">365.25 días</span></div>
+      <div class="data-row"><span class="data-label">Inclinación axial</span><span class="data-val amber">23.5°</span></div>
+      <div class="data-row"><span class="data-label">Gravedad</span><span class="data-val">9.81 m/s²</span></div>
+      <div class="data-row"><span class="data-label">Presión atm</span><span class="data-val">101.3 kPa</span></div>
+      <div class="data-row"><span class="data-label">Campo magnético</span><span class="data-val cyan">25-65 μT</span></div>
+    </div>
+    <div class="panel" style="margin:6px;margin-top:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="panel-title">Conexiones activas</div>
+      <div class="scroll-panel" style="flex:1;" id="connections-list"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM PANEL -->
+  <div style="grid-column:1/-1;background:var(--bg);border-top:0.5px solid var(--border);display:flex;gap:1px;overflow:hidden;">
+
+    <!-- Detalle conexión seleccionada -->
+    <div class="scroll-panel" style="flex:2;padding:8px 12px;">
+      <div class="panel-title" style="margin-bottom:6px;">Detalle de conexión seleccionada</div>
+      <div id="connection-detail" style="font-size:9px;color:var(--muted);">
+        Selecciona una conexión o nodo del grafo para ver el análisis completo de cómo interactúan estos elementos en la naturaleza.
+      </div>
+    </div>
+
+    <!-- Mini radar / stats -->
+    <div style="width:160px;border-left:0.5px solid var(--border);padding:8px;flex-shrink:0;">
+      <div class="panel-title" style="margin-bottom:6px;">Red trófica</div>
+      <svg viewBox="0 0 140 120" width="140" height="120" style="display:block;">
+        <circle cx="70" cy="60" r="55" fill="none" stroke="rgba(0,255,136,0.08)" stroke-width="1"/>
+        <circle cx="70" cy="60" r="38" fill="none" stroke="rgba(0,255,136,0.06)" stroke-width="1" stroke-dasharray="2 2"/>
+        <circle cx="70" cy="60" r="20" fill="none" stroke="rgba(0,255,136,0.04)" stroke-width="1"/>
+        <!-- Trophic levels -->
+        <polygon points="70,10 126,90 14,90" fill="none" stroke="rgba(0,255,136,0.3)" stroke-width="1"/>
+        <line x1="70" y1="10" x2="70" y2="90" stroke="rgba(0,255,136,0.1)" stroke-width="0.5"/>
+        <line x1="14" y1="90" x2="126" y2="90" stroke="rgba(0,255,136,0.1)" stroke-width="0.5"/>
+        <!-- Labels -->
+        <text x="70" y="7" text-anchor="middle" font-size="6" fill="#00FF88" font-family="monospace">ÁPEX</text>
+        <text x="70" y="55" text-anchor="middle" font-size="6" fill="#00FF88" font-family="monospace">CARN.</text>
+        <text x="70" y="70" text-anchor="middle" font-size="6" fill="#FFB800" font-family="monospace">HERB.</text>
+        <text x="70" y="97" text-anchor="middle" font-size="6" fill="#4ADE80" font-family="monospace">PRODUCTORES</text>
+        <!-- Dots at levels -->
+        <circle cx="70" cy="12" r="3" fill="#00FF88" style="animation:pulse 1s ease infinite;"/>
+        <circle cx="70" cy="50" r="4" fill="#00D4FF" style="animation:pulse 1.2s ease infinite;"/>
+        <circle cx="70" cy="65" r="5" fill="#FFB800" style="animation:pulse 1.4s ease infinite;"/>
+        <circle cx="30" cy="88" r="6" fill="#4ADE80"/>
+        <circle cx="70" cy="88" r="6" fill="#4ADE80"/>
+        <circle cx="110" cy="88" r="6" fill="#4ADE80"/>
+      </svg>
+    </div>
+
+    <!-- Ciclos biogeoquímicos rápidos -->
+    <div style="flex:1;border-left:0.5px solid var(--border);padding:8px 12px;overflow:hidden;">
+      <div class="panel-title" style="margin-bottom:6px;">Ciclos biogeoquímicos</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+        ${[
+          {n:"C",full:"Carbono",v:"8.2 Gt/año",c:"#4ADE80",active:true},
+          {n:"N",full:"Nitrógeno",v:"140 Mt/año",c:"#60A5FA",active:true},
+          {n:"P",full:"Fósforo",v:"9 Mt/año",c:"#FFB800",active:true},
+          {n:"Fe",full:"Hierro",v:"1400 Mt",c:"#F87171",active:true},
+          {n:"S",full:"Azufre",v:"200 Mt/año",c:"#A78BFA",active:true},
+          {n:"Ca",full:"Calcio",v:"400 Mt/año",c:"#FBBF24",active:true},
+          {n:"H₂O",full:"Agua",v:"496K km³/año",c:"#60A5FA",active:true},
+          {n:"O",full:"Oxígeno",v:"≈ 300 Gt",c:"#00D4FF",active:true},
+        ].map(c=>`
+          <div style="display:flex;align-items:center;gap:5px;padding:3px 5px;background:rgba(0,255,136,0.03);border:0.5px solid rgba(0,255,136,0.08);">
+            <div style="width:5px;height:5px;border-radius:50%;background:${c.c};box-shadow:0 0 4px ${c.c};flex-shrink:0;animation:pulse 1.5s ease infinite;"></div>
+            <span style="font-size:8px;color:${c.c};font-family:var(--font-mono);width:20px;">${c.n}</span>
+            <span style="font-size:8px;color:var(--muted);">${c.v}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Ecuaciones clave -->
+    <div style="width:200px;border-left:0.5px solid var(--border);padding:8px 12px;flex-shrink:0;">
+      <div class="panel-title" style="margin-bottom:6px;">Ecuaciones clave</div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.8;">
+        <div style="color:var(--green);margin-bottom:3px;">Fotosíntesis:</div>
+        <div style="color:var(--cyan);font-size:8px;">6CO₂+6H₂O→C₆H₁₂O₆+6O₂</div>
+        <div style="color:var(--green);margin-top:4px;margin-bottom:3px;">Respiración:</div>
+        <div style="color:var(--cyan);font-size:8px;">C₆H₁₂O₆+6O₂→6CO₂+6H₂O</div>
+        <div style="color:var(--green);margin-top:4px;margin-bottom:3px;">Fijación N₂:</div>
+        <div style="color:var(--cyan);font-size:8px;">N₂+8H⁺+16ATP→2NH₃</div>
+        <div style="color:var(--green);margin-top:4px;margin-bottom:3px;">Nitrificación:</div>
+        <div style="color:var(--cyan);font-size:8px;">NH₄⁺+2O₂→NO₃⁻+H₂O</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// DATOS DE CONEXIONES
+// ═══════════════════════════════════════════════════════
+const NODES = [
+  // Energía
+  {id:"sol",      label:"SOL",          category:"energy",  color:"#FFB800", x:0.5,  y:0.08, r:22, desc:"Estrella G2V. 3.8×10²⁶ W de luminosidad. Fuente primaria de energía del 99.98% de la vida terrestre."},
+  {id:"luz",      label:"LUZ UV/IR",    category:"energy",  color:"#FFD700", x:0.3,  y:0.18, r:14, desc:"Radiación electromagnética 290-700nm. Impulsa fotosíntesis, síntesis de vitamina D, visión y ciclos circadianos."},
+  {id:"calor",    label:"CALOR",        category:"energy",  color:"#FF8800", x:0.7,  y:0.18, r:14, desc:"Energía térmica del sol. Regula temperatura, evapora agua, genera corrientes de aire y oceánicas."},
+  {id:"quimio",   label:"QUIMIOSÍNTESIS",category:"energy", color:"#FBBF24", x:0.85, y:0.45, r:14, desc:"Oxidación de H₂S, Fe²⁺ o H₂ para obtener energía. Base de ecosistemas de fumarolas hidrotermales sin luz."},
+
+  // Gases atmosféricos
+  {id:"co2",      label:"CO₂",          category:"gas",     color:"#94A3B8", x:0.15, y:0.35, r:14, desc:"Dióxido de carbono (421 ppm). Sustrato de fotosíntesis. Gas de efecto invernadero. Disuelto en océano forma ácido carbónico."},
+  {id:"o2",       label:"O₂",           category:"gas",     color:"#00D4FF", x:0.15, y:0.55, r:14, desc:"Oxígeno molecular (20.95%). Producido por fotosíntesis oxigénica. Acepta electrones en respiración aeróbica."},
+  {id:"n2",       label:"N₂",           category:"gas",     color:"#60A5FA", x:0.15, y:0.75, r:14, desc:"Nitrógeno molecular (78.09%). Mayoritario en atmósfera. Solo fijado biológicamente por bacterias con nitrogenasa-Mo."},
+  {id:"h2s",      label:"H₂S",          category:"gas",     color:"#A78BFA", x:0.85, y:0.65, r:12, desc:"Sulfuro de hidrógeno. Tóxico en altas concentraciones. Fuente de energía para bacterias quimiosintéticas en fumarolas."},
+
+  // Agua
+  {id:"agua",     label:"H₂O",          category:"water",   color:"#38BDF8", x:0.5,  y:0.30, r:18, desc:"Solvente universal de la vida. Participa en fotosíntesis, respiración, transporte de nutrientes y termorregulación."},
+  {id:"oceano",   label:"OCÉANO",        category:"water",   color:"#0369A1", x:0.65, y:0.22, r:15, desc:"71% de la superficie terrestre. Regula clima, absorbe CO₂, produce 50% del O₂ planetario (fitoplancton)."},
+
+  // Minerales clave
+  {id:"ca",       label:"CALCIO (Ca)",   category:"mineral", color:"#FBBF24", x:0.08, y:0.45, r:13, desc:"41,500 ppm en corteza. Forma huesos (hidroxiapatita), conchas (CaCO₃), señalización celular (Ca²⁺), pared celular vegetal."},
+  {id:"fe",       label:"HIERRO (Fe)",   category:"mineral", color:"#F87171", x:0.08, y:0.62, r:13, desc:"56,300 ppm en corteza. Hemoglobina (O₂), citocromos (respiración), ferredoxina (fotosíntesis), magnetita (orientación)."},
+  {id:"p",        label:"FÓSFORO (P)",   category:"mineral", color:"#FB923C", x:0.92, y:0.30, r:13, desc:"1,050 ppm en corteza. ADN/ARN (backbone fosfato), ATP (energía), fosfolípidos de membrana, hidroxiapatita ósea."},
+  {id:"mg",       label:"MAGNESIO (Mg)", category:"mineral", color:"#4ADE80", x:0.92, y:0.45, r:13, desc:"23,300 ppm en corteza. Centro de la clorofila (Mg²⁺), activa >300 enzimas, síntesis de ATP, ribosomas."},
+  {id:"cu",       label:"COBRE (Cu)",    category:"mineral", color:"#60A5FA", x:0.92, y:0.60, r:12, desc:"60 ppm en corteza. Hemocianina (sangre azul en moluscos), citocromo c oxidasa, tirosinasa (melanina), lacasa."},
+  {id:"mo",       label:"MOLIBDENO (Mo)",category:"mineral", color:"#C084FC", x:0.92, y:0.75, r:11, desc:"1.2 ppm en corteza. Cofactor FeMo de nitrogenasa (fijación N₂), xantina oxidasa, crucial para ciclo del N."},
+
+  // Vida
+  {id:"plantas",  label:"PLANTAS",       category:"life",    color:"#22C55E", x:0.35, y:0.55, r:16, desc:"Productores primarios. Fotosíntesis oxigénica. 450 Gt C de biomasa. Fijan 120 Gt C/año. Raíces movilizan Ca, P, Fe."},
+  {id:"animales", label:"ANIMALES",      category:"life",    color:"#00D4AA", x:0.5,  y:0.65, r:15, desc:"Consumidores. 2 Gt C de biomasa. Acumulan minerales en tejidos. Ciclan N y P por excreción. Dispersan semillas."},
+  {id:"bacterias",label:"BACTERIAS",     category:"life",    color:"#A78BFA", x:0.5,  y:0.82, r:15, desc:"70 Gt C de biomasa. Descomponedores, fijadores de N₂, nitrificantes, metanógenos. Cierran todos los ciclos minerales."},
+  {id:"hongos",   label:"HONGOS",        category:"life",    color:"#F472B6", x:0.35, y:0.78, r:13, desc:"12 Gt C de biomasa. Descomponen lignina/celulosa. Micorrizas transfieren P, N y agua a raíces de plantas."},
+  {id:"suelo",    label:"SUELO",         category:"mineral", color:"#92400E", x:0.65, y:0.78, r:14, desc:"Reservorio de minerales. Materia orgánica, hongos, bacterias, agua. Libera Ca, Fe, P, Mg disponibles para plantas."},
+];
+
+const CONNECTIONS = [
+  // Sol → todo
+  {a:"sol",  b:"luz",      label:"Radiación electromagnética",     cat:"energy",  strength:1.0, detail:"El sol emite 3.8×10²⁶ W de energía. La Tierra recibe 1,361 W/m² (constante solar). La capa de ozono filtra UV-C dañino, permitiendo que UV-A y UV-B alcancen la superficie. La luz visible (400-700nm) es el motor de la fotosíntesis."},
+  {a:"sol",  b:"calor",    label:"Energía térmica",                cat:"energy",  strength:1.0, detail:"El 51% de la radiación solar se convierte en calor en la superficie terrestre. El diferencial de temperatura entre ecuador y polos genera la circulación atmosférica, vientos y corrientes oceánicas. Sin este gradiente térmico, el clima sería estático."},
+  {a:"sol",  b:"oceano",   label:"Evaporación oceánica",           cat:"water",   strength:0.9, detail:"El sol evapora 496,000 km³ de agua de mar por año, transportando energía latente que se libera al condensarse en nubes. Este proceso distribuye calor por el planeta y recarga los acuíferos continentales."},
+  {a:"luz",  b:"plantas",  label:"Fotosíntesis oxigénica",         cat:"energy",  strength:1.0, detail:"6CO₂ + 6H₂O + luz → C₆H₁₂O₆ + 6O₂. Las plantas capturan ~6.3% de la radiación solar incidente. La clorofila (con Mg²⁺ en su centro) absorbe rojo (680nm) y azul (430nm). El fotosistema II usa Mn₄CaO₅ para oxidar agua y liberar O₂. Este proceso fija 120 Gt de carbono por año."},
+  {a:"luz",  b:"oceano",   label:"Fotoplancton marino",            cat:"energy",  strength:0.8, detail:"El fitoplancton marino (diatomeas, cianobacterias) realiza el 50% de la fotosíntesis terrestre. Requiere luz, CO₂ y minerales (especialmente Fe, que es ultra-limitante en el océano abierto con solo 0.002 µg/L)."},
+  {a:"calor",b:"agua",     label:"Ciclo del agua",                 cat:"water",   strength:0.9, detail:"El calor solar evapora agua, que asciende, se condensa en nubes y precipita. Este ciclo mueve 496,000 km³/año, disuelve y transporta minerales, erosiona rocas liberando Ca, Fe, P al suelo y océano."},
+  // Agua → vida
+  {a:"agua", b:"plantas",  label:"Transpiración y absorción",      cat:"water",   strength:1.0, detail:"Las plantas absorben agua del suelo mediante ósmosis. Un árbol grande transpira 400 L/día. El agua transporta nutrientes minerales disueltos (Ca²⁺, Fe³⁺, PO₄³⁻, Mg²⁺) desde raíces hasta hojas mediante el xilema."},
+  {a:"agua", b:"animales", label:"Solvente vital y termorregulación",cat:"water", strength:1.0, detail:"El agua constituye el 60-70% del cuerpo animal. Disuelve iones para la transmisión nerviosa (Na⁺, K⁺, Ca²⁺), transporta O₂ en sangre, permite la digestión enzimática y regula temperatura mediante sudoración (2430 J/g de calor latente de evaporación)."},
+  {a:"agua", b:"bacterias",label:"Medio de vida microbiano",       cat:"water",   strength:0.9, detail:"Las bacterias necesitan agua líquida para toda actividad metabólica. Viven en películas de agua sobre suelo, rocas y superficies. Algunas sobreviven a -20°C en agua no congelada entre cristales de hielo. El agua facilita el transporte de nutrientes y la comunicación química entre células."},
+  {a:"oceano",b:"co2",     label:"Absorción/liberación CO₂",       cat:"gas",     strength:0.8, detail:"El océano absorbe el 25% del CO₂ emitido por humanos. CO₂ + H₂O → H₂CO₃ → HCO₃⁻ + H⁺ (acidificación). A mayor temperatura, menor solubilidad del CO₂. El pH oceánico bajó de 8.2 a 8.1 desde la industrialización, amenazando organismos calcificantes."},
+  // Plantas
+  {a:"plantas",b:"co2",    label:"Fijación de carbono",            cat:"gas",     strength:1.0, detail:"Las plantas fijan 120 Gt de carbono por año mediante el ciclo de Calvin (plantas C3), el mecanismo C4 (maíz, caña) o el CAM (cactus). El CO₂ entra por los estomas y es reducido por la enzima RuBisCO a glucosa usando energía del ATP y NADPH generados por la luz."},
+  {a:"plantas",b:"o2",     label:"Producción de oxígeno",          cat:"gas",     strength:1.0, detail:"La fotosíntesis produce O₂ como subproducto de la oxidación del agua en el Fotosistema II. Antes de la Gran Oxidación (2.4 Ga), la atmósfera era anóxica. Las cianobacterias generaron el O₂ que permitió la vida aeróbica y la capa de ozono que protege del UV-C."},
+  {a:"plantas",b:"animales",label:"Red trófica — herbivoría",      cat:"life",    strength:0.9, detail:"Los herbívoros consumen ~10% de la producción primaria vegetal. Al comer plantas, los minerales (Ca en huesos vegetales, Fe en clorofila, Mg en clorofila) se transfieren a tejidos animales. La celulosa vegetal es degradada por bacterias simbiontes en el intestino de herbívoros."},
+  {a:"plantas",b:"suelo",  label:"Materia orgánica / raíces",      cat:"mineral", strength:0.9, detail:"Las raíces de plantas exudan ácidos orgánicos que disuelven minerales de las rocas (Ca, Fe, P, K). Al morir, las hojas y raíces aportan materia orgánica al suelo, aumentando la capacidad de retención de agua y nutrientes. Las micorrizas (hongos) amplifican la absorción de P×100."},
+  {a:"plantas",b:"hongos", label:"Simbiosis micorrícica",          cat:"life",    strength:0.9, detail:"El 90% de plantas terrestres tienen micorrizas. El hongo recibe 20-40% de carbohidratos fotosintéticos de la planta. A cambio, transfiere P, N, agua y micronutrientes. La red miceliar conecta árboles entre sí (la 'Wood Wide Web'), permitiendo transferencia de nutrientes entre individuos."},
+  // Animales
+  {a:"animales",b:"co2",   label:"Respiración aeróbica",           cat:"gas",     strength:0.9, detail:"C₆H₁₂O₆ + 6O₂ → 6CO₂ + 6H₂O + 36 ATP. Los animales oxidan glucosa en las mitocondrias usando O₂. El CO₂ producido se exhala y retorna a la atmósfera o se disuelve en el océano. Cadena: citocromos (Fe), CoQ (ubiquinona), citocromo c oxidasa (Cu, Fe)."},
+  {a:"animales",b:"suelo", label:"Excreción y descomposición",     cat:"mineral", strength:0.8, detail:"Los animales excretan N como urea/ácido úrico, P en heces, Ca y Fe en desechos. Al morir, sus cuerpos liberan todos los minerales acumulados. Los descomponedores los mineralizan al suelo en horas a semanas, cerrando el ciclo de nutrientes."},
+  {a:"animales",b:"bacterias",label:"Microbioma intestinal",       cat:"life",    strength:0.8, detail:"El intestino humano contiene 38 billones de bacterias (más que células corporales). Sintetizan vitamina K, B12, ácidos grasos de cadena corta. Digieren fibra indigestible. El balance microbiano afecta metabolismo, inmunidad y salud mental."},
+  // Bacterias
+  {a:"bacterias",b:"n2",   label:"Fijación biológica de N₂",      cat:"gas",     strength:0.9, detail:"Rhizobium, Azotobacter y Anabaena fijan N₂ → NH₃ usando la enzima nitrogenasa (complejo FeMo-co). Sin esta función, no habría N biodisponible. Requiere Mo y Fe. Los nódulos de leguminosas fijan 140 Mt de N/año. Sin bacterias fijadoras, la vida vegetal colapsa en semanas."},
+  {a:"bacterias",b:"suelo",label:"Mineralización y nitrificación", cat:"mineral", strength:1.0, detail:"Bacterias descomponedoras convierten materia orgánica en minerales (mineralización). Nitrificantes convierten NH₄⁺→NO₂⁻→NO₃⁻ (Nitrosomonas, Nitrobacter). Desnitrificantes convierten NO₃⁻→N₂. Bacterias sulfato-reductoras convierten SO₄²⁻→H₂S. Sin ellas, los minerales quedarían atrapados en materia orgánica."},
+  {a:"bacterias",b:"fe",   label:"Ciclo biogeoquímico del Fe",     cat:"mineral", strength:0.8, detail:"Bacterias oxidadoras de Fe²⁺ (Thiobacillus, Gallionella) producen energía oxidando Fe²⁺→Fe³⁺. Las bacterias magnetotácticas (Magnetospirillum) biomineralizan Fe₃O₄ (magnetita). Las bacterias reductoras de Fe³⁺ lo convierten a Fe²⁺ soluble, liberándolo para otros organismos."},
+  // Minerales → vida
+  {a:"ca",   b:"plantas",  label:"Pared celular y señalización",   cat:"mineral", strength:0.8, detail:"El Ca²⁺ estabiliza la pectina de la pared celular vegetal (enlace borato-rhamnogalacturonano II). Es segundo mensajero en respuesta al estrés, luz y hormonas. Déficit de Ca: puntas de raíces y hojas se necrosan. Suelos calcáreos (pH>7.5) insolubilizan Fe y P."},
+  {a:"ca",   b:"animales", label:"Hueso, músculo y nervio",        cat:"mineral", strength:1.0, detail:"El 99% del Ca corporal está en huesos y dientes (hidroxiapatita Ca₁₀(PO₄)₆(OH)₂). El 1% restante regula: contracción muscular (troponina-Ca), transmisión nerviosa (exocitosis de neurotransmisores), coagulación sanguínea y función cardíaca. Déficit: tetania, osteoporosis."},
+  {a:"fe",   b:"plantas",  label:"Clorofila y ferredoxina",        cat:"mineral", strength:0.9, detail:"El Fe es esencial para la síntesis de clorofila (aunque no forma parte de ella). Forma los clústeres Fe-S de la ferredoxina (PSI), los citocromos del complejo b6f, y la ferritina (almacén de Fe). Déficit: clorosis interveinal en hojas jóvenes. Ultra-limitante en océano abierto (solo 0.002 µg/L)."},
+  {a:"fe",   b:"animales", label:"Hemoglobina y citocromos",       cat:"mineral", strength:1.0, detail:"El Fe²⁺ en el grupo hemo de la hemoglobina une reversiblemente O₂ (y CO con 240x más afinidad, por eso el CO es letal). La mioglobina almacena O₂ en músculo. Los citocromos (Fe) transfieren electrones en la cadena respiratoria. Sin Fe funcional: anemia ferropénica."},
+  {a:"p",    b:"plantas",  label:"ADN, ATP y fosfolípidos",        cat:"mineral", strength:1.0, detail:"El P forma el backbone fosfodiéster del ADN/ARN, el ATP (moneda energética), los fosfolípidos de membrana, y la hidroxiapatita. Es el nutriente más limitante en ecosistemas terrestres. Las raíces exudan fosfatasas para mineralizar P orgánico. Micorrizas amplifican su absorción 100x."},
+  {a:"mg",   b:"plantas",  label:"Centro de la clorofila",         cat:"mineral", strength:1.0, detail:"El Mg²⁺ es el átomo central del anillo porfirínico de todas las clorofilas (a, b, c, d, f). Sin Mg, no hay clorofila, no hay fotosíntesis. También activa >300 enzimas (incluyendo la ATPasa, Rubisco, ADN polimerasa). Los suelos ácidos lavan el Mg → hojas amarillas (clorosis)."},
+  {a:"cu",   b:"animales", label:"Hemocianina y enzimas",          cat:"mineral", strength:0.8, detail:"El Cu²⁺ forma el sitio activo de la hemocianina (transporta O₂ en moluscos y artrópodos, dando sangre azul). También en: citocromo c oxidasa (respira O₂), ceruloplasmina, tirosinasa (síntesis de melanina), superóxido dismutasa (antioxidante). 100 mg de Cu en el cuerpo humano."},
+  {a:"mo",   b:"bacterias",label:"Nitrogenasa y ciclo del N",      cat:"mineral", strength:0.9, detail:"El Mo es el cofactor FeMo-co de la nitrogenasa, la única enzima que puede romper el triple enlace del N₂. Sin Mo, no hay fijación biológica de N₂. También en la xantina oxidasa (metabolismo de purinas) y la nitrato reductasa (asimilación de NO₃⁻ por plantas). El Mo del océano es 10,000x más abundante que en suelo."},
+  // Hongos
+  {a:"hongos",b:"suelo",   label:"Descomposición lignocelulósica", cat:"life",    strength:0.9, detail:"Los hongos basidiomicetos producen lignina peroxidasa, que degrada la lignina (el segundo biopolímero más abundante). Sin ellos, la madera se acumularía. Liberan Ca, K, Fe, P al suelo. La red miceliar (Armillaria ostoyae: 9.65 km², 8500 años) conecta árboles."},
+  {a:"hongos",b:"plantas", label:"Red de nutrientes (Wood Wide Web)",cat:"life", strength:0.8, detail:"Las micorrizas ectomicorrícicas (Laccaria, Amanita) envuelven las raíces de árboles. Intercambian 20-40% de la fotosíntesis del árbol por P, N y agua del suelo. La red miceliar puede transferir azúcares de árboles maduros a plántulas en sombra, actuando como sistema de soporte comunitario del bosque."},
+  // Quimiosíntesis
+  {a:"quimio",b:"bacterias",label:"Base energética sin luz",       cat:"energy",  strength:0.9, detail:"H₂S + CO₂ → materia orgánica (Thiobacillus, Beggiatoa). Fe²⁺ + CO₂ → materia orgánica (Gallionella). H₂ + CO₂ → CH₄ (Methanobacterium). Estos metabolismos sustentan ecosistemas completos en fumarolas hidrotermales, cuevas y sedimentos oceánicos sin ningún aporte de luz solar."},
+  {a:"quimio",b:"h2s",     label:"H₂S como fuente de energía",    cat:"energy",  strength:0.8, detail:"H₂S + ½O₂ → S + H₂O + energía. Las bacterias sulfurosas (Sulfolobus, Beggiatoa) obtienen energía oxidando H₂S. Este proceso sustenta comunidades de fumarolas: Riftia pachyptila alberga 10¹⁰ bacterias sulfurosas/cm³ en su trofosoma, sin estómago ni boca en estado adulto."},
+  // Ciclo del agua profundo
+  {a:"suelo",b:"plantas",  label:"Absorción de minerales disueltos",cat:"mineral",strength:1.0, detail:"El agua del suelo disuelve iones minerales que las raíces absorben por osmosis y canales proteicos (acuaporinas). Orden de absorción: K⁺, Ca²⁺, Mg²⁺, NO₃⁻, SO₄²⁻, H₂PO₄⁻. El pH del suelo determina la solubilidad: Fe y Mn más solubles en pH ácido; Ca, Mg, P más disponibles en pH neutro (6.5-7.5)."},
+  {a:"n2",   b:"bacterias",label:"Sustrato para nitrogenasa",      cat:"gas",     strength:0.9, detail:"El N₂ atmosférico (78%) es inerte para la mayoría de seres vivos. Solo las bacterias con nitrogenasa pueden romper su triple enlace (energía: 945 kJ/mol) usando 16 ATP y 8 electrones por molécula. Este proceso es tan crítico que sin él, el N disponible en suelos se agotaría en ~50-100 años."},
+  {a:"o2",   b:"animales", label:"Respiración aeróbica",           cat:"gas",     strength:1.0, detail:"O₂ es el aceptor final de electrones en la cadena respiratoria mitocondrial. Genera el gradiente H⁺ que sintetiza ATP. Sin O₂, los vertebrados sobreviven segundos (cerebro) a minutos. Los cetáceos buceadores tienen mioglobina en músculo 30x más concentrada que humanos, almacenando O₂ para buceos de 90 min."},
+];
+
+// ═══════════════════════════════════════════════════════
+// ESTADO
+// ═══════════════════════════════════════════════════════
+let selectedNode = null;
+let selectedConn = null;
+let filter = 'all';
+let animFrame = 0;
+let particles = [];
+
+// ═══════════════════════════════════════════════════════
+// CANVAS GRAPH
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('graph-canvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+function getNodePos(node) {
+  return { x: node.x * canvas.width, y: node.y * canvas.height };
+}
+
+function getVisibleConns() {
+  if (filter === 'all') return CONNECTIONS;
+  return CONNECTIONS.filter(c => c.cat === filter ||
+    NODES.find(n => n.id === c.a)?.category === filter ||
+    NODES.find(n => n.id === c.b)?.category === filter);
+}
+
+function getVisibleNodes() {
+  if (filter === 'all') return NODES;
+  const connNodes = new Set();
+  getVisibleConns().forEach(c => { connNodes.add(c.a); connNodes.add(c.b); });
+  return NODES.filter(n => n.category === filter || connNodes.has(n.id));
+}
+
+// Init particles
+function initParticles() {
+  particles = [];
+  CONNECTIONS.forEach((conn, ci) => {
+    for (let i = 0; i < 2; i++) {
+      particles.push({ conn: ci, t: Math.random(), speed: 0.002 + Math.random() * 0.003 });
+    }
+  });
+}
+initParticles();
+
+function draw() {
+  animFrame++;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const visConns = getVisibleConns();
+  const visNodes = getVisibleNodes();
+  const visNodeIds = new Set(visNodes.map(n => n.id));
+
+  // Draw connections
+  visConns.forEach((conn, ci) => {
+    const na = NODES.find(n => n.id === conn.a);
+    const nb = NODES.find(n => n.id === conn.b);
+    if (!na || !nb || !visNodeIds.has(na.id) || !visNodeIds.has(nb.id)) return;
+
+    const pa = getNodePos(na);
+    const pb = getNodePos(nb);
+    const isSelected = selectedConn === ci ||
+      (selectedNode && (selectedNode === conn.a || selectedNode === conn.b));
+
+    const alpha = isSelected ? 0.8 : filter === 'all' ? 0.25 : 0.5;
+    const lineW = isSelected ? 1.5 : 0.8;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = na.color;
+    ctx.lineWidth = lineW;
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = -(animFrame * 0.5) % 10;
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrow at end
+    const angle = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+    const arrowX = pb.x - Math.cos(angle) * (nb.r + 4);
+    const arrowY = pb.y - Math.sin(angle) * (nb.r + 4);
+    ctx.fillStyle = na.color;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(arrowX + Math.cos(angle) * 8, arrowY + Math.sin(angle) * 8);
+    ctx.lineTo(arrowX + Math.cos(angle + 2.5) * 5, arrowY + Math.sin(angle + 2.5) * 5);
+    ctx.lineTo(arrowX + Math.cos(angle - 2.5) * 5, arrowY + Math.sin(angle - 2.5) * 5);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Draw particles
+  particles.forEach(p => {
+    const conn = CONNECTIONS[p.conn];
+    if (!conn) return;
+    const na = NODES.find(n => n.id === conn.a);
+    const nb = NODES.find(n => n.id === conn.b);
+    if (!na || !nb || !visNodeIds.has(na.id) || !visNodeIds.has(nb.id)) return;
+    if (filter !== 'all' && conn.cat !== filter &&
+        na.category !== filter && nb.category !== filter) return;
+
+    p.t += p.speed;
+    if (p.t > 1) p.t = 0;
+    const pa = getNodePos(na);
+    const pb = getNodePos(nb);
+    const x = pa.x + (pb.x - pa.x) * p.t;
+    const y = pa.y + (pb.y - pa.y) * p.t;
+
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = na.color;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = na.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Draw nodes
+  visNodes.forEach(node => {
+    const pos = getNodePos(node);
+    const isSelected = selectedNode === node.id;
+    const isConnected = selectedNode && CONNECTIONS.some(c =>
+      (c.a === selectedNode && c.b === node.id) ||
+      (c.b === selectedNode && c.a === node.id));
+    const dimmed = selectedNode && !isSelected && !isConnected;
+
+    ctx.save();
+    ctx.globalAlpha = dimmed ? 0.25 : 1;
+
+    // Outer ring
+    ctx.strokeStyle = node.color;
+    ctx.lineWidth = isSelected ? 2 : 0.8;
+    ctx.globalAlpha = dimmed ? 0.1 : isSelected ? 0.8 : 0.4;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, node.r + 6 + Math.sin(animFrame * 0.05 + node.x * 10) * 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Glow
+    if (isSelected || isConnected) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = node.color;
+    }
+
+    // Node circle
+    ctx.globalAlpha = dimmed ? 0.15 : 1;
+    const grad = ctx.createRadialGradient(pos.x - node.r * 0.3, pos.y - node.r * 0.3, 1, pos.x, pos.y, node.r);
+    grad.addColorStop(0, node.color + '55');
+    grad.addColorStop(1, node.color + '18');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, node.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = node.color;
+    ctx.lineWidth = isSelected ? 1.5 : 0.8;
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = node.color;
+    ctx.globalAlpha = dimmed ? 0.2 : 0.8;
+    ctx.shadowBlur = isSelected ? 10 : 4;
+    ctx.shadowColor = node.color;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = dimmed ? 0.2 : 1;
+    ctx.fillStyle = isSelected ? node.color : '#A0C0A8';
+    ctx.font = `${isSelected ? 700 : 400} ${node.r > 15 ? 9 : 8}px 'Share Tech Mono'`;
+    ctx.textAlign = 'center';
+
+    const lines = node.label.split(' ');
+    lines.forEach((line, i) => {
+      ctx.fillText(line, pos.x, pos.y + node.r + 12 + i * 10);
+    });
+
+    ctx.restore();
+  });
+
+  // Crosshair at selected node
+  if (selectedNode) {
+    const node = NODES.find(n => n.id === selectedNode);
+    if (node) {
+      const pos = getNodePos(node);
+      ctx.save();
+      ctx.strokeStyle = node.color;
+      ctx.lineWidth = 0.5;
+      ctx.globalAlpha = 0.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, pos.y);
+      ctx.lineTo(canvas.width, pos.y);
+      ctx.moveTo(pos.x, 0);
+      ctx.lineTo(pos.x, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+// ═══════════════════════════════════════════════════════
+// INTERACCIÓN
+// ═══════════════════════════════════════════════════════
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const tooltip = document.getElementById('tooltip');
+  const coord = document.getElementById('coord-display');
+
+  // Coordinate HUD
+  const lat = ((0.5 - my / canvas.height) * 180).toFixed(2);
+  const lon = ((mx / canvas.width - 0.5) * 360).toFixed(2);
+  if (coord) coord.textContent = `LAT: ${lat}° LON: ${lon}°`;
+
+  // Hover node
+  let hovered = null;
+  NODES.forEach(node => {
+    const pos = getNodePos(node);
+    const dist = Math.sqrt((mx - pos.x) ** 2 + (my - pos.y) ** 2);
+    if (dist < node.r + 10) hovered = node;
+  });
+
+  if (hovered) {
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+    tooltip.innerHTML = `<div style="color:${hovered.color};font-size:10px;font-weight:700;margin-bottom:4px;">${hovered.label}</div>
+      <div style="color:#4A7A5A;font-size:8px;">${hovered.category.toUpperCase()}</div>
+      <div style="color:#A0C0A8;font-size:8px;margin-top:4px;line-height:1.5;">${hovered.desc.substring(0, 100)}…</div>`;
+    canvas.style.cursor = 'pointer';
+  } else {
+    tooltip.style.display = 'none';
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  let clicked = null;
+  NODES.forEach(node => {
+    const pos = getNodePos(node);
+    const dist = Math.sqrt((mx - pos.x) ** 2 + (my - pos.y) ** 2);
+    if (dist < node.r + 10) clicked = node;
+  });
+
+  if (clicked) {
+    selectedNode = selectedNode === clicked.id ? null : clicked.id;
+    selectedConn = null;
+    updateNodeDetail(clicked);
+    updateConnectionsList();
+  } else {
+    selectedNode = null;
+    document.getElementById('node-detail').innerHTML = `<div style="text-align:center;padding:16px 0;color:var(--muted);font-size:9px;"><div style="font-size:24px;margin-bottom:6px;animation:pulse 2s ease infinite;">◎</div>Selecciona un nodo<br>en el grafo</div>`;
+    updateConnectionsList();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  document.getElementById('tooltip').style.display = 'none';
+});
+
+function updateNodeDetail(node) {
+  const connections = CONNECTIONS.filter(c => c.a === node.id || c.b === node.id);
+  document.getElementById('node-detail').innerHTML = `
+    <div style="margin-bottom:8px;">
+      <div style="color:${node.color};font-family:var(--font-title);font-size:11px;font-weight:700;letter-spacing:.1em;margin-bottom:2px;">${node.label}</div>
+      <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">${node.category}</div>
+      <div style="font-size:9px;color:#8AB8A0;line-height:1.6;">${node.desc}</div>
+    </div>
+    <div style="border-top:0.5px solid var(--border);padding-top:7px;margin-top:4px;">
+      <div style="font-size:8px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em;">Conexiones (${connections.length})</div>
+      ${connections.map(c => {
+        const other = NODES.find(n => n.id === (c.a === node.id ? c.b : c.a));
+        return `<div onclick="selectConn(${CONNECTIONS.indexOf(c)})" style="display:flex;align-items:center;gap:5px;margin-bottom:3px;padding:3px 5px;border:0.5px solid rgba(0,255,136,0.08);cursor:pointer;" onmouseover="this.style.background='var(--green-dim)'" onmouseout="this.style.background='transparent'">
+          <div style="width:4px;height:4px;border-radius:50%;background:${other?.color||'#0F0'};flex-shrink:0;"></div>
+          <span style="font-size:8px;color:#6A9A7A;">${c.a===node.id?'→':'←'} ${other?.label||'?'}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function selectConn(idx) {
+  selectedConn = idx;
+  const conn = CONNECTIONS[idx];
+  const na = NODES.find(n => n.id === conn.a);
+  const nb = NODES.find(n => n.id === conn.b);
+  document.getElementById('connection-detail').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="color:${na?.color};font-size:10px;font-weight:700;">${na?.label}</span>
+      <span style="color:var(--green);font-size:12px;">→</span>
+      <span style="color:${nb?.color};font-size:10px;font-weight:700;">${nb?.label}</span>
+      <span style="background:rgba(0,255,136,0.08);border:0.5px solid var(--border);font-size:8px;padding:1px 6px;color:var(--muted);margin-left:auto;">${conn.cat.toUpperCase()}</span>
+    </div>
+    <div style="font-size:9px;color:#8AB8A0;line-height:1.7;margin-bottom:6px;">${conn.detail}</div>
+    <div style="font-size:8px;color:var(--muted);">Intensidad: ${['░░░░░','█░░░░','██░░░','███░░','████░','█████'][Math.round(conn.strength*5)]} ${Math.round(conn.strength*100)}%</div>`;
+}
+
+function updateConnectionsList() {
+  const list = document.getElementById('connections-list');
+  const conns = selectedNode
+    ? CONNECTIONS.filter(c => c.a === selectedNode || c.b === selectedNode)
+    : getVisibleConns();
+
+  list.innerHTML = conns.map((c, i) => {
+    const na = NODES.find(n => n.id === c.a);
+    const nb = NODES.find(n => n.id === c.b);
+    const realIdx = CONNECTIONS.indexOf(c);
+    return `<div onclick="selectConn(${realIdx})" class="connection-card" style="border-left-color:${na?.color};" onmouseover="this.style.background='var(--green-dim)'" onmouseout="this.style.background='var(--bg3)'">
+      <div style="color:var(--border-left-color);font-size:9px;font-weight:700;margin-bottom:2px;color:${na?.color};">${na?.label} → ${nb?.label}</div>
+      <div style="font-size:8px;color:var(--muted);">${c.label}</div>
+      <div style="font-size:7px;color:var(--dim);margin-top:2px;text-transform:uppercase;letter-spacing:.06em;">${c.cat}</div>
+    </div>`;
+  }).join('');
+}
+
+// Connections list init
+updateConnectionsList();
+
+// ═══════════════════════════════════════════════════════
+// FILTROS
+// ═══════════════════════════════════════════════════════
+function setFilter(f) {
+  filter = f;
+  document.querySelectorAll('[id^="btn-"]').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--muted)';
+    b.style.borderColor = 'var(--border)';
+  });
+  const btn = document.getElementById(`btn-${f}`);
+  if (btn) {
+    btn.style.background = 'var(--green-d)';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+  }
+  const count = getVisibleConns().length;
+  document.getElementById('active-count').textContent = count;
+  document.getElementById('connection-count').textContent = `CONEXIONES: ${count} ACTIVAS`;
+  updateConnectionsList();
+}
+
+// ═══════════════════════════════════════════════════════
+// RELOJ
+// ═══════════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  const y = now.getFullYear();
+  const mo = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const el = document.getElementById('clock');
+  if (el) el.textContent = `${y}.${mo}.${d} ${h}:${m}:${s}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>
