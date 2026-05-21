@@ -519,19 +519,6 @@ function PlanetCreatedModal({planetCode,vals,onClose,creatures}){
 // ═══════════════════════════════════════════════════════════════
 // APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
-function buildPlanetImagePrompt(v){
-  const {H2O,Temp,H2S,O2,CO2,Si,Fe,Ca,S,N2}=v;
-  const hasSulf=H2S>2||S>5000,isHot=Temp>50,isCold=Temp<-30,hasOcean=H2O>30;
-  const atmColor=hasSulf?"yellow sulfuric clouds":CO2>5?"thick orange CO2 atmosphere":O2>20?"clear blue atmosphere":"hazy dark atmosphere";
-  const surfaceColor=hasSulf?"yellow sulfur flats and acid lakes":isCold?"icy blue frozen tundra":isHot?"red volcanic rocky terrain":Fe>50?"red iron oxide desert":Ca>50?"white limestone formations":"varied green and blue terrain";
-  const features=[];
-  if(hasOcean)features.push(hasSulf?"acid sulfuric seas":"vast alien oceans with waves");
-  if(isCold)features.push("polar ice caps","glaciers");
-  if(H2S>3)features.push("volcanic geysers","hydrothermal vents");
-  if(O2>20)features.push("green alien vegetation visible");
-  return `Photorealistic alien planet from orbit, ${surfaceColor}, ${atmColor}${features.length?", "+features.join(", "):""}, dramatic star lighting, NASA style, 8k, ultra detailed, stunning cosmic photography`;
-}
-
 function App(){
   const initVals={};SLIDERS.forEach(s=>initVals[s.sym]=s.def);
   const [vals,setVals]=useState(initVals);
@@ -899,3 +886,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 </script>
 </body>
 </html>
+```
+
+6. En el commit escribe: `bioplanet v3 - imágenes IA, criaturas infinitas, código único`
+7. Haz clic en **"Commit changes"**
