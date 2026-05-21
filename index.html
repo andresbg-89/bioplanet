@@ -11,7 +11,7 @@
 :root{
   --teal:#00D4AA;--teal-d:rgba(0,212,170,0.12);
   --amber:#F5A623;--red:#F87171;--blue:#60A5FA;--purple:#A78BFA;--green:#4ADE80;
-  --bg:#03060E;--bg2:#070D1A;--bg3:#0C1525;
+  --bg:#020509;--bg2:#060C14;--bg3:#0A1220;
   --border:rgba(255,255,255,0.07);--text:#DDE6F5;--muted:#5A6A88;--dim:#1A2A40;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Space Grotesk',system-ui,sans-serif;font-size:13px;}
@@ -28,31 +28,427 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes glow{0%,100%{box-shadow:0 0 20px rgba(0,212,170,0.2)}50%{box-shadow:0 0 40px rgba(0,212,170,0.5)}}
-.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg2) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg2) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;}
+
+/* HUD overlay styles */
+.hud-overlay{position:absolute;pointer-events:none;font-family:'JetBrains Mono',monospace;}
+.hud-data{font-size:10px;line-height:1.9;color:rgba(0,212,170,0.85);}
+.hud-label{color:rgba(0,212,170,0.45);font-size:9px;}
+.hud-sep{border-top:0.5px solid rgba(0,212,170,0.2);margin:5px 0;}
 </style>
+
+<!-- SHADERS -->
+<script id="planet-vert" type="x-shader/x-vertex">
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying vec2 vUv;
+varying vec3 vSunDir;
+uniform vec3 sunDirection;
+
+void main() {
+  vNormal = normalize(normalMatrix * normal);
+  vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+  vUv = uv;
+  vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+
+<script id="planet-frag" type="x-shader/x-fragment">
+uniform vec3 sunDirection;
+uniform float time;
+uniform float hasSulfur;
+uniform float hasOcean;
+uniform float isCold;
+uniform float isHot;
+uniform float hasLife;
+uniform float ironContent;
+uniform float calciumContent;
+uniform float oxygenLevel;
+uniform float h2sLevel;
+uniform float waterCoverage;
+uniform float planetTemp;
+
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying vec2 vUv;
+varying vec3 vSunDir;
+
+// Noise functions
+vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 permute(vec4 x){return mod289(((x*34.)+1.)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-.85373472095314*r;}
+
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);
+  const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);
+  vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy);
+  vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;
+  vec3 x2=x0-i2+C.yyy;
+  vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z);
+  vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;
+  vec4 y=y_*ns.x+ns.yyyy;
+  vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);
+  vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;
+  vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);
+  vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z);
+  vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);
+  m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+float fbm(vec3 p, int oct){
+  float v=0.;float a=0.5;
+  for(int i=0;i<8;i++){
+    if(i>=oct)break;
+    v+=a*snoise(p);p*=2.1;a*=0.5;
+  }
+  return v;
+}
+
+void main(){
+  vec3 spherePos = normalize(vPosition);
+  
+  // Elevation from noise
+  float elevation = fbm(spherePos * 2.8, 6) * 0.5 + 0.5;
+  float fineTex   = fbm(spherePos * 8.0, 4) * 0.5 + 0.5;
+  float microTex  = fbm(spherePos * 22.0, 3) * 0.5 + 0.5;
+  
+  // Latitude
+  float lat = asin(clamp(spherePos.y, -1.0, 1.0)) / 1.5708;
+  float absLat = abs(lat);
+  
+  // Sea level
+  float seaLevel = 0.42 - waterCoverage * 0.25;
+  bool isOceanPx = elevation < seaLevel && hasOcean > 0.5;
+  bool isPolar   = absLat > 0.75 && isCold > -0.5;
+  bool isIce     = isPolar && !isOceanPx;
+  
+  // Base terrain colors
+  vec3 deepOcean  = vec3(0.04, 0.10, 0.26);
+  vec3 shallowOcean = vec3(0.06, 0.20, 0.42);
+  vec3 coastColor = vec3(0.65, 0.58, 0.40);
+  vec3 lowLand    = vec3(0.22, 0.42, 0.16);
+  vec3 midLand    = vec3(0.32, 0.52, 0.22);
+  vec3 highland   = vec3(0.45, 0.40, 0.30);
+  vec3 mountain   = vec3(0.60, 0.56, 0.52);
+  vec3 snowPeak   = vec3(0.92, 0.94, 0.98);
+  vec3 iceColor   = vec3(0.85, 0.90, 0.98);
+  vec3 sandColor  = vec3(0.78, 0.68, 0.45);
+  vec3 sulfurYellow = vec3(0.75, 0.68, 0.12);
+  vec3 sulfurOrange = vec3(0.82, 0.50, 0.08);
+  vec3 volcLava   = vec3(0.85, 0.20, 0.05);
+  vec3 ironRust   = vec3(0.62, 0.25, 0.10);
+  vec3 ironDark   = vec3(0.40, 0.15, 0.06);
+  
+  vec3 surfaceColor;
+  
+  if(hasSulfur > 0.5) {
+    // Sulfuric planet - yellows and oranges
+    float sulfPat = fbm(spherePos * 5.0, 4) * 0.5 + 0.5;
+    vec3 base = mix(sulfurYellow, sulfurOrange, sulfPat);
+    if(isOceanPx) base = mix(vec3(0.65,0.55,0.05), vec3(0.50,0.40,0.02), elevation/seaLevel);
+    if(h2sLevel > 5.0) {
+      float lavaPat = smoothstep(0.6, 0.8, fbm(spherePos*7.0,3)*0.5+0.5);
+      base = mix(base, volcLava, lavaPat * 0.6);
+    }
+    surfaceColor = base;
+  } else if(isCold > 0.5) {
+    // Frozen planet
+    float icePat = fbm(spherePos * 6.0, 4) * 0.5 + 0.5;
+    vec3 base = mix(vec3(0.65,0.75,0.90), iceColor, icePat * 0.6 + 0.4);
+    float crackPat = fbm(spherePos * 18.0, 3) * 0.5 + 0.5;
+    base = mix(base, vec3(0.20,0.35,0.55), step(0.72, crackPat) * 0.5);
+    surfaceColor = base;
+  } else if(isHot > 0.5) {
+    // Volcanic / hot planet
+    float lavaPat = fbm(spherePos * 6.0, 5) * 0.5 + 0.5;
+    vec3 base = mix(ironDark, ironRust, fineTex);
+    float glowPat = smoothstep(0.55, 0.75, fbm(spherePos*9.0,3)*0.5+0.5);
+    base = mix(base, volcLava, glowPat * 0.7);
+    if(glowPat > 0.5) base += vec3(0.3, 0.05, 0.0) * (glowPat-0.5);
+    surfaceColor = base;
+  } else if(ironContent > 0.7) {
+    // Iron-rich mars-like
+    float sPat = fbm(spherePos * 4.5, 5) * 0.5 + 0.5;
+    vec3 base = mix(ironDust, ironRust, sPat * 0.7 + fineTex * 0.3);
+    if(isOceanPx) base = mix(deepOcean * 0.5, base, 0.7);
+    surfaceColor = base;
+  } else {
+    // Earth-like
+    if(isOceanPx) {
+      float depthF = (seaLevel - elevation) / seaLevel;
+      surfaceColor = mix(shallowOcean, deepOcean, depthF * 1.5);
+      // Shallow coastal variation
+      surfaceColor += vec3(0.0, 0.05, 0.08) * fineTex * 0.3;
+    } else if(isIce) {
+      surfaceColor = mix(iceColor, snowPeak, microTex * 0.4);
+    } else {
+      float landH = (elevation - seaLevel) / (1.0 - seaLevel);
+      vec3 base;
+      if(landH < 0.05) {
+        base = mix(coastColor, sandColor, fineTex);
+      } else if(landH < 0.35) {
+        base = mix(lowLand, midLand, fineTex * 0.6 + microTex * 0.4);
+        if(hasLife > 0.5) base = mix(base, vec3(0.15, 0.48, 0.10), 0.3 + hasLife * 0.2);
+      } else if(landH < 0.65) {
+        base = mix(midLand, highland, fineTex);
+      } else if(landH < 0.82) {
+        base = mix(highland, mountain, fineTex * 0.7 + microTex * 0.3);
+      } else {
+        base = mix(mountain, snowPeak, smoothstep(0.82, 1.0, landH + microTex * 0.1));
+      }
+      // Polar snow
+      if(absLat > 0.65 && landH > 0.0) {
+        float snowBlend = smoothstep(0.65, 0.85, absLat);
+        base = mix(base, snowPeak, snowBlend * (0.5 + landH * 0.5));
+      }
+      surfaceColor = base;
+    }
+  }
+
+  // Lighting
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(sunDirection);
+  vec3 V = normalize(-vPosition);
+  
+  float NdotL = dot(N, L);
+  float diffuse = max(NdotL, 0.0);
+  
+  // Soft terminator
+  float terminator = smoothstep(-0.12, 0.25, NdotL);
+  
+  // Ambient (scattered light on dark side)
+  float ambient = 0.035;
+  
+  // Specular on ocean
+  float specular = 0.0;
+  if(isOceanPx && isCold < 0.5 && hasSulfur < 0.5) {
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(N, H), 0.0);
+    specular = pow(NdotH, 80.0) * diffuse * 1.8;
+    // Fresnel
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+    specular += fresnel * diffuse * 0.4;
+  }
+  
+  // Night lights (cities) - only on earth-like with life
+  float nightLights = 0.0;
+  if(hasLife > 0.4 && !isOceanPx && !isIce && oxygenLevel > 10.0) {
+    float cityNoise = fbm(spherePos * 15.0, 3) * 0.5 + 0.5;
+    float cityMask  = step(0.68, cityNoise) * step(0.0, 0.5 - elevation * 0.5);
+    nightLights = cityMask * (1.0 - terminator) * max(0.0, -NdotL * 2.0) * 0.6;
+  }
+  
+  // Lava glow on hot planets
+  float lavaGlow = 0.0;
+  if(isHot > 0.5) {
+    float glowPat = fbm(spherePos * 9.0, 3) * 0.5 + 0.5;
+    lavaGlow = step(0.6, glowPat) * (1.0 - terminator) * max(0.0, -NdotL) * 0.8;
+  }
+  
+  // Final color
+  vec3 finalColor = surfaceColor * (ambient + diffuse * terminator * 0.95);
+  finalColor += specular * vec3(1.0, 0.97, 0.90);
+  
+  // Night lights overlay
+  if(nightLights > 0.0) {
+    finalColor += vec3(1.0, 0.85, 0.45) * nightLights;
+  }
+  if(lavaGlow > 0.0) {
+    finalColor += vec3(1.0, 0.3, 0.0) * lavaGlow;
+  }
+  
+  // Subtle micro-texture overlay
+  finalColor *= (0.92 + microTex * 0.08);
+  
+  // Tone mapping
+  finalColor = finalColor / (finalColor + vec3(0.6));
+  finalColor = pow(finalColor, vec3(0.85));
+  
+  gl_FragColor = vec4(finalColor, 1.0);
+}
+
+// Missing variable - add ironDust
+</script>
+
+<script id="atm-vert" type="x-shader/x-vertex">
+varying vec3 vNormal;
+varying vec3 vPosition;
+void main(){
+  vNormal = normalize(normalMatrix * normal);
+  vPosition = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+
+<script id="atm-frag" type="x-shader/x-fragment">
+uniform vec3 sunDirection;
+uniform vec3 atmColor;
+uniform float atmDensity;
+varying vec3 vNormal;
+varying vec3 vPosition;
+
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(sunDirection);
+  
+  // View direction (approximated)
+  vec3 V = normalize(vec3(0.0, 0.0, 1.0));
+  
+  // Rayleigh scattering - stronger at limb
+  float rim = 1.0 - max(dot(N, V), 0.0);
+  float rayleigh = pow(rim, 3.5);
+  
+  // Sun-facing glow
+  float sunFacing = max(dot(N, L), 0.0);
+  float glow = rayleigh * (0.4 + sunFacing * 0.6);
+  
+  // Day/night
+  float dayNight = smoothstep(-0.3, 0.5, dot(N, L));
+  
+  // Twilight band
+  float twilight = smoothstep(-0.15, 0.15, dot(N, L)) * (1.0 - smoothstep(0.1, 0.4, dot(N, L)));
+  vec3 twilightColor = vec3(1.0, 0.45, 0.15);
+  
+  vec3 color = atmColor * glow * dayNight;
+  color += twilightColor * twilight * rayleigh * 0.6;
+  
+  float alpha = glow * atmDensity * 0.85;
+  
+  gl_FragColor = vec4(color, alpha);
+}
+</script>
+
+<script id="cloud-vert" type="x-shader/x-vertex">
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying vec2 vUv;
+uniform float time;
+void main(){
+  vNormal = normalize(normalMatrix * normal);
+  vPosition = position;
+  vUv = uv + vec2(time * 0.002, 0.0);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+
+<script id="cloud-frag" type="x-shader/x-fragment">
+uniform vec3 sunDirection;
+uniform float cloudCoverage;
+uniform float time;
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying vec2 vUv;
+
+vec3 mod289v(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 mod289v(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 permutev(vec4 x){return mod289v(((x*34.)+1.)*x);}
+vec4 taylorInvSqrtv(vec4 r){return 1.79284291400159-.85373472095314*r;}
+float snoiseC(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;
+  i=mod289v(i);
+  vec4 p=permutev(permutev(permutev(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrtv(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+void main(){
+  vec3 spherePos = normalize(vPosition);
+  float t = time * 0.15;
+  
+  // Multi-layer cloud noise
+  float c1 = snoiseC(spherePos * 3.5 + vec3(t, 0, t*0.3)) * 0.5 + 0.5;
+  float c2 = snoiseC(spherePos * 7.0 + vec3(-t*0.7, t*0.5, 0)) * 0.5 + 0.5;
+  float c3 = snoiseC(spherePos * 14.0 + vec3(0, t*0.3, -t*0.4)) * 0.5 + 0.5;
+  float cloud = c1 * 0.5 + c2 * 0.3 + c3 * 0.2;
+  
+  float threshold = 0.52 - cloudCoverage * 0.18;
+  float alpha = smoothstep(threshold, threshold + 0.18, cloud);
+  
+  if(alpha < 0.01) discard;
+  
+  // Lighting
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(sunDirection);
+  float NdotL = max(dot(N, L), 0.0);
+  float terminator = smoothstep(-0.1, 0.3, NdotL);
+  
+  // Cloud self-shadowing
+  float shadowOffset = snoiseC(spherePos * 3.5 + vec3(t + 0.05, 0, t*0.3)) * 0.5 + 0.5;
+  float shadow = smoothstep(threshold, threshold + 0.2, shadowOffset);
+  float selfShadow = mix(0.75, 1.0, shadow);
+  
+  vec3 cloudColor = vec3(0.95, 0.96, 0.98) * selfShadow;
+  vec3 lit = cloudColor * (0.04 + terminator * 0.96);
+  
+  // Bright edge at terminator
+  float edgeGlow = smoothstep(0.0, 0.15, NdotL) * smoothstep(0.3, 0.05, NdotL);
+  lit += vec3(1.0, 0.90, 0.70) * edgeGlow * 0.3;
+  
+  gl_FragColor = vec4(lit, alpha * 0.88);
+}
+</script>
+
 </head>
 <body>
 
-<!-- ESTRUCTURA PRINCIPAL -->
 <div id="app" style="display:flex;flex-direction:column;height:100vh;">
-
-  <!-- HEADER -->
-  <div id="header" style="display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:48px;border-bottom:1px solid var(--border);background:rgba(3,6,14,0.95);flex-shrink:0;">
+  <div id="header" style="display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:48px;border-bottom:1px solid var(--border);background:rgba(2,5,9,0.95);flex-shrink:0;">
     <div style="display:flex;align-items:center;gap:8px;">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="#00D4AA" stroke-width="1.4"/><ellipse cx="10" cy="10" rx="8" ry="3" stroke="#00D4AA" stroke-width="0.8" stroke-dasharray="2 2"/><circle cx="10" cy="10" r="2.5" fill="#00D4AA" opacity=".5"/></svg>
       <b style="font-size:14px;">Bio<span style="color:var(--teal)">Planet</span></b>
-      <span style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">v3.0</span>
+      <span style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">v3.1</span>
     </div>
     <div id="tab-btns" style="display:flex;gap:3px;"></div>
-    <button onclick="createPlanet()" class="btn btn-teal" style="font-weight:700;font-size:11px;">✦ Crear Planeta</button>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <button onclick="toggleLang()" id="lang-btn" style="padding:4px 10px;border-radius:6px;border:0.5px solid var(--border);background:transparent;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:10px;cursor:pointer;">🌐 EN</button>
+      <button onclick="createPlanet()" class="btn btn-teal" style="font-weight:700;font-size:11px;" id="create-btn">✦ Crear Planeta</button>
+    </div>
   </div>
-
-  <!-- CONTENIDO PRINCIPAL -->
   <div id="main" style="flex:1;overflow:hidden;"></div>
 </div>
 
-<!-- MODAL PLANETA CREADO -->
+<!-- MODAL -->
 <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
   <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.3);border-radius:16px;padding:28px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;animation:fadeIn .3s ease;box-shadow:0 0 60px rgba(0,212,170,0.2);">
     <div style="text-align:center;margin-bottom:20px;">
@@ -89,7 +485,6 @@ const PRESETS={
   "Kepler-442b": {Ca:60,Fe:70,Si:300,P:1.5,Mg:30,Cu:80,S:800,Ni:100,V:150,O2:25,CO2:0.08,H2S:0,H2O:60,Temp:20,pH:7.0,pressure:1.3,gravity:1.3},
   "Oceánico":    {Ca:25,Fe:15,Si:30, P:0.5,Mg:60,Cu:80,S:3000,Ni:60,V:200,O2:8,CO2:1,H2S:0.3,H2O:100,Temp:10,pH:8.0,pressure:2.0,gravity:0.9},
 };
-
 const SLIDERS=[
   {sym:"Ca",  label:"Calcio",    unit:"K ppm",min:0,  max:100, step:1,  def:41,  g:"Suelo",    col:"#4ADE80"},
   {sym:"Fe",  label:"Hierro",   unit:"K ppm",min:0,  max:100, step:1,  def:56,  g:"Suelo",    col:"#F87171"},
@@ -108,9 +503,7 @@ const SLIDERS=[
   {sym:"pH",  label:"pH",      unit:"",     min:0,  max:14,  step:0.1,def:7.2, g:"Entorno",  col:"#A78BFA"},
   {sym:"gravity",label:"Gravedad",unit:"g", min:0.01,max:5,  step:0.05,def:1.0,g:"Entorno",  col:"#4ADE80"},
 ];
-
-let vals={};
-SLIDERS.forEach(s=>vals[s.sym]=s.def);
+let vals={};SLIDERS.forEach(s=>vals[s.sym]=s.def);
 let currentTab='planet';
 let numCreatures=3;
 let lastCreatures=[];
@@ -128,22 +521,20 @@ function calcScore(v){
   if(v.gravity>=0.3&&v.gravity<=3)s+=0.04;
   return Math.min(s,1.0);
 }
-
 function rng(seed,n){return((Math.sin(seed*9301+n*49297+233)%1)+1)%1;}
-
+function generateCreatureSeed(v,i){
+  const keys=["Ca","Fe","Si","P","Mg","Cu","O2","H2S","Temp","pH"];
+  return Math.abs(keys.reduce((a,k,j)=>a+(v[k]||0)*(j+1),i*1000))%99999;
+}
 function makeCreature(v,seed){
   const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
   const sc=calcScore(v);
-
-  // Esqueleto
   let skeleton,skCol;
   if(Ca>=30&&P>=0.5&&Mg>=5&&Temp>=-50&&Temp<=55&&gravity<=2){skeleton="Endoesqueleto calcico";skCol="#FBBF24";}
   else if(Si>=80&&H2O>=5){skeleton="Exoesqueleto silíceo";skCol="#60A5FA";}
   else if(Ca>=20&&pH>=7.5&&CO2>=0.01){skeleton="Exoesqueleto calcáreo";skCol="#4ADE80";}
   else if(S>5000){skeleton="Exoesqueleto sulfúrico";skCol="#F87171";}
   else{skeleton="Hidrostático/Quitina";skCol="#94A3B8";}
-
-  // Sangre
   let blood,bCol;
   if(Fe>=30&&O2>=2){blood="Hemoglobina (roja)";bCol="#F87171";}
   else if(Cu>=60&&Fe<25){blood="Hemocianina (azul)";bCol="#60A5FA";}
@@ -151,37 +542,27 @@ function makeCreature(v,seed){
   else if(H2S>1&&O2<8){blood="Hb-H₂S gigante";bCol="#FBBF24";}
   else if(Fe>=10&&Fe<30){blood="Hemeritrina (violeta)";bCol="#A78BFA";}
   else{blood="Difusión directa";bCol="#94A3B8";}
-
-  // Metabolismo
   let meta,metaCol;
   if(O2>=15&&Fe>=1){meta="Aeróbico eficiente";metaCol="#00D4AA";}
   else if(Mg>=12&&O2>=3&&CO2>=0.005){meta="Fotosíntesis";metaCol="#4ADE80";}
   else if(H2S>=1&&S>=100){meta="Quimiosíntesis H₂S";metaCol="#FBBF24";}
   else if(O2<0.1&&CO2>=0.1&&Ni>=20){meta="Metanogénesis";metaCol="#94A3B8";}
   else{meta="Fermentación";metaCol="#94A3B8";}
-
-  // Nervioso
   let nervous,nCol;
   if(O2>=15&&Ca>=25&&Fe>=20){nervous="Cerebro centralizado";nCol="#A78BFA";}
   else if(Ca>=10&&O2>=5){nervous="Sistema gangliado";nCol="#60A5FA";}
   else{nervous="Red difusa";nCol="#94A3B8";}
-
-  // Termorregulación
   let thermo,tCol;
   if(O2>=18&&Temp>=-50&&Temp<=55){thermo="Homeotermo";tCol="#F87171";}
   else if(Temp<=-10){thermo="Crioprotección AFP";tCol="#60A5FA";}
   else if(Temp>=80){thermo="Termoestable";tCol="#FBBF24";}
   else{thermo="Poiquilotermo";tCol="#4ADE80";}
-
-  // Locomoción
   let loco;
   if(gravity<0.3)loco="Flotación/vuelo";
   else if(H2O>50)loco="Natación";
   else if(gravity>2)loco="Rastrero";
   else if(O2>15&&sc>0.6)loco="Cuadrúpedo";
   else loco="Ondulatorio";
-
-  // Tamaño
   const baseSize=Math.max(0.001,sc*100*(gravity<0.5?8:1)*(O2/21)*Math.max(0.1,Ca/41));
   let size;
   if(baseSize>10000)size="Megafauna (>10t)";
@@ -189,135 +570,278 @@ function makeCreature(v,seed){
   else if(baseSize>10)size="Mediano (10–100kg)";
   else if(baseSize>0.1)size="Pequeño (<10kg)";
   else size="Microscópico";
-
-  // Nombre científico
   const genera=["Astrobiota","Xenovita","Cosmozoa","Abiogenus","Exobiota","Lithovita","Chemovita","Thermozoa","Cryptovita","Halobiota","Pyrovita","Glaciovita","Silicovita","Ferrobiota","Cuprovita"];
   const species=["stellaris","extremophilus","mineralis","novus","alienus","profundus","thermalis","glacialis","sulfuricus","magneticus","siliceus","cupriferus","vanadicus","ferrophilus","calcarius"];
   const genus=genera[Math.floor(rng(seed,3)*genera.length)];
   const sp=species[Math.floor(rng(seed,4)*species.length)];
-
-  // Complejidad
   const complexity=sc>0.75?"vertebrado":sc>0.55?"invertebrado":sc>0.35?"simple":sc>0.15?"colonial":"unicelular";
-
-  // Color organismo
   const orgCol=bCol;
-
   return {latinName:`${genus} ${sp}`,complexity,skeleton,skCol,blood,bCol,meta,metaCol,nervous,nCol,thermo,tCol,loco,size,orgCol,seed,sc,
-    imgPrompt:`Hyper-detailed scientific concept art of ${genus} ${sp}, a ${complexity} alien organism, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, ${loco.toLowerCase()} locomotion, ${size.toLowerCase()}, bioluminescent, scientifically coherent alien biology, otherworldly environment, dramatic lighting, 8k ultra detailed, stunning composition`};
+    imgPrompt:`Hyper-detailed scientific concept art of ${genus} ${sp}, a ${complexity} alien organism, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, bioluminescent, scientifically coherent alien biology, otherworldly, dramatic lighting, 8k ultra detailed`};
 }
 
 function planetCode(v){
   const keys=["Ca","Fe","Si","P","Mg","Cu","S","O2","CO2","H2S","H2O","Temp","pH","gravity"];
-  let h=0;
-  keys.forEach((k,i)=>{const n=Math.round((v[k]||0)*100);h=(h^(n*(i+1)*2654435761))>>>0;});
+  let h=0;keys.forEach((k,i)=>{const n=Math.round((v[k]||0)*100);h=(h^(n*(i+1)*2654435761))>>>0;});
   const b=h.toString(36).toUpperCase().padStart(8,"0");
   const pfx=v.H2O>50?"OCN":v.H2S>3?"VLC":v.Temp<-30?"GLC":v.O2>20?"TER":"XEN";
-  return `BP-${pfx}-${b.slice(0,3)}-${b.slice(3,6)}-${b.slice(6,8)}`;
+  return`BP-${pfx}-${b.slice(0,3)}-${b.slice(3,6)}-${b.slice(6,8)}`;
 }
-
 function planetImgPrompt(v){
   const {H2O,Temp,H2S,O2,CO2,Fe,Ca,S}=v;
   const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30;
   const atm=sulf?"yellow sulfuric clouds":CO2>5?"thick orange CO2 atmosphere":O2>20?"clear blue atmosphere":"dark hazy atmosphere";
   const surf=sulf?"yellow sulfur flats":cold?"icy frozen tundra":hot?"volcanic rocky terrain":Fe>50?"red iron oxide desert":"green blue terrain";
-  const ft=[];
-  if(H2O>30)ft.push(sulf?"acid seas":"alien oceans");
-  if(cold)ft.push("ice caps","glaciers");
-  if(H2S>3)ft.push("volcanic geysers");
-  if(O2>20)ft.push("alien vegetation");
-  return `Photorealistic alien planet from orbit, ${surf}, ${atm}${ft.length?", "+ft.join(", "):""}, dramatic star lighting, NASA style photography, 8k ultra detailed`;
+  const ft=[];if(H2O>30)ft.push(sulf?"acid seas":"alien oceans");if(cold)ft.push("ice caps");if(H2S>3)ft.push("volcanic geysers");if(O2>20)ft.push("alien vegetation");
+  return`Photorealistic alien planet from orbit, ${surf}, ${atm}${ft.length?", "+ft.join(", "):""}, dramatic star lighting, NASA style photography, 8k ultra detailed`;
 }
-
-// ═══════════════════════════════════════════════════════
-// IMAGEN IA (Pollinations - gratuito)
-// ═══════════════════════════════════════════════════════
 function makeAIImg(prompt,w,h,containerId){
-  const el=document.getElementById(containerId);
-  if(!el)return;
+  const el=document.getElementById(containerId);if(!el)return;
   const seed=Math.floor(Math.random()*99999);
   const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
-  el.innerHTML=`
-    <div id="${containerId}-loader" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3);">
-      <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid #00D4AA;border-radius:50%;animation:spin 1s linear infinite;"></div>
-      <div style="font-size:9px;color:var(--dim);">Generando imagen IA…</div>
-    </div>
-    <img src="${url}" style="width:100%;height:100%;object-fit:cover;display:none;border-radius:inherit;"
-      onload="this.style.display='block';document.getElementById('${containerId}-loader').style.display='none';"
-      onerror="document.getElementById('${containerId}-loader').innerHTML='<div style=\\'font-size:10px;color:var(--dim);text-align:center;padding:16px;\\'>🎨 Conecta internet para imágenes IA</div>';"/>`;
+  el.innerHTML=`<div id="${containerId}-loader" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3);border-radius:inherit;"><div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid #00D4AA;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:9px;color:var(--dim);">Generando imagen IA…</div></div><img src="${url}" style="width:100%;height:100%;object-fit:cover;display:none;border-radius:inherit;" onload="this.style.display='block';document.getElementById('${containerId}-loader').style.display='none';" onerror="document.getElementById('${containerId}-loader').innerHTML='<div style=\\'font-size:10px;color:var(--dim);text-align:center;padding:16px;\\'>Conecta internet para imágenes IA</div>';"/>`;
 }
 
 // ═══════════════════════════════════════════════════════
-// PLANET 3D
+// THREE.JS PLANET — SHADERS CIENTÍFICOS
 // ═══════════════════════════════════════════════════════
 let threeState={};
+let planetTime=0;
+
+function getShaderUniforms(v){
+  const hasSulf=(v.H2S>2||v.S>5000)?1.0:0.0;
+  const hasOcean=v.H2O>15?1.0:0.0;
+  const isCold=v.Temp<-20?1.0:0.0;
+  const isHot=v.Temp>50?1.0:0.0;
+  const hasLife=(v.O2>10&&v.Mg>10&&v.P>0.3)?1.0:0.0;
+  const ironContent=v.Fe/100.0;
+  // Atmosphere color
+  let atmR=0.3,atmG=0.6,atmB=1.0;
+  if(hasSulf>0.5){atmR=0.9;atmG=0.8;atmB=0.1;}
+  else if(v.CO2>5){atmR=0.9;atmG=0.5;atmB=0.2;}
+  else if(v.O2<2){atmR=0.3;atmG=0.3;atmB=0.35;}
+  const atmDensity=v.pressure>0?Math.min(v.pressure*0.7,1.2):0.1;
+  const cloudCoverage=v.H2O>60?0.7:v.H2O>30?0.5:v.H2O>10?0.3:0.05;
+  return {hasSulf,hasOcean,isCold,isHot,hasLife,ironContent,
+    atmR,atmG,atmB,atmDensity,cloudCoverage,
+    waterCoverage:v.H2O/100.0,planetTemp:v.Temp,
+    oxygenLevel:v.O2,h2sLevel:v.H2S};
+}
+
 function initThree(canvasId){
   const c=document.getElementById(canvasId);
   if(!c||!window.THREE)return;
   const T=window.THREE;
-  const W=c.parentElement.clientWidth||500,H=c.parentElement.clientHeight||400;
+  const W=c.parentElement.clientWidth||700;
+  const H=c.parentElement.clientHeight||500;
   c.width=W;c.height=H;
-  const scene=new T.Scene(),cam=new T.PerspectiveCamera(45,W/H,0.1,100);
-  cam.position.z=3.5;
-  const renderer=new T.WebGLRenderer({canvas:c,antialias:true});
-  renderer.setSize(W,H);renderer.setClearColor(0x03060E,1);
-  const sp=[];for(let i=0;i<1000;i++)sp.push((Math.random()-.5)*200,(Math.random()-.5)*200,(Math.random()-.5)*200);
-  const stars=new T.Points(new T.BufferGeometry(),new T.PointsMaterial({color:0xffffff,size:0.07}));
-  stars.geometry.setAttribute('position',new T.Float32BufferAttribute(sp,3));
-  scene.add(stars);
-  const grp=new T.Group();scene.add(grp);
-  const planet=new T.Mesh(new T.SphereGeometry(1,64,64),new T.MeshPhongMaterial({specular:new T.Color(0x222222),shininess:20}));
+
+  const scene=new T.Scene();
+  const cam=new T.PerspectiveCamera(40,W/H,0.1,1000);
+  cam.position.set(0,0,3.2);
+
+  const renderer=new T.WebGLRenderer({canvas:c,antialias:true,alpha:false});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setClearColor(0x000000,1);
+  renderer.toneMapping=T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.1;
+
+  // ── STARS (enhanced) ──
+  const starCount=3000;
+  const starPositions=new Float32Array(starCount*3);
+  const starColors=new Float32Array(starCount*3);
+  const starSizes=new Float32Array(starCount);
+  for(let i=0;i<starCount;i++){
+    const theta=Math.random()*Math.PI*2;
+    const phi=Math.acos(2*Math.random()-1);
+    const r=80+Math.random()*20;
+    starPositions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    starPositions[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+    starPositions[i*3+2]=r*Math.cos(phi);
+    // Star colors: white, blue-white, yellow
+    const colorType=Math.random();
+    if(colorType<0.6){starColors[i*3]=1;starColors[i*3+1]=1;starColors[i*3+2]=1;}
+    else if(colorType<0.8){starColors[i*3]=0.7;starColors[i*3+1]=0.85;starColors[i*3+2]=1;}
+    else{starColors[i*3]=1;starColors[i*3+1]=0.95;starColors[i*3+2]=0.7;}
+    starSizes[i]=Math.random()<0.05?2.5:Math.random()<0.15?1.5:0.8;
+  }
+  const starGeo=new T.BufferGeometry();
+  starGeo.setAttribute('position',new T.Float32BufferAttribute(starPositions,3));
+  starGeo.setAttribute('color',new T.Float32BufferAttribute(starColors,3));
+  starGeo.setAttribute('size',new T.Float32BufferAttribute(starSizes,1));
+  const starMat=new T.PointsMaterial({size:0.8,vertexColors:true,transparent:true,opacity:0.9,sizeAttenuation:true});
+  scene.add(new T.Points(starGeo,starMat));
+
+  // ── SUN LIGHT ──
+  const sunDir=new T.Vector3(2.5,1.0,2.0).normalize();
+  const sunLight=new T.DirectionalLight(0xFFF8E8,2.2);
+  sunLight.position.copy(sunDir).multiplyScalar(10);
+  scene.add(sunLight);
+  scene.add(new T.AmbientLight(0x050810,1.0));
+
+  // Sun glare
+  const sunGlareGeo=new T.SphereGeometry(0.12,16,16);
+  const sunGlareMat=new T.MeshBasicMaterial({color:0xFFF5C0,transparent:true,opacity:0.9});
+  const sunGlare=new T.Mesh(sunGlareGeo,sunGlareMat);
+  sunGlare.position.copy(sunDir).multiplyScalar(60);
+  scene.add(sunGlare);
+
+  // ── PLANET GROUP ──
+  const grp=new T.Group();
+  scene.add(grp);
+  const axialTilt=23.5*Math.PI/180;
+  grp.rotation.z=axialTilt;
+
+  // Read shaders
+  const planetVS=document.getElementById('planet-vert').textContent;
+  const planetFS=document.getElementById('planet-frag').textContent
+    .replace('vec3 ironDust,','')
+    .replace('vec3 ironDust = vec3(0.62, 0.25, 0.10);','');
+
+  // Fix: inject ironDust declaration
+  const planetFSFixed=planetFS.replace(
+    'void main(){',
+    'vec3 ironDust=vec3(0.62,0.25,0.10);\nvoid main(){'
+  );
+
+  const u=getShaderUniforms(vals);
+
+  const planetMat=new T.ShaderMaterial({
+    vertexShader:planetVS,
+    fragmentShader:planetFSFixed,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      time:{value:0},
+      hasSulfur:{value:u.hasSulf},
+      hasOcean:{value:u.hasOcean},
+      isCold:{value:u.isCold},
+      isHot:{value:u.isHot},
+      hasLife:{value:u.hasLife},
+      ironContent:{value:u.ironContent},
+      calciumContent:{value:vals.Ca/100},
+      oxygenLevel:{value:u.oxygenLevel},
+      h2sLevel:{value:u.h2sLevel},
+      waterCoverage:{value:u.waterCoverage},
+      planetTemp:{value:u.planetTemp},
+    }
+  });
+
+  const planet=new T.Mesh(new T.SphereGeometry(1,96,96),planetMat);
   grp.add(planet);
-  const csz=256,cv=document.createElement('canvas');cv.width=cv.height=csz;
-  const cx2=cv.getContext('2d'),ci=cx2.createImageData(csz,csz),cd=ci.data;
-  function ch(x,y){return((Math.sin(x*97+y*271)*43758)%1+1)%1;}
-  function cn(x,y){const X=Math.floor(x),Y=Math.floor(y),f=x-X,g=y-Y,a=ch(X,Y),b=ch(X+1,Y),cc=ch(X,Y+1),d=ch(X+1,Y+1),u=f*f*(3-2*f),vv=g*g*(3-2*g);return a+(b-a)*u+(cc-a)*vv+(a-b-cc+d)*u*vv;}
-  for(let y=0;y<csz;y++)for(let x=0;x<csz;x++){const vv=cn(x/csz*6,y/csz*6)*.6+cn(x/csz*12,y/csz*12)*.4;const al=vv>0.52?Math.min((vv-.52)*5*255,180):0;const i=(y*csz+x)*4;cd[i]=255;cd[i+1]=255;cd[i+2]=255;cd[i+3]=al;}
-  cx2.putImageData(ci,0,0);
-  const clouds=new T.Mesh(new T.SphereGeometry(1.015,32,32),new T.MeshPhongMaterial({map:new T.CanvasTexture(cv),transparent:true,opacity:.5,depthWrite:false}));
-  grp.add(clouds);
-  const atm=new T.Mesh(new T.SphereGeometry(1.12,32,32),new T.MeshPhongMaterial({color:0x00D4AA,transparent:true,opacity:.08,side:T.BackSide}));
-  grp.add(atm);
-  const dl=new T.DirectionalLight(0xffffff,1.4);dl.position.set(5,3,5);scene.add(dl);
-  scene.add(new T.AmbientLight(0x151515,.9));
-  let drag=false,prev={x:0,y:0},zoom=3.5,animId;
-  function makeTex(v){
-    const sz=256,cv2=document.createElement('canvas');cv2.width=cv2.height=sz;
-    const ctx=cv2.getContext('2d'),img=ctx.createImageData(sz,sz),d=img.data;
-    const {Fe,Mg,Ca,H2S,S,Temp,O2,H2O}=v;
-    const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,green=Mg>20&&O2>8&&!sulf&&!hot;
-    function hs(x,y){return((Math.sin(x*127.1+y*311.7)*43758.5453)%1+1)%1;}
-    function ns(x,y){const X=Math.floor(x),Y=Math.floor(y),fx=x-X,gy=y-Y,a=hs(X,Y),b=hs(X+1,Y),cc=hs(X,Y+1),dd=hs(X+1,Y+1),u=fx*fx*(3-2*fx),vv=gy*gy*(3-2*gy);return a+(b-a)*u+(cc-a)*vv+(a-b-cc+dd)*u*vv;}
-    let bR=sulf?180:cold?100:hot?170:green?40:Fe>50?150:50;
-    let bG=sulf?150:cold?140:hot?60:green?110:Fe>50?70:100;
-    let bB=sulf?20:cold?190:hot?20:green?50:Fe>50?30:70;
-    for(let y=0;y<sz;y++){const lat=y/sz;for(let x=0;x<sz;x++){
-      const n1=ns(x/sz*8,lat*8)*.5+ns(x/sz*16,lat*16)*.3+ns(x/sz*32,lat*32)*.2;
-      const n2=ns(x/sz*4+3.7,lat*4+2.1);
-      const ocean=H2O>25&&n1<0.35,polar=(lat<0.1||lat>0.9)&&!sulf&&!hot;
-      let r,g,b;
-      if(polar){r=220;g=235;b=255;}
-      else if(ocean){r=sulf?60:20+n2*20;g=sulf?90:55+n2*30;b=sulf?30:140+n2*40;}
-      else{r=bR+(n1-.5)*40;g=bG+(n1-.5)*30;b=bB+(n1-.5)*25;}
-      const i=(y*sz+x)*4;d[i]=Math.max(0,Math.min(255,r));d[i+1]=Math.max(0,Math.min(255,g));d[i+2]=Math.max(0,Math.min(255,b));d[i+3]=255;
-    }}
-    ctx.putImageData(img,0,0);return new T.CanvasTexture(cv2);
-  }
-  function updatePlanet(v){
-    planet.material.map=makeTex(v);planet.material.map.needsUpdate=true;
-    const sc=calcScore(v);
-    const ac=v.H2S>2?0xD4A017:v.CO2>5?0xF5A623:sc>0.6?0x00D4AA:0x334466;
-    atm.material.color.set(ac);
-    clouds.material.opacity=v.H2O>20?.5:v.H2O>5?.2:.05;
-  }
-  updatePlanet(vals);
+
+  // ── CLOUDS ──
+  const cloudVS=document.getElementById('cloud-vert').textContent;
+  const cloudFS=document.getElementById('cloud-frag').textContent;
+  const cloudMat=new T.ShaderMaterial({
+    vertexShader:cloudVS,
+    fragmentShader:cloudFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      cloudCoverage:{value:u.cloudCoverage},
+      time:{value:0},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.FrontSide,
+  });
+  const clouds=new T.Mesh(new T.SphereGeometry(1.018,64,64),cloudMat);
+  if(vals.H2O>5||vals.CO2>5)grp.add(clouds);
+
+  // ── ATMOSPHERE ──
+  const atmVS=document.getElementById('atm-vert').textContent;
+  const atmFS=document.getElementById('atm-frag').textContent;
+  const atmMat=new T.ShaderMaterial({
+    vertexShader:atmVS,
+    fragmentShader:atmFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      atmColor:{value:new T.Vector3(u.atmR,u.atmG,u.atmB)},
+      atmDensity:{value:u.atmDensity},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.FrontSide,
+    blending:T.AdditiveBlending,
+  });
+  const atmMesh=new T.Mesh(new T.SphereGeometry(1.08,64,64),atmMat);
+  if(vals.pressure>0.05)grp.add(atmMesh);
+
+  // Outer atmosphere glow (backside)
+  const outerAtmMat=new T.ShaderMaterial({
+    vertexShader:atmVS,
+    fragmentShader:atmFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      atmColor:{value:new T.Vector3(u.atmR,u.atmG,u.atmB)},
+      atmDensity:{value:u.atmDensity*0.4},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.BackSide,
+    blending:T.AdditiveBlending,
+  });
+  const outerAtm=new T.Mesh(new T.SphereGeometry(1.18,32,32),outerAtmMat);
+  if(vals.pressure>0.1)scene.add(outerAtm);
+
+  // ── INTERACTION ──
+  let drag=false,prev={x:0,y:0},zoom=3.2,animId;
   const dn=e=>{drag=true;prev={x:e.clientX,y:e.clientY};};
   const up=()=>drag=false;
-  const mv=e=>{if(!drag)return;grp.rotation.y+=(e.clientX-prev.x)*.008;grp.rotation.x+=(e.clientY-prev.y)*.008;prev={x:e.clientX,y:e.clientY};};
-  const wh=e=>{zoom=Math.max(1.8,Math.min(6,zoom+e.deltaY*.005));cam.position.z=zoom;e.preventDefault();};
-  c.addEventListener('mousedown',dn);window.addEventListener('mouseup',up);window.addEventListener('mousemove',mv);c.addEventListener('wheel',wh,{passive:false});
-  function anim(){animId=requestAnimationFrame(anim);if(!drag){grp.rotation.y+=.002;clouds.rotation.y-=.0005;}renderer.render(scene,cam);}
+  const mv=e=>{if(!drag)return;
+    grp.rotation.y+=(e.clientX-prev.x)*.006;
+    const newX=grp.rotation.x+(e.clientY-prev.y)*.004;
+    grp.rotation.x=Math.max(-1.2,Math.min(1.2,newX));
+    prev={x:e.clientX,y:e.clientY};
+  };
+  const wh=e=>{zoom=Math.max(1.6,Math.min(8,zoom+e.deltaY*.004));cam.position.z=zoom;e.preventDefault();};
+  // Touch
+  let touchPrev={x:0,y:0};
+  const td=e=>{drag=true;touchPrev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const tm=e=>{if(!drag)return;grp.rotation.y+=(e.touches[0].clientX-touchPrev.x)*.006;touchPrev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const tu=()=>drag=false;
+  c.addEventListener('mousedown',dn);window.addEventListener('mouseup',up);window.addEventListener('mousemove',mv);
+  c.addEventListener('wheel',wh,{passive:false});
+  c.addEventListener('touchstart',td,{passive:true});c.addEventListener('touchmove',tm,{passive:true});c.addEventListener('touchend',tu);
+
+  function anim(){
+    animId=requestAnimationFrame(anim);
+    planetTime+=0.016;
+    if(!drag)grp.rotation.y+=0.0015;
+    planetMat.uniforms.time.value=planetTime;
+    cloudMat.uniforms.time.value=planetTime;
+    renderer.render(scene,cam);
+  }
   anim();
-  threeState={updatePlanet,cleanup:()=>{cancelAnimationFrame(animId);c.removeEventListener('mousedown',dn);window.removeEventListener('mouseup',up);window.removeEventListener('mousemove',mv);c.removeEventListener('wheel',wh);renderer.dispose();}};
+
+  threeState={
+    planetMat,cloudMat,atmMat,outerAtmMat,clouds,atmMesh,outerAtm,grp,scene,sunDir,T,renderer,cam,
+    update:(v)=>{
+      const u2=getShaderUniforms(v);
+      planetMat.uniforms.hasSulfur.value=u2.hasSulf;
+      planetMat.uniforms.hasOcean.value=u2.hasOcean;
+      planetMat.uniforms.isCold.value=u2.isCold;
+      planetMat.uniforms.isHot.value=u2.isHot;
+      planetMat.uniforms.hasLife.value=u2.hasLife;
+      planetMat.uniforms.ironContent.value=u2.ironContent;
+      planetMat.uniforms.calciumContent.value=v.Ca/100;
+      planetMat.uniforms.oxygenLevel.value=u2.oxygenLevel;
+      planetMat.uniforms.h2sLevel.value=u2.h2sLevel;
+      planetMat.uniforms.waterCoverage.value=u2.waterCoverage;
+      planetMat.uniforms.planetTemp.value=u2.planetTemp;
+      cloudMat.uniforms.cloudCoverage.value=u2.cloudCoverage;
+      const ac=new T.Vector3(u2.atmR,u2.atmG,u2.atmB);
+      atmMat.uniforms.atmColor.value=ac;
+      atmMat.uniforms.atmDensity.value=u2.atmDensity;
+      outerAtmMat.uniforms.atmColor.value=ac;
+      outerAtmMat.uniforms.atmDensity.value=u2.atmDensity*0.4;
+    },
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      c.removeEventListener('mousedown',dn);window.removeEventListener('mouseup',up);window.removeEventListener('mousemove',mv);
+      c.removeEventListener('wheel',wh);renderer.dispose();
+    }
+  };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -331,18 +855,17 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const el=document.getElementById('tab-btns');
-  el.innerHTML=TABS.map(t=>`<button onclick="switchTab('${t.id}')" id="tab-${t.id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${t.id===currentTab?'var(--teal)':'transparent'};color:${t.id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t.label}</button>`).join('');
+  const tabIds=['planet','creatures','ecosystem','gallery'];
+  document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
 function switchTab(tab){
-  currentTab=tab;
-  buildTabBtns();
+  currentTab=tab;buildTabBtns();
+  if(threeState.cleanup){threeState.cleanup();threeState={};}
   renderMain();
 }
 
 function renderMain(){
-  if(threeState.cleanup){threeState.cleanup();threeState={};}
   const el=document.getElementById('main');
   if(currentTab==='planet')renderPlanet(el);
   else if(currentTab==='creatures')renderCreatures(el);
@@ -350,176 +873,156 @@ function renderMain(){
   else if(currentTab==='gallery')renderGallery(el);
 }
 
-// ─── PLANET TAB ───────────────────────────────────────
+// ─── PLANET TAB ──────────────────────────────────────
 function renderPlanet(el){
   const score=calcScore(vals);
   const sc=Math.round(score*100);
   const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
-  const scoreLbl=score>=0.8?'HABITABLE':score>=0.6?'MODERADO':score>=0.4?'MARGINAL':score>=0.2?'EXTREMO':'INHÓSPITO';
+  const scoreLbl=score>=0.8?t('habitable'):score>=0.6?t('moderate'):score>=0.4?t('marginal'):score>=0.2?t('extreme'):t('inhospitable');
   const code=planetCode(vals);
-  const cr0=makeCreature(vals,generateCreatureSeed(vals,0));
-
-  const groups={};
-  SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+  const cr0=makeCreatureI18n(vals,generateCreatureSeed(vals,0));
+  const groups={};SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
 
   const sliderHTML=Object.entries(groups).map(([g,ms])=>`
     <div style="margin-bottom:12px;">
-      <div style="font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:6px;padding-bottom:4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">${g}</div>
-      ${ms.map(m=>{
-        const dec=m.step<1?(m.step<0.01?4:2):0;
-        return`<div style="margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:1px;background:${m.col};display:inline-block;"></span>${m.sym} <span style="color:var(--dim)">${m.label}</span></span>
-            <span id="vl-${m.sym}" style="font-size:9px;color:var(--teal);font-family:'JetBrains Mono',monospace;">${vals[m.sym].toFixed(dec)} ${m.unit}</span>
-          </div>
-          <input type="range" min="${m.min}" max="${m.max}" step="${m.step}" value="${vals[m.sym]}" oninput="setVal('${m.sym}',parseFloat(this.value))" style="accent-color:${m.col};"/>
-        </div>`;}).join('')}
+      <div style="font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:6px;padding-bottom:4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">${t('sliderGroups')[g]||g}</div>
+      ${ms.map(m=>{const dec=m.step<1?(m.step<0.01?4:2):0;return`<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:1px;background:${m.col};display:inline-block;"></span>${m.sym} <span style="color:var(--dim)">${m.label}</span></span><span id="vl-${m.sym}" style="font-size:9px;color:var(--teal);font-family:'JetBrains Mono',monospace;">${vals[m.sym].toFixed(dec)} ${m.unit}</span></div><input type="range" min="${m.min}" max="${m.max}" step="${m.step}" value="${vals[m.sym]}" oninput="setVal('${m.sym}',parseFloat(this.value))" style="accent-color:${m.col};"/></div>`;}).join('')}
     </div>`).join('');
 
-  const presetHTML=Object.keys(PRESETS).map(name=>`
-    <button onclick="applyPreset('${name}')" style="font-size:9px;padding:3px 8px;border-radius:99px;cursor:pointer;border:0.5px solid var(--border);background:transparent;color:var(--muted);transition:all .15s;font-family:inherit;">${name}</button>`).join('');
+  const presetHTML=Object.keys(PRESETS).map(name=>`<button onclick="applyPreset('${name}')" style="font-size:9px;padding:3px 8px;border-radius:99px;cursor:pointer;border:0.5px solid var(--border);background:transparent;color:var(--muted);transition:all .15s;font-family:inherit;">${name}</button>`).join('');
 
+  const tl=t('traitLabels');
   const traitHTML=[
-    {l:"Esqueleto",v:cr0.skeleton,c:cr0.skCol},
-    {l:"Sangre",v:cr0.blood,c:cr0.bCol},
-    {l:"Metabolismo",v:cr0.meta,c:cr0.metaCol},
-    {l:"Nervioso",v:cr0.nervous,c:cr0.nCol},
-    {l:"Termoreg.",v:cr0.thermo,c:cr0.tCol},
-    {l:"Tamaño",v:cr0.size,c:"#94A3B8"},
-  ].map(({l,v,c})=>`
-    <div style="background:${c}12;border:0.5px solid ${c}35;border-radius:7px;padding:6px 8px;">
-      <div style="font-size:8px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;">${l}</div>
-      <div style="font-size:9px;color:${c};font-weight:600;line-height:1.3;">${v}</div>
-    </div>`).join('');
+    {l:tl[0],v:cr0.skeleton,c:cr0.skCol},
+    {l:tl[1],v:cr0.blood,c:cr0.bCol},
+    {l:tl[2],v:cr0.meta,c:cr0.metaCol},
+    {l:tl[3],v:cr0.nervous,c:cr0.nCol},
+    {l:tl[4],v:cr0.thermo,c:cr0.tCol},
+    {l:tl[5],v:cr0.size,c:"#94A3B8"},
+  ].map(({l,v,c})=>`<div style="background:${c}12;border:0.5px solid ${c}35;border-radius:7px;padding:6px 8px;"><div style="font-size:8px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;line-height:1.3;">${v}</div></div>`).join('');
 
   el.innerHTML=`
     <div style="display:grid;grid-template-columns:210px 1fr 195px;height:100%;overflow:hidden;">
-      <!-- Sliders -->
       <div class="scroll" style="border-right:1px solid var(--border);padding:12px 10px;">
         <div class="label">Presets</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">${presetHTML}</div>
         ${sliderHTML}
       </div>
-      <!-- Centro -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;flex-direction:column;overflow:hidden;position:relative;">
         <div style="flex:1;position:relative;min-height:0;">
           <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
-          <div style="position:absolute;top:12px;right:12px;pointer-events:none;">
-            <div style="background:${scoreCol}15;border:1px solid ${scoreCol}40;border-radius:10px;padding:10px 16px;text-align:center;backdrop-filter:blur(8px);margin-bottom:6px;">
-              <div style="font-size:30px;font-weight:800;color:${scoreCol};font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
-              <div style="font-size:9px;color:${scoreCol};letter-spacing:.08em;margin-top:3px;">${scoreLbl}</div>
+          <!-- HUD OVERLAY - izquierda -->
+          <div class="hud-overlay" style="top:10px;left:10px;">
+            <div class="hud-data">
+              <span class="hud-label">${t('bodyRef')} </span>Planet Custom<br>
+              <span class="hud-label">${t('codeId')}   </span><span style="color:var(--teal);">${code}</span><br>
+              <span class="hud-label">${t('tempMean')} </span>${vals.Temp > 0 ? '+':''}${vals.Temp}°C<br>
+              <span class="hud-label">${t('pressure')} </span>${vals.pressure} atm<br>
+              <span class="hud-label">${t('gravity').toUpperCase()}   </span>${vals.gravity}g<br>
             </div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(0,212,170,0.7);background:rgba(0,212,170,0.08);border-radius:6px;padding:3px 8px;text-align:center;">${code}</div>
           </div>
-          <div style="position:absolute;bottom:8px;left:8px;font-size:9px;color:var(--dim);">Arrastra · Scroll zoom</div>
+          <!-- HUD OVERLAY - derecha -->
+          <div class="hud-overlay" style="top:10px;right:10px;text-align:right;">
+            <div style="background:${scoreCol}18;border:1px solid ${scoreCol}40;border-radius:8px;padding:8px 14px;margin-bottom:8px;backdrop-filter:blur(8px);">
+              <div style="font-size:32px;font-weight:800;color:${scoreCol};font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
+              <div style="font-size:9px;color:${scoreCol};letter-spacing:.1em;margin-top:2px;">${scoreLbl}</div>
+            </div>
+            <div class="hud-data" style="text-align:right;">
+              <span class="hud-label">O₂  </span>${vals.O2}%<br>
+              <span class="hud-label">CO₂ </span>${vals.CO2}%<br>
+              <span class="hud-label">H₂S </span>${vals.H2S}%<br>
+              <span class="hud-label">H₂O </span>${vals.H2O}% sup<br>
+              <span class="hud-label">pH  </span>${vals.pH}<br>
+            </div>
+          </div>
+          <!-- HUD - mineral data abajo izquierda -->
+          <div class="hud-overlay" style="bottom:70px;left:10px;">
+            <div class="hud-data">
+              <span class="hud-label">Ca </span>${vals.Ca}K ppm  <span class="hud-label">Fe </span>${vals.Fe}K ppm<br>
+              <span class="hud-label">Si </span>${vals.Si}K ppm  <span class="hud-label">Mg </span>${vals.Mg}K ppm<br>
+              <span class="hud-label">Cu </span>${vals.Cu} ppm   <span class="hud-label">P  </span>${vals.P}K ppm<br>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:8px;left:10px;font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">Arrastra · Scroll zoom · Inclinación axial: 23.5°</div>
+          <!-- Links -->
+          <div style="position:absolute;bottom:8px;right:10px;">
+            <a href="nature-connections.html" target="_blank" style="font-size:9px;color:var(--teal);text-decoration:none;font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);border:0.5px solid rgba(0,212,170,0.3);padding:3px 8px;border-radius:4px;">🕸 Ver Conexiones Naturales →</a>
+          </div>
         </div>
         <div style="border-top:1px solid var(--border);padding:10px 14px;background:var(--bg2);">
           <div class="label">Rasgos emergentes — Criatura principal</div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;">${traitHTML}</div>
         </div>
       </div>
-      <!-- Panel derecho -->
       <div class="scroll" style="border-left:1px solid var(--border);padding:12px;display:flex;flex-direction:column;gap:12px;">
         <div>
-          <div class="label">Análogos terrestres</div>
+          <div class="label">${t('analogsTitle')}</div>
           ${[
-            {cond:vals.O2>15&&vals.Ca>20,n:"Homo sapiens",d:"Alta Ca+O₂",c:"#F87171"},
-            {cond:vals.H2S>1&&vals.O2<5,n:"Riftia pachyptila",d:"Fumarola H₂S",c:"#FBBF24"},
-            {cond:vals.Temp<=-20,n:"Dissostichus mawsoni",d:"AFP antártico",c:"#60A5FA"},
-            {cond:vals.Si>100&&vals.H2O>10,n:"Thalassiosira sp.",d:"Diatomea silícea",c:"#A78BFA"},
-            {cond:vals.V>200&&vals.H2O>20,n:"Ascidia ceratodes",d:"Vanadio → sangre verde",c:"#4ADE80"},
-            {cond:vals.Cu>60&&vals.Fe<20,n:"Octopus vulgaris",d:"Cu alto → azul",c:"#60A5FA"},
+            {cond:vals.O2>15&&vals.Ca>20,n:"Homo sapiens",d:lang==='en'?"High Ca+O₂":"Alta Ca+O₂",c:"#F87171"},
+            {cond:vals.H2S>1&&vals.O2<5,n:"Riftia pachyptila",d:lang==='en'?"H₂S hydrothermal vent":"Fumarola H₂S",c:"#FBBF24"},
+            {cond:vals.Temp<=-20,n:"Dissostichus mawsoni",d:lang==='en'?"Antarctic AFP fish":"AFP antártico",c:"#60A5FA"},
+            {cond:vals.Si>100&&vals.H2O>10,n:"Thalassiosira sp.",d:lang==='en'?"Siliceous diatom":"Diatomea silícea",c:"#A78BFA"},
+            {cond:vals.V>200&&vals.H2O>20,n:"Ascidia ceratodes",d:lang==='en'?"Vanadium → green blood":"Vanadio → sangre verde",c:"#4ADE80"},
+            {cond:vals.Cu>60&&vals.Fe<20,n:"Octopus vulgaris",d:lang==='en'?"High Cu → blue blood":"Cu alto → azul",c:"#60A5FA"},
             {cond:vals.pH<3,n:"Picrophilus torridus",d:"pH 2",c:"#F87171"},
-            {cond:vals.Temp>80,n:"Pyrolobus fumarii",d:"121°C",c:"#FBBF24"},
-          ].filter(a=>a.cond).slice(0,5).map(a=>`
-            <div style="background:${a.c}08;border:0.5px solid ${a.c}30;border-radius:6px;padding:6px 9px;margin-bottom:5px;">
-              <div style="font-size:10px;font-style:italic;color:${a.c};font-weight:600;">${a.n}</div>
-              <div style="font-size:9px;color:var(--muted);">${a.d}</div>
-            </div>`).join('')||'<div style="font-size:10px;color:var(--dim);">Condiciones sin análogos conocidos</div>'}
+            {cond:vals.Temp>80,n:"Pyrolobus fumarii",d:lang==='en'?"121°C hyperthermophile":"121°C",c:"#FBBF24"},
+          ].filter(a=>a.cond).slice(0,5).map(a=>`<div style="background:${a.c}08;border:0.5px solid ${a.c}30;border-radius:6px;padding:6px 9px;margin-bottom:5px;"><div style="font-size:10px;font-style:italic;color:${a.c};font-weight:600;">${a.n}</div><div style="font-size:9px;color:var(--muted);">${a.d}</div></div>`).join('')||`<div style="font-size:10px;color:var(--dim);">${t('noAnalogs')}</div>`}
         </div>
         <div style="border-top:0.5px solid var(--border);padding-top:12px;">
-          <div class="label">Ciclos minerales activos</div>
+          <div class="label">${t('cyclesTitle')}</div>
           ${[
-            {n:"Carbono",a:true,c:"#4ADE80"},
-            {n:"Nitrógeno",a:vals.O2>0&&vals.H2O>0,c:"#60A5FA"},
-            {n:"Fósforo",a:vals.P>=0.1,c:"#FBBF24"},
-            {n:"Hierro",a:vals.Fe>=10,c:"#F87171"},
-            {n:"Calcio",a:vals.Ca>=10,c:"#FBBF24"},
-            {n:"Azufre",a:vals.H2S>0.1||vals.S>500,c:"#A78BFA"},
-            {n:"Vanadio",a:vals.V>100,c:"#4ADE80"},
-          ].map(({n,a,c})=>`
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-              <div style="width:6px;height:6px;border-radius:50%;background:${a?c:'var(--dim)'};flex-shrink:0;${a?`box-shadow:0 0 4px ${c}`:''}"></div>
-              <span style="font-size:10px;color:${a?c:'var(--dim)'};">${n}</span>
-              ${a?`<span style="font-size:8px;color:${c};margin-left:auto;">activo</span>`:''}
-            </div>`).join('')}
+            {n:t('cycles')[0],a:true,c:"#4ADE80"},
+            {n:t('cycles')[1],a:vals.O2>0&&vals.H2O>0,c:"#60A5FA"},
+            {n:t('cycles')[2],a:vals.P>=0.1,c:"#FBBF24"},
+            {n:t('cycles')[3],a:vals.Fe>=10,c:"#F87171"},
+            {n:t('cycles')[4],a:vals.Ca>=10,c:"#FBBF24"},
+            {n:t('cycles')[5],a:vals.H2S>0.1||vals.S>500,c:"#A78BFA"},
+            {n:t('cycles')[6],a:vals.V>100,c:"#4ADE80"},
+          ].map(({n,a,c})=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${a?c:'var(--dim)'};flex-shrink:0;${a?`box-shadow:0 0 4px ${c}`:''}"></div><span style="font-size:10px;color:${a?c:'var(--dim)'};">${n}</span>${a?`<span style="font-size:8px;color:${c};margin-left:auto;">${t('active')}</span>`:''}</div>`).join('')}
+        </div>
+        <div style="border-top:0.5px solid var(--border);padding-top:12px;">
+          <div class="label">${t('stellarTitle')}</div>
+          ${[
+            {l:t('stellarType'),v:vals.Temp>50?"M-dwarf (K)":vals.O2>15?"G2V (Sol)":"K-type",c:"#FBBF24"},
+            {l:t('habitableZone'),v:vals.Temp>=-20&&vals.Temp<=50?t('yes'):t('no'),c:vals.Temp>=-20&&vals.Temp<=50?"#4ADE80":"#F87171"},
+            {l:t('atmosphere'),v:vals.pressure>0.5?t('dense'):vals.pressure>0.1?t('thin'):t('noAtm'),c:"#60A5FA"},
+            {l:t('magnetosphere'),v:vals.Fe>30?t('strong'):vals.Fe>10?t('weak'):t('noField'),c:"#A78BFA"},
+          ].map(({l,v,c})=>`<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:10px;color:var(--muted);">${l}</span><span style="font-size:10px;color:${c};font-weight:500;">${v}</span></div>`).join('')}
         </div>
       </div>
     </div>`;
 
-  setTimeout(()=>{initThree('planet3d');},50);
+  setTimeout(()=>{
+    initThree('planet3d');
+  },60);
 }
 
 // ─── CREATURES TAB ────────────────────────────────────
-function generateCreatureSeed(v,i){
-  const keys=["Ca","Fe","Si","P","Mg","Cu","O2","H2S","Temp","pH"];
-  return Math.abs(keys.reduce((a,k,j)=>a+(v[k]||0)*(j+1),i*1000))%99999;
-}
-
 function renderCreatures(el){
   const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
-  lastCreatures=creatures;
-  const code=planetCode(vals);
-
+  lastCreatures=creatures;const code=planetCode(vals);
   el.innerHTML=`
     <div style="padding:18px 20px;overflow-y:auto;height:100%;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <div>
-          <div style="font-size:17px;font-weight:700;margin-bottom:3px;">Criaturas del planeta ${code}</div>
-          <div style="font-size:11px;color:var(--muted);">Motor evolutivo · Cada ser es científicamente coherente e irrepetible</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:10px;color:var(--muted);">Criaturas:</span>
-          ${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}
-        </div>
+        <div><div style="font-size:17px;font-weight:700;margin-bottom:3px;">Criaturas del planeta ${code}</div><div style="font-size:11px;color:var(--muted);">Motor evolutivo · Cada ser es científicamente coherente e irrepetible</div></div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">Criaturas:</span>${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
-        ${creatures.map((cr,i)=>creatureCardHTML(cr,code,i)).join('')}
-      </div>
-    </div>`;
-}
-
-function creatureCardHTML(cr,code,idx){
-  const imgId=`cr-img-${idx}`;
-  return`
-    <div class="card" style="animation:fadeIn .4s ease both;animation-delay:${idx*.08}s;position:relative;overflow:hidden;">
-      <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${cr.orgCol},transparent);"></div>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:${cr.orgCol};margin-bottom:2px;font-style:italic;">${cr.latinName}</div>
-          <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${code} · #${idx+1}</div>
-        </div>
-        <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
-      </div>
-      <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-        <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar imagen IA</button>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">
-        ${[
-          {l:"Esqueleto",v:cr.skeleton,c:cr.skCol},
-          {l:"Sangre",v:cr.blood,c:cr.bCol},
-          {l:"Nervioso",v:cr.nervous,c:cr.nCol},
-          {l:"Termoreg.",v:cr.thermo,c:cr.tCol},
-          {l:"Locomoción",v:cr.loco,c:"#60A5FA"},
-          {l:"Tamaño",v:cr.size,c:"#94A3B8"},
-        ].map(({l,v,c})=>`
-          <div style="background:${c}10;border:0.5px solid ${c}30;border-radius:5px;padding:5px 7px;">
-            <div style="font-size:8px;color:var(--muted);margin-bottom:1px;">${l}</div>
-            <div style="font-size:9px;color:${c};font-weight:600;">${v}</div>
-          </div>`).join('')}
-      </div>
-      <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;border-top:0.5px solid var(--border);padding-top:6px;">
-        ${cr.complexity} · Semilla: ${cr.seed.toString(36).toUpperCase()} · Score: ${Math.round(cr.sc*100)}%
+        ${creatures.map((cr,i)=>{const imgId=`cr-img-${i}`;return`
+          <div class="card" style="animation:fadeIn .4s ease both;animation-delay:${i*.08}s;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${cr.orgCol},transparent);"></div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+              <div><div style="font-size:12px;font-weight:700;color:${cr.orgCol};margin-bottom:2px;font-style:italic;">${cr.latinName}</div><div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${code} · #${i+1}</div></div>
+              <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
+            </div>
+            <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+              <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar imagen IA</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">
+              ${[{l:"Esqueleto",v:cr.skeleton,c:cr.skCol},{l:"Sangre",v:cr.blood,c:cr.bCol},{l:"Nervioso",v:cr.nervous,c:cr.nCol},{l:"Termoreg.",v:cr.thermo,c:cr.tCol},{l:"Locomoción",v:cr.loco,c:"#60A5FA"},{l:"Tamaño",v:cr.size,c:"#94A3B8"}].map(({l,v,c})=>`<div style="background:${c}10;border:0.5px solid ${c}30;border-radius:5px;padding:5px 7px;"><div style="font-size:8px;color:var(--muted);margin-bottom:1px;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;">${v}</div></div>`).join('')}
+            </div>
+            <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;border-top:0.5px solid var(--border);padding-top:6px;">${cr.complexity} · Semilla: ${cr.seed.toString(36).toUpperCase()} · Score: ${Math.round(cr.sc*100)}%</div>
+          </div>`;}).join('')}
       </div>
     </div>`;
 }
@@ -528,124 +1031,21 @@ function creatureCardHTML(cr,code,idx){
 function renderEcosystem(el){
   const score=calcScore(vals);
   const pops=[
-    {name:"Productores primarios",pop:score>0.5?80:score>0.3?40:15,max:100,col:"#4ADE80",desc:vals.Mg>12?'Fotosíntesis activa con Mg':'Quimiosíntesis disponible'},
+    {name:"Productores primarios",pop:score>0.5?80:score>0.3?40:15,max:100,col:"#4ADE80",desc:vals.Mg>12?'Fotosíntesis activa':'Quimiosíntesis'},
     {name:"Herbívoros",           pop:score>0.5?45:score>0.3?20:8, max:60, col:"#60A5FA",desc:vals.Ca>20?'Exoesqueleto mineralizado':'Sin mineralización'},
     {name:"Carnívoros",           pop:score>0.5?22:score>0.3?10:3, max:35, col:"#F87171",desc:vals.O2>15?'Aeróbicos eficientes':'Limitados por O₂'},
-    {name:"Depredadores Ápex",    pop:score>0.5?8:score>0.3?3:1,   max:15, col:"#FBBF24",desc:score>0.7?'Ecosistema estable':'Población crítica'},
-    {name:"Descomponedores",      pop:score>0.3?65:20,              max:80, col:"#A78BFA",desc:`Ciclan ${[vals.P>0.1&&'P',vals.Fe>10&&'Fe',vals.Ca>10&&'Ca'].filter(Boolean).join(', ')||'nutrientes'}`},
-    {name:"Quimioautos",          pop:vals.H2S>1?55:vals.S>1000?25:5,max:70,col:"#FBBF24",desc:vals.H2S>1?'H₂S abundante — activos':'H₂S insuficiente'},
+    {name:"Depredadores Ápex",    pop:score>0.5?8:score>0.3?3:1,   max:15, col:"#FBBF24",desc:score>0.7?'Ecosistema estable':'Crítico'},
+    {name:"Descomponedores",      pop:score>0.3?65:20,              max:80, col:"#A78BFA",desc:'Cierran ciclos de nutrientes'},
+    {name:"Quimioautos",          pop:vals.H2S>1?55:vals.S>1000?25:5,max:70,col:"#FBBF24",desc:vals.H2S>1?'H₂S abundante':'Inactivos'},
   ];
   const status=score>=0.7?{t:'✓ Ecosistema estable',c:'#00D4AA'}:score>=0.4?{t:'⚠ Ecosistema frágil',c:'#FBBF24'}:{t:'✗ Colapso probable',c:'#F87171'};
-
-  el.innerHTML=`
-    <div style="padding:18px 20px;overflow-y:auto;height:100%;">
-      <div style="font-size:17px;font-weight:700;margin-bottom:4px;">Equilibrio del Ecosistema</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Dinámica de poblaciones basada en condiciones minerales</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
-        ${pops.map(p=>{const pct=Math.round(p.pop/p.max*100);const danger=pct<20;return`
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span style="font-size:11px;font-weight:600;color:${p.col};">${p.name}</span>
-              <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${danger?'#F87171':p.col};">${p.pop}</span>
-            </div>
-            <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:7px;">
-              <div style="height:100%;width:${pct}%;background:${danger?'#F87171':p.col};border-radius:2px;transition:width .5s;${!danger?`box-shadow:0 0 5px ${p.col}60`:''}"></div>
-            </div>
-            <div style="font-size:9px;color:var(--muted);">${p.desc}</div>
-            ${danger?'<div style="font-size:9px;color:#F87171;margin-top:4px;">⚠ Riesgo de extinción</div>':''}
-          </div>`;}).join('')}
-      </div>
-      <div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:${status.c};margin-bottom:6px;">${status.t}</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.7;">
-          Score: <b style="color:var(--teal);">${Math.round(score*100)}%</b> · 
-          Ciclos: <b style="color:#4ADE80;">${[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.H2S>0.1&&'S',vals.Mg>=10&&'Mg'].filter(Boolean).join(', ')||'ninguno'}</b> · 
-          T°: <b style="color:${vals.Temp>50?'#F87171':vals.Temp<-20?'#60A5FA':'#4ADE80'};">${vals.Temp}°C</b> · 
-          Gravedad: <b style="color:#A78BFA;">${vals.gravity}g</b>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="card">
-          <div class="label">Flujo de energía</div>
-          ${[
-            {from:"Fuente primaria",to:"Productores",pct:100,col:"#4ADE80"},
-            {from:"Productores",to:"Herbívoros",pct:Math.round(score*70),col:"#60A5FA"},
-            {from:"Herbívoros",to:"Carnívoros",pct:Math.round(score*40),col:"#F87171"},
-            {from:"Todos",to:"Descomponedores",pct:Math.round(score*80),col:"#A78BFA"},
-          ].map(({from,to,pct,col})=>`
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="font-size:9px;color:var(--muted);width:90px;text-align:right;flex-shrink:0;">${from}</span>
-              <div style="flex:1;height:5px;background:rgba(255,255,255,0.04);border-radius:3px;">
-                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${col}80,${col});border-radius:3px;"></div>
-              </div>
-              <span style="font-size:9px;color:${col};width:80px;flex-shrink:0;">${to}</span>
-            </div>`).join('')}
-        </div>
-        <div class="card">
-          <div class="label">Minerales limitantes</div>
-          ${[
-            {n:"Fósforo (P)",pct:Math.min(vals.P/1.5*100,100),col:"#FBBF24",crit:vals.P<0.1},
-            {n:"Calcio (Ca)",pct:Math.min(vals.Ca/50*100,100),col:"#4ADE80",crit:vals.Ca<5},
-            {n:"Hierro (Fe)",pct:Math.min(vals.Fe/50*100,100),col:"#F87171",crit:vals.Fe<5},
-            {n:"Agua (H₂O)",pct:vals.H2O,col:"#60A5FA",crit:vals.H2O<10},
-            {n:"Oxígeno",pct:Math.min(vals.O2/21*100,100),col:"#00D4AA",crit:vals.O2<5},
-          ].map(({n,pct,col,crit})=>`
-            <div style="margin-bottom:7px;">
-              <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;">
-                <span style="color:${crit?'#F87171':'var(--muted)'};">${n}${crit?' ⚠':''}</span>
-                <span style="color:${crit?'#F87171':col};font-family:'JetBrains Mono',monospace;">${Math.round(pct)}%</span>
-              </div>
-              <div style="height:3px;background:rgba(255,255,255,0.05);border-radius:2px;">
-                <div style="height:100%;width:${Math.round(pct)}%;background:${crit?'#F87171':col};border-radius:2px;"></div>
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>
-    </div>`;
+  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:4px;">Equilibrio del Ecosistema</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Dinámica de poblaciones basada en condiciones minerales</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">${pops.map(p=>{const pct=Math.round(p.pop/p.max*100);const danger=pct<20;return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:11px;font-weight:600;color:${p.col};">${p.name}</span><span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${danger?'#F87171':p.col};">${p.pop}</span></div><div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:7px;"><div style="height:100%;width:${pct}%;background:${danger?'#F87171':p.col};border-radius:2px;${!danger?`box-shadow:0 0 5px ${p.col}60`:''}"></div></div><div style="font-size:9px;color:var(--muted);">${p.desc}</div>${danger?'<div style="font-size:9px;color:#F87171;margin-top:4px;">⚠ Riesgo de extinción</div>':''}</div>`;}).join('')}</div><div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:14px;"><div style="font-size:12px;font-weight:600;color:${status.c};margin-bottom:6px;">${status.t}</div><div style="font-size:11px;color:var(--muted);line-height:1.7;">Score: <b style="color:var(--teal);">${Math.round(score*100)}%</b> · Ciclos: <b style="color:#4ADE80;">${[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.H2S>0.1&&'S',vals.Mg>=10&&'Mg'].filter(Boolean).join(', ')||'ninguno'}</b> · T°: <b style="color:${vals.Temp>50?'#F87171':vals.Temp<-20?'#60A5FA':'#4ADE80'};">${vals.Temp}°C</b> · Gravedad: <b style="color:#A78BFA;">${vals.gravity}g</b></div></div></div>`;
 }
 
 // ─── GALLERY TAB ──────────────────────────────────────
 function renderGallery(el){
   const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
-
-  el.innerHTML=`
-    <div style="padding:18px 20px;overflow-y:auto;height:100%;">
-      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">Galería IA · Imágenes Únicas</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Imágenes generadas por inteligencia artificial · Cada una es irrepetible</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div>
-          <div class="label">Vista orbital del planeta</div>
-          <div id="gal-planet" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-            <button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')" class="btn btn-teal">🌍 Generar imagen del planeta</button>
-          </div>
-        </div>
-        <div>
-          <div class="label">Superficie del planeta</div>
-          <div id="gal-surface" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-            <button onclick="makeAIImg('${`Alien planet surface, ${vals.Temp>50?'volcanic hot':''}${vals.Temp<-20?'frozen icy':''}${vals.H2S>2?'sulfuric geysers':''}${vals.O2>15?'alien vegetation':'rocky barren'} landscape, dramatic alien sky, hyper detailed, 8k`.replace(/'/g,"\\'")}',600,400,'gal-surface')" class="btn btn-teal">🏔 Generar superficie</button>
-          </div>
-        </div>
-      </div>
-      <div class="label">Arte conceptual de criaturas</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">
-        ${creatures.map((cr,i)=>{const imgId=`gal-cr-${i}`;return`
-          <div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);">
-            <div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-              <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar</button>
-            </div>
-            <div style="padding:8px 10px;">
-              <div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div>
-              <div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div>
-            </div>
-          </div>`;}).join('')}
-      </div>
-      <div>
-        <div class="label">Ecosistema completo — Vista aérea</div>
-        <div id="gal-eco" style="height:220px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-          <button onclick="makeAIImg('Aerial view alien ecosystem with multiple unique alien life forms, ${vals.H2O>30?'alien ocean with creatures':'alien landscape'}, ${vals.Temp<-20?'frozen':''}${vals.Temp>50?'volcanic':''}${vals.H2S>2?'sulfuric':'temperate'} environment, stunning aerial photography, 8k ultra detailed',900,400,'gal-eco')" class="btn btn-teal">🦅 Generar ecosistema aéreo</button>
-        </div>
-      </div>
-    </div>`;
+  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:3px;">Galería IA · Imágenes Únicas</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Imágenes generadas por IA · Cada una es irrepetible</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;"><div><div class="label">Vista orbital del planeta</div><div id="gal-planet" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')" class="btn btn-teal">🌍 Generar imagen del planeta</button></div></div><div><div class="label">Superficie del planeta</div><div id="gal-surface" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('Alien planet surface level view, ${vals.Temp>50?'volcanic hot lava flows':''}${vals.Temp<-20?'frozen icy tundra':''}${vals.H2S>2?'sulfuric geysers and acid pools':''}${vals.O2>15?'alien vegetation forests':'rocky barren terrain'} landscape, dramatic alien sky with ${vals.H2S>2?'yellow sulfuric':'blue oxygen'} atmosphere, hyper detailed, 8k, cinematic lighting',600,400,'gal-surface')" class="btn btn-teal">🏔 Generar superficie</button></div></div></div><div class="label">Arte conceptual de criaturas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">${creatures.map((cr,i)=>{const imgId=`gal-cr-${i}`;return`<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);"><div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar</button></div><div style="padding:8px 10px;"><div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div></div></div>`;}).join('')}</div></div>`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -655,34 +1055,26 @@ function setVal(sym,v){
   vals[sym]=v;
   const vl=document.getElementById('vl-'+sym);
   if(vl){const m=SLIDERS.find(s=>s.sym===sym);const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
-  // Actualizar score y código en tiempo real
-  const score=calcScore(vals);
-  const sc=Math.round(score*100);
-  const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
-  const scoreLbl=score>=0.8?'HABITABLE':score>=0.6?'MODERADO':score>=0.4?'MARGINAL':score>=0.2?'EXTREMO':'INHÓSPITO';
-  // Actualizar planet texture
-  if(threeState.updatePlanet)threeState.updatePlanet(vals);
+  if(threeState.update)threeState.update(vals);
 }
-
 function applyPreset(name){
   const p=PRESETS[name];
   Object.entries(p).forEach(([sym,v])=>{
     vals[sym]=v;
     const sl=document.querySelector(`input[oninput*="'${sym}'"]`);
     if(sl)sl.value=v;
+    const m=SLIDERS.find(s=>s.sym===sym);
     const vl=document.getElementById('vl-'+sym);
-    if(vl){const m=SLIDERS.find(s=>s.sym===sym);if(m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}}
+    if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
   });
-  if(threeState.updatePlanet)threeState.updatePlanet(vals);
+  if(threeState.update)threeState.update(vals);
 }
-
 function createPlanet(){
   const code=planetCode(vals);
   const score=calcScore(vals);
   const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
   const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
   lastCreatures=creatures;
-
   document.getElementById('modal-code').textContent=code;
   document.getElementById('modal-stats').innerHTML=[
     {l:"Habitabilidad",v:`${Math.round(score*100)}%`,c:scoreCol},
@@ -691,40 +1083,187 @@ function createPlanet(){
     {l:"O₂",v:`${vals.O2}%`,c:vals.O2>15?'var(--teal)':'#F87171'},
     {l:"H₂O",v:`${vals.H2O}%`,c:'#60A5FA'},
     {l:"Gravedad",v:`${vals.gravity}g`,c:'#A78BFA'},
-  ].map(({l,v,c})=>`
-    <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">${l}</div>
-      <div style="font-size:12px;font-weight:700;color:${c};">${v}</div>
-    </div>`).join('');
-
-  document.getElementById('modal-creatures').innerHTML=`
-    <div class="label">Criaturas de tu planeta</div>
-    ${creatures.slice(0,3).map(c=>`
-      <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:7px;padding:7px 10px;margin-bottom:5px;">
-        <div style="width:8px;height:8px;border-radius:50%;background:${c.orgCol};flex-shrink:0;"></div>
-        <div style="flex:1;">
-          <div style="font-size:11px;font-style:italic;color:${c.orgCol};font-weight:600;">${c.latinName}</div>
-          <div style="font-size:9px;color:var(--muted);">${c.complexity} · ${c.meta}</div>
-        </div>
-        <span style="font-size:9px;color:var(--muted);">${c.size}</span>
-      </div>`).join('')}`;
-
+  ].map(({l,v,c})=>`<div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:9px;color:var(--muted);margin-bottom:3px;">${l}</div><div style="font-size:12px;font-weight:700;color:${c};">${v}</div></div>`).join('');
+  document.getElementById('modal-creatures').innerHTML=`<div class="label">Criaturas de tu planeta</div>${creatures.slice(0,3).map(c=>`<div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:7px;padding:7px 10px;margin-bottom:5px;"><div style="width:8px;height:8px;border-radius:50%;background:${c.orgCol};flex-shrink:0;"></div><div style="flex:1;"><div style="font-size:11px;font-style:italic;color:${c.orgCol};font-weight:600;">${c.latinName}</div><div style="font-size:9px;color:var(--muted);">${c.complexity} · ${c.meta}</div></div><span style="font-size:9px;color:var(--muted);">${c.size}</span></div>`).join('')}`;
   document.getElementById('modal-planet-img').innerHTML=`<button onclick="genModalImg()" class="btn btn-teal" style="font-size:11px;">🌍 Generar imagen IA de tu planeta</button>`;
   document.getElementById('modal').style.display='flex';
 }
-
 function genModalImg(){
   const el=document.getElementById('modal-planet-img');
   el.style.position='relative';
   makeAIImg(planetImgPrompt(vals),500,300,'modal-planet-img');
 }
-
 function closeModal(){document.getElementById('modal').style.display='none';}
 function copyCode(){
   const code=document.getElementById('modal-code').textContent;
-  navigator.clipboard?.writeText(code).then(()=>{
-    const btn=event.target;const orig=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=orig,2000);
-  });
+  navigator.clipboard?.writeText(code).then(()=>{const btn=event.target;const orig=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=orig,2000);});
+}
+
+// ═══════════════════════════════════════════════════════
+// IDIOMAS ES / EN
+// ═══════════════════════════════════════════════════════
+let lang = 'es';
+
+const T = {
+  es: {
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA'],
+    createBtn: '✦ Crear Planeta',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
+    traitLabels: ['Esqueleto','Sangre','Metabolismo','Nervioso','Termoreg.','Tamaño'],
+    analogsTitle: 'Análogos terrestres',
+    cyclesTitle: 'Ciclos minerales activos',
+    stellarTitle: 'Parámetros estelares',
+    creaturesTitle: 'Criaturas del planeta',
+    creaturesDesc: 'Motor evolutivo · Cada ser es científicamente coherente e irrepetible',
+    numCreatures: 'Criaturas:',
+    genImageBtn: '🎨 Generar imagen IA',
+    habitability: 'Habitabilidad',
+    temperature: 'Temperatura',
+    gravity: 'Gravedad',
+    atmosphere: 'Atmósfera',
+    magnetosphere: 'Magnetosfera',
+    habitableZone: 'Zona habitable',
+    stellarType: 'Tipo estelar',
+    active: 'activo',
+    extinct: '⚠ Riesgo de extinción',
+    ecoTitle: 'Equilibrio del Ecosistema',
+    ecoDesc: 'Dinámica de poblaciones basada en condiciones minerales',
+    galTitle: 'Galería IA · Imágenes Únicas',
+    galDesc: 'Imágenes generadas por IA · Cada una es irrepetible',
+    orbitalView: 'Vista orbital del planeta',
+    surfaceView: 'Superficie del planeta',
+    genPlanet: '🌍 Generar imagen del planeta',
+    genSurface: '🏔 Generar superficie',
+    genEco: '🦅 Generar ecosistema aéreo',
+    creatureArt: 'Arte conceptual de criaturas',
+    copyCode: '📋 Copiar código',
+    explore: 'Explorar',
+    modalTitle: '✦ Planeta Registrado ✦',
+    modalSub: 'Tu planeta es único en el universo',
+    modalNote: 'Este código identifica tu planeta — nadie más puede tenerlo igual',
+    genPlanetImg: '🌍 Generar imagen IA de tu planeta',
+    noAnalogs: 'Sin análogos conocidos',
+    rotate: 'Arrastra · Scroll zoom · Inclinación axial: 23.5°',
+    natureLink: '🕸 Ver Conexiones Naturales →',
+    habitable: 'HABITABLE', moderate: 'MODERADO', marginal: 'MARGINAL', extreme: 'EXTREMO', inhospitable: 'INHÓSPITO',
+    stable: '✓ Ecosistema estable', fragile: '⚠ Ecosistema frágil', collapse: '✗ Colapso probable',
+    bodyRef: 'CUERPO REF', codeId: 'CÓDIGO ID', tempMean: 'T° MEDIA', pressure: 'PRESIÓN',
+    dense: 'Densa', thin: 'Tenue', noAtm: 'Sin atmósfera',
+    strong: 'Fuerte', weak: 'Débil', noField: 'Sin campo',
+    yes: 'Sí ✓', no: 'No ✗',
+    complexity: {vertebrado:'vertebrado',invertebrado:'invertebrado',simple:'simple',colonial:'colonial',unicelular:'unicelular'},
+    skeleton: {calcico:'Endoesqueleto calcico',siliceo:'Exoesqueleto silíceo',calcareo:'Exoesqueleto calcáreo',sulfurico:'Exoesqueleto sulfúrico',hidrostatico:'Hidrostático/Quitina'},
+    blood: {hemoglobin:'Hemoglobina (roja)',hemocyanin:'Hemocianina (azul)',vanadin:'Vanadina (verde)',hbh2s:'Hb-H₂S gigante',hemerythrin:'Hemeritrina (violeta)',diffusion:'Difusión directa'},
+    meta: {aerobic:'Aeróbico eficiente',photo:'Fotosíntesis',chemo:'Quimiosíntesis H₂S',methano:'Metanogénesis',ferment:'Fermentación'},
+    nervous: {brain:'Cerebro centralizado',ganglio:'Sistema gangliado',diffuse:'Red difusa'},
+    thermo: {homeo:'Homeotermo',cryo:'Crioprotección AFP',thermo:'Termoestable',poikilo:'Poiquilotermo'},
+    loco: {float:'Flotación/vuelo',swim:'Natación',crawl:'Rastrero',quad:'Cuadrúpedo',wave:'Ondulatorio'},
+    size: {mega:'Megafauna (>10t)',big:'Grande (100kg–10t)',medium:'Mediano (10–100kg)',small:'Pequeño (<10kg)',micro:'Microscópico'},
+    pops: ['Productores primarios','Herbívoros','Carnívoros','Depredadores Ápex','Descomponedores','Quimioautos'],
+    cycles: ['Carbono','Nitrógeno','Fósforo','Hierro','Calcio','Azufre','Vanadio'],
+    connecting: 'Conecta internet para imágenes IA',
+    generating: 'Generando imagen IA…',
+    copied: '✓ Copiado',
+  },
+  en: {
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery'],
+    createBtn: '✦ Create Planet',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
+    traitLabels: ['Skeleton','Blood','Metabolism','Nervous','Thermoreg.','Size'],
+    analogsTitle: 'Earth analogs',
+    cyclesTitle: 'Active mineral cycles',
+    stellarTitle: 'Stellar parameters',
+    creaturesTitle: 'Planet creatures',
+    creaturesDesc: 'Evolutionary engine · Every being is scientifically coherent and unique',
+    numCreatures: 'Creatures:',
+    genImageBtn: '🎨 Generate AI image',
+    habitability: 'Habitability',
+    temperature: 'Temperature',
+    gravity: 'Gravity',
+    atmosphere: 'Atmosphere',
+    magnetosphere: 'Magnetosphere',
+    habitableZone: 'Habitable zone',
+    stellarType: 'Star type',
+    active: 'active',
+    extinct: '⚠ Extinction risk',
+    ecoTitle: 'Ecosystem Balance',
+    ecoDesc: 'Population dynamics based on mineral conditions',
+    galTitle: 'AI Gallery · Unique Images',
+    galDesc: 'AI generated images · Each one is unrepeatable',
+    orbitalView: 'Orbital view of planet',
+    surfaceView: 'Planet surface',
+    genPlanet: '🌍 Generate planet image',
+    genSurface: '🏔 Generate surface',
+    genEco: '🦅 Generate aerial ecosystem',
+    creatureArt: 'Creature concept art',
+    copyCode: '📋 Copy code',
+    explore: 'Explore',
+    modalTitle: '✦ Planet Registered ✦',
+    modalSub: 'Your planet is unique in the universe',
+    modalNote: 'This code identifies your planet — no one else can have the exact same one',
+    genPlanetImg: '🌍 Generate AI image of your planet',
+    noAnalogs: 'No known analogs',
+    rotate: 'Drag to rotate · Scroll to zoom · Axial tilt: 23.5°',
+    natureLink: '🕸 View Nature Connections →',
+    habitable: 'HABITABLE', moderate: 'MODERATE', marginal: 'MARGINAL', extreme: 'EXTREME', inhospitable: 'INHOSPITABLE',
+    stable: '✓ Stable ecosystem', fragile: '⚠ Fragile ecosystem', collapse: '✗ Collapse likely',
+    bodyRef: 'REF BODY', codeId: 'PLANET ID', tempMean: 'MEAN TEMP', pressure: 'PRESSURE',
+    dense: 'Dense', thin: 'Thin', noAtm: 'No atmosphere',
+    strong: 'Strong', weak: 'Weak', noField: 'No field',
+    yes: 'Yes ✓', no: 'No ✗',
+    complexity: {vertebrado:'vertebrate',invertebrado:'invertebrate',simple:'simple',colonial:'colonial',unicelular:'unicellular'},
+    skeleton: {calcico:'Calcic endoskeleton',siliceo:'Siliceous exoskeleton',calcareo:'Calcareous exoskeleton',sulfurico:'Sulfuric exoskeleton',hidrostatico:'Hydrostatic/Chitin'},
+    blood: {hemoglobin:'Hemoglobin (red)',hemocyanin:'Hemocyanin (blue)',vanadin:'Vanadin (green)',hbh2s:'Giant Hb H₂S/O₂',hemerythrin:'Hemerythrin (violet)',diffusion:'Direct diffusion'},
+    meta: {aerobic:'Efficient aerobic',photo:'Photosynthesis',chemo:'H₂S Chemosynthesis',methano:'Methanogenesis',ferment:'Fermentation'},
+    nervous: {brain:'Centralized brain',ganglio:'Ganglionic system',diffuse:'Diffuse net'},
+    thermo: {homeo:'Homeotherm',cryo:'AFP Cryoprotection',thermo:'Thermostable',poikilo:'Poikilotherm'},
+    loco: {float:'Float/fly',swim:'Swimming',crawl:'Crawling',quad:'Quadruped',wave:'Undulation'},
+    size: {mega:'Megafauna (>10t)',big:'Large (100kg–10t)',medium:'Medium (10–100kg)',small:'Small (<10kg)',micro:'Microscopic'},
+    pops: ['Primary producers','Herbivores','Carnivores','Apex predators','Decomposers','Chemoautotrophs'],
+    cycles: ['Carbon','Nitrogen','Phosphorus','Iron','Calcium','Sulfur','Vanadium'],
+    connecting: 'Connect to internet for AI images',
+    generating: 'Generating AI image…',
+    copied: '✓ Copied',
+  }
+};
+
+function t(key){ return T[lang][key] || T.es[key] || key; }
+
+function toggleLang(){
+  lang = lang === 'es' ? 'en' : 'es';
+  const btn = document.getElementById('lang-btn');
+  if(btn) btn.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
+  const createBtn = document.getElementById('create-btn');
+  if(createBtn) createBtn.innerHTML = `✦ ${t('createBtn').replace('✦ ','')}`;
+  renderMain();
+}
+
+// Wrapper de makeCreature que usa idioma actual
+function makeCreatureI18n(v, seed){
+  const cr = makeCreature(v, seed);
+  // Translate fields
+  const sk = cr.skeleton;
+  if(lang==='en'){
+    const skMap = {'Endoesqueleto calcico':'Calcic endoskeleton','Exoesqueleto silíceo':'Siliceous exoskeleton','Exoesqueleto calcáreo':'Calcareous exoskeleton','Exoesqueleto sulfúrico':'Sulfuric exoskeleton','Hidrostático/Quitina':'Hydrostatic/Chitin'};
+    const blMap = {'Hemoglobina (roja)':'Hemoglobin (red)','Hemocianina (azul)':'Hemocyanin (blue)','Vanadina (verde)':'Vanadin (green)','Hb-H₂S gigante':'Giant Hb H₂S/O₂','Hemeritrina (violeta)':'Hemerythrin (violet)','Difusión directa':'Direct diffusion'};
+    const meMap = {'Aeróbico eficiente':'Efficient aerobic','Fotosíntesis':'Photosynthesis','Quimiosíntesis H₂S':'H₂S Chemosynthesis','Metanogénesis':'Methanogenesis','Fermentación':'Fermentation'};
+    const neMap = {'Cerebro centralizado':'Centralized brain','Sistema gangliado':'Ganglionic system','Red difusa':'Diffuse net'};
+    const thMap = {'Homeotermo':'Homeotherm','Crioprotección AFP':'AFP Cryoprotection','Termoestable':'Thermostable','Poiquilotermo':'Poikilotherm'};
+    const loMap = {'Flotación/vuelo':'Float/fly','Natación':'Swimming','Rastrero':'Crawling','Cuadrúpedo':'Quadruped','Ondulatorio':'Undulation'};
+    const szMap = {'Megafauna (>10t)':'Megafauna (>10t)','Grande (100kg–10t)':'Large (100kg–10t)','Mediano (10–100kg)':'Medium (10–100kg)','Pequeño (<10kg)':'Small (<10kg)','Microscópico':'Microscopic'};
+    const cxMap = {'vertebrado':'vertebrate','invertebrado':'invertebrate','simple':'simple','colonial':'colonial','unicelular':'unicellular'};
+    cr.skeleton = skMap[cr.skeleton] || cr.skeleton;
+    cr.blood    = blMap[cr.blood]    || cr.blood;
+    cr.meta     = meMap[cr.meta]     || cr.meta;
+    cr.nervous  = neMap[cr.nervous]  || cr.nervous;
+    cr.thermo   = thMap[cr.thermo]   || cr.thermo;
+    cr.loco     = loMap[cr.loco]     || cr.loco;
+    cr.size     = szMap[cr.size]     || cr.size;
+    cr.complexity = cxMap[cr.complexity] || cr.complexity;
+  }
+  return cr;
 }
 
 // ═══════════════════════════════════════════════════════
