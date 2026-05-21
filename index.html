@@ -7,41 +7,405 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #04080F; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#04080F;color:#DDE6F5;font-family:system-ui,sans-serif;}
+    input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;outline:none;cursor:pointer;}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#00D4AA;cursor:pointer;}
+    .scrollable{overflow-y:auto;scrollbar-width:thin;scrollbar-color:#1A2A40 transparent;}
+    @keyframes swim{0%,100%{transform:translateX(0) rotate(-3deg)}50%{transform:translateX(8px) rotate(3deg)}}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes sway{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+    @keyframes glow-pulse{0%,100%{filter:drop-shadow(0 0 4px currentColor)}50%{filter:drop-shadow(0 0 10px currentColor)}}
+    .bp-tab-btn{padding:4px 13px;border-radius:5px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#5A6A88;transition:all .15s;}
+    .bp-tab-btn.active{background:#00D4AA;color:#000;}
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel" src="bioplanet_frontend.jsx"></script>
-  <script type="text/babel">
-    ReactDOM.createRoot(document.getElementById('root')).render(
-      React.createElement(BioPlanet)
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const PRESETS={
+  "Tierra":    {Ca:41,Fe:56,Si:282,P:1.0,Mg:23,Cu:60,S:350,O2:21,CO2:0.04,H2S:0,H2O:71,Temp:15,pH:7.2},
+  "Europa":    {Ca:15,Fe:10,Si:50, P:0.2,Mg:50,Cu:40,S:2000,O2:2,CO2:0.5,H2S:0.5,H2O:100,Temp:-5,pH:8.5},
+  "Volcánico": {Ca:30,Fe:40,Si:200,P:0.5,Mg:20,Cu:200,S:15000,O2:5,CO2:5,H2S:8,H2O:30,Temp:70,pH:3.5},
+  "Glacial":   {Ca:10,Fe:20,Si:250,P:0.1,Mg:15,Cu:20,S:100,O2:22,CO2:0.03,H2S:0,H2O:80,Temp:-40,pH:6.5},
+  "Sulfúrico": {Ca:5, Fe:30,Si:180,P:0.2,Mg:10,Cu:50,S:20000,O2:0.5,CO2:2,H2S:9,H2O:20,Temp:50,pH:2.5},
+  "Carbonífero":{Ca:55,Fe:35,Si:275,P:0.8,Mg:23,Cu:60,S:500,O2:30,CO2:0.1,H2S:0,H2O:45,Temp:28,pH:6.5},
+};
+
+const SLIDERS=[
+  {sym:"Ca",label:"Calcio",    unit:"K ppm",min:0,  max:100, step:1,  def:41,  g:"Suelo"},
+  {sym:"Fe",label:"Hierro",    unit:"K ppm",min:0,  max:100, step:1,  def:56,  g:"Suelo"},
+  {sym:"Si",label:"Silicio",   unit:"K ppm",min:0,  max:350, step:5,  def:282, g:"Suelo"},
+  {sym:"P", label:"Fósforo",   unit:"K ppm",min:0,  max:5,   step:0.1,def:1.0, g:"Suelo"},
+  {sym:"Mg",label:"Magnesio",  unit:"K ppm",min:0,  max:60,  step:1,  def:23,  g:"Suelo"},
+  {sym:"Cu",label:"Cobre",     unit:"ppm",  min:0,  max:200, step:1,  def:60,  g:"Suelo"},
+  {sym:"S", label:"Azufre",    unit:"ppm",  min:0,  max:20000,step:100,def:350,g:"Suelo"},
+  {sym:"O2",label:"O₂",        unit:"%",    min:0,  max:35,  step:0.5,def:21,  g:"Atmósfera"},
+  {sym:"CO2",label:"CO₂",      unit:"%",    min:0,  max:20,  step:0.1,def:0.04,g:"Atmósfera"},
+  {sym:"H2S",label:"H₂S",      unit:"%",    min:0,  max:10,  step:0.1,def:0,   g:"Atmósfera"},
+  {sym:"H2O",label:"Agua",     unit:"% sup",min:0,  max:100, step:1,  def:71,  g:"Entorno"},
+  {sym:"Temp",label:"Temp",    unit:"°C",   min:-100,max:150,step:1,  def:15,  g:"Entorno"},
+  {sym:"pH", label:"pH",       unit:"",     min:0,  max:14,  step:0.1,def:7.2, g:"Entorno"},
+];
+
+function calcScore(v){
+  let s=0;
+  if(v.Temp>=-20&&v.Temp<=50&&v.H2O>0)s+=0.25*Math.min(v.H2O/50,1);
+  if(v.O2>=15)s+=0.20;else if(v.O2>=5)s+=0.12;else if(v.CO2>=1||v.H2S>=1)s+=0.06;
+  if(v.Ca>=5)s+=0.08;if(v.P>=0.3)s+=0.07;if(v.Fe>=5)s+=0.05;if(v.Mg>=10)s+=0.05;
+  if(v.Temp>=-20&&v.Temp<=50)s+=0.15;else if(v.Temp>=-50&&v.Temp<=80)s+=0.07;
+  if(v.pH>=5.5&&v.pH<=9)s+=0.07;else if(v.pH>=3&&v.pH<=11)s+=0.03;
+  return Math.min(s,1);
+}
+
+function evalRules(v){
+  const {Ca,Fe,Si,P,Mg,Cu,S,O2,CO2,H2S,H2O,Temp,pH}=v;
+  const r=[];
+  if(Ca>=30&&P>=0.5&&Mg>=5&&Temp>=-50&&Temp<=55) r.push({cat:"Esqueleto",name:"Endoesqueleto calcico",col:"#00D4AA",icon:"🦴",detail:"Hidroxiapatita Ca₁₀(PO₄)₆(OH)₂"});
+  else if(Si>=20&&H2O>10) r.push({cat:"Esqueleto",name:"Exoesqueleto silíceo",col:"#60A5FA",icon:"💎",detail:"SiO₂ amorfo — diatomeas"});
+  else if(Ca>=20&&pH>=7.5) r.push({cat:"Esqueleto",name:"Exoesqueleto calcáreo",col:"#4ADE80",icon:"🐚",detail:"CaCO₃ aragonita"});
+  else r.push({cat:"Esqueleto",name:"Hidrostático",col:"#94A3B8",icon:"🪱",detail:"Presión de fluido"});
+  if(Fe>=30&&O2>=2) r.push({cat:"Sangre",name:"Hemoglobina",col:"#F87171",icon:"🩸",detail:"Fe²⁺ — sangre roja"});
+  else if(Cu>=40&&Fe<20) r.push({cat:"Sangre",name:"Hemocianina",col:"#60A5FA",icon:"💙",detail:"Cu²⁺ — sangre azul"});
+  else if(H2S>1&&O2<5) r.push({cat:"Sangre",name:"Hb H₂S/O₂",col:"#FBBF24",icon:"🫧",detail:"36 subunidades"});
+  else r.push({cat:"Sangre",name:"Hemeritrina",col:"#A78BFA",icon:"💜",detail:"2 Fe no hemo"});
+  if(O2>=15&&Fe>=1) r.push({cat:"Metabolismo",name:"Aeróbico",col:"#00D4AA",icon:"⚡",detail:"36 ATP/glucosa"});
+  else if(Mg>=15&&O2>=5&&CO2>=0.005) r.push({cat:"Metabolismo",name:"Fotosíntesis",col:"#4ADE80",icon:"☀️",detail:"Clorofila-Mg²⁺"});
+  else if(H2S>=1&&S>=100) r.push({cat:"Metabolismo",name:"Quimiosíntesis H₂S",col:"#FBBF24",icon:"🌋",detail:"H₂S → energía"});
+  else if(O2<0.1&&CO2>=0.1) r.push({cat:"Metabolismo",name:"Metanogénesis",col:"#94A3B8",icon:"💨",detail:"CO₂+H₂→CH₄"});
+  else r.push({cat:"Metabolismo",name:"Fermentación",col:"#94A3B8",icon:"🧫",detail:"2 ATP/glucosa"});
+  if(O2>=15&&Ca>=25&&Fe>=20) r.push({cat:"Nervioso",name:"Cerebro centralizado",col:"#A78BFA",icon:"🧠",detail:"86B neuronas"});
+  else if(Ca>=10&&O2>=5) r.push({cat:"Nervioso",name:"Sistema gangliado",col:"#60A5FA",icon:"🐙",detail:"Aprendizaje asociativo"});
+  else r.push({cat:"Nervioso",name:"Red difusa",col:"#94A3B8",icon:"🪼",detail:"Solo reflejos"});
+  if(O2>=18&&Temp>=-50&&Temp<=55) r.push({cat:"Termoreg.",name:"Homeotermo",col:"#F87171",icon:"🌡",detail:"T° constante"});
+  else if(Temp<=-5) r.push({cat:"Termoreg.",name:"Crioprotección",col:"#60A5FA",icon:"❄️",detail:"AFP anticongelantes"});
+  else r.push({cat:"Termoreg.",name:"Poiquilotermo",col:"#4ADE80",icon:"🦎",detail:"T° = ambiente"});
+  return r;
+}
+
+function PlanetCanvas({vals}){
+  const canvasRef=useRef(null);
+  const stateRef=useRef({scene:null,renderer:null,camera:null,planet:null,clouds:null,atm:null,group:null,dragging:false,prev:{x:0,y:0},zoom:3.5,animId:null});
+  
+  useEffect(()=>{
+    const canvas=canvasRef.current;
+    if(!canvas||!window.THREE)return;
+    const THREE=window.THREE;
+    const st=stateRef.current;
+    const W=canvas.parentElement.clientWidth||500;
+    const H=canvas.parentElement.clientHeight||400;
+    canvas.width=W;canvas.height=H;
+    
+    st.scene=new THREE.Scene();
+    st.camera=new THREE.PerspectiveCamera(45,W/H,0.1,100);
+    st.camera.position.z=st.zoom;
+    st.renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+    st.renderer.setSize(W,H);
+    st.renderer.setClearColor(0x04080F,1);
+    
+    const sp=[];for(let i=0;i<1000;i++)sp.push((Math.random()-0.5)*200,(Math.random()-0.5)*200,(Math.random()-0.5)*200);
+    const stars=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:0xffffff,size:0.08}));
+    stars.geometry.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+    st.scene.add(stars);
+    
+    st.group=new THREE.Group();
+    st.scene.add(st.group);
+    
+    const makeTex=()=>{
+      const sz=512,c=document.createElement('canvas');
+      c.width=c.height=sz;
+      const ctx=c.getContext('2d');
+      const img=ctx.createImageData(sz,sz);
+      const d=img.data;
+      const {Ca,Fe,Mg,S,H2S,H2O,Temp,O2}=vals;
+      const hasSulf=H2S>2||S>5000,isHot=Temp>50,isCold=Temp<-20,isVCold=Temp<-60,isGreen=Mg>20&&O2>5&&!hasSulf&&!isHot;
+      function h(x,y){return((Math.sin(x*127.1+y*311.7)*43758.5453)%1+1)%1;}
+      function n(x,y){const X=Math.floor(x),Y=Math.floor(y),f=x-X,g=y-Y,a=h(X,Y),b=h(X+1,Y),c2=h(X,Y+1),d2=h(X+1,Y+1),u=f*f*(3-2*f),v=g*g*(3-2*g);return a+(b-a)*u+(c2-a)*v+(a-b-c2+d2)*u*v;}
+      let bR=hasSulf?180:isVCold?200:isCold?100:isHot?170:isGreen?40:Fe>50?150:50;
+      let bG=hasSulf?150:isVCold?215:isCold?140:isHot?60:isGreen?110:Fe>50?70:100;
+      let bB=hasSulf?20:isVCold?240:isCold?190:isHot?20:isGreen?50:Fe>50?30:70;
+      for(let y=0;y<sz;y++){
+        const lat=y/sz;
+        for(let x=0;x<sz;x++){
+          const n1=n(x/sz*8,lat*8)*0.5+n(x/sz*16,lat*16)*0.3+n(x/sz*32,lat*32)*0.2;
+          const n2=n(x/sz*4+3.7,lat*4+2.1);
+          const isOcean=H2O>25&&n1<0.35;
+          const isPolar=lat<0.12||lat>0.88;
+          const isIce=isPolar&&!hasSulf&&!isHot;
+          let r,g,b;
+          if(isIce){r=220;g=235;b=255;}
+          else if(isOcean){r=hasSulf?60:20+n2*20;g=hasSulf?90:55+n2*30;b=hasSulf?30:140+n2*40;}
+          else{r=bR+(n1-0.5)*40;g=bG+(n1-0.5)*30;b=bB+(n1-0.5)*25;}
+          const i=(y*sz+x)*4;
+          d[i]=Math.max(0,Math.min(255,r));d[i+1]=Math.max(0,Math.min(255,g));d[i+2]=Math.max(0,Math.min(255,b));d[i+3]=255;
+        }
+      }
+      ctx.putImageData(img,0,0);
+      return new THREE.CanvasTexture(c);
+    };
+    
+    st.planet=new THREE.Mesh(
+      new THREE.SphereGeometry(1,64,64),
+      new THREE.MeshPhongMaterial({map:makeTex(),specular:new THREE.Color(0x222222),shininess:15})
     );
-  </script>
-</body>
-</html><!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>BioPlanet — Simulador Evolutivo</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #04080F; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel" src="bioplanet_frontend.jsx"></script>
-  <script type="text/babel">
-    ReactDOM.createRoot(document.getElementById('root')).render(
-      React.createElement(BioPlanet)
-    );
-  </script>
+    st.group.add(st.planet);
+    
+    const csz=256,cc=document.createElement('canvas');cc.width=cc.height=csz;
+    const cctx=cc.getContext('2d');const cimg=cctx.createImageData(csz,csz);const cd=cimg.data;
+    function ch(x,y){return((Math.sin(x*97.1+y*271.7)*43758.5453)%1+1)%1;}
+    function cn(x,y){const X=Math.floor(x),Y=Math.floor(y),f=x-X,g=y-Y,a=ch(X,Y),b=ch(X+1,Y),c2=ch(X,Y+1),d2=ch(X+1,Y+1),u=f*f*(3-2*f),v=g*g*(3-2*g);return a+(b-a)*u+(c2-a)*v+(a-b-c2+d2)*u*v;}
+    for(let y=0;y<csz;y++)for(let x=0;x<csz;x++){const v2=cn(x/csz*6,y/csz*6)*0.6+cn(x/csz*12,y/csz*12)*0.4;const al=v2>0.52?Math.min((v2-0.52)*5*255,180):0;const i=(y*csz+x)*4;cd[i]=255;cd[i+1]=255;cd[i+2]=255;cd[i+3]=al;}
+    cctx.putImageData(cimg,0,0);
+    st.clouds=new THREE.Mesh(new THREE.SphereGeometry(1.015,32,32),new THREE.MeshPhongMaterial({map:new THREE.CanvasTexture(cc),transparent:true,opacity:vals.H2O>20?0.6:0.15,depthWrite:false}));
+    st.group.add(st.clouds);
+    
+    const atmColor=vals.H2S>2?0xD4A017:vals.CO2>5?0xF5A623:0x00D4AA;
+    st.atm=new THREE.Mesh(new THREE.SphereGeometry(1.12,32,32),new THREE.MeshPhongMaterial({color:atmColor,transparent:true,opacity:0.08,side:THREE.BackSide}));
+    st.group.add(st.atm);
+    
+    const sun=new THREE.DirectionalLight(0xffffff,1.4);sun.position.set(5,3,5);
+    st.scene.add(sun);st.scene.add(new THREE.AmbientLight(0x111111,0.8));
+    
+    const onDown=e=>{st.dragging=true;st.prev={x:e.clientX,y:e.clientY};};
+    const onUp=()=>st.dragging=false;
+    const onMove=e=>{if(!st.dragging)return;st.group.rotation.y+=(e.clientX-st.prev.x)*0.008;st.group.rotation.x+=(e.clientY-st.prev.y)*0.008;st.prev={x:e.clientX,y:e.clientY};};
+    const onWheel=e=>{st.zoom=Math.max(1.8,Math.min(6,st.zoom+e.deltaY*0.005));st.camera.position.z=st.zoom;e.preventDefault();};
+    canvas.addEventListener('mousedown',onDown);window.addEventListener('mouseup',onUp);window.addEventListener('mousemove',onMove);canvas.addEventListener('wheel',onWheel,{passive:false});
+    
+    const animate=()=>{st.animId=requestAnimationFrame(animate);if(!st.dragging){st.group.rotation.y+=0.003;if(st.clouds)st.clouds.rotation.y-=0.0005;}st.renderer.render(st.scene,st.camera);};
+    animate();
+    
+    return()=>{cancelAnimationFrame(st.animId);canvas.removeEventListener('mousedown',onDown);window.removeEventListener('mouseup',onUp);window.removeEventListener('mousemove',onMove);canvas.removeEventListener('wheel',onWheel);st.renderer.dispose();};
+  },[]);
+  
+  useEffect(()=>{
+    const st=stateRef.current;
+    if(!st.planet||!window.THREE)return;
+    const THREE=window.THREE;
+    const makeTex=()=>{
+      const sz=256,c=document.createElement('canvas');c.width=c.height=sz;
+      const ctx=c.getContext('2d');const img=ctx.createImageData(sz,sz);const d=img.data;
+      const {Ca,Fe,Mg,S,H2S,H2O,Temp,O2}=vals;
+      const hasSulf=H2S>2||S>5000,isHot=Temp>50,isCold=Temp<-20,isGreen=Mg>20&&O2>5&&!hasSulf&&!isHot;
+      function h(x,y){return((Math.sin(x*127.1+y*311.7)*43758.5453)%1+1)%1;}
+      function n(x,y){const X=Math.floor(x),Y=Math.floor(y),f=x-X,g=y-Y,a=h(X,Y),b=h(X+1,Y),c2=h(X,Y+1),d2=h(X+1,Y+1),u=f*f*(3-2*f),v=g*g*(3-2*g);return a+(b-a)*u+(c2-a)*v+(a-b-c2+d2)*u*v;}
+      let bR=hasSulf?180:isCold?100:isHot?170:isGreen?40:Fe>50?150:50;
+      let bG=hasSulf?150:isCold?140:isHot?60:isGreen?110:Fe>50?70:100;
+      let bB=hasSulf?20:isCold?190:isHot?20:isGreen?50:Fe>50?30:70;
+      for(let y=0;y<sz;y++){const lat=y/sz;for(let x=0;x<sz;x++){const n1=n(x/sz*8,lat*8)*0.5+n(x/sz*16,lat*16)*0.3;const n2=n(x/sz*4+3.7,lat*4+2.1);const isOcean=H2O>25&&n1<0.35;const isIce=(lat<0.12||lat>0.88)&&!hasSulf&&!isHot;let r,g,b;if(isIce){r=220;g=235;b=255;}else if(isOcean){r=20+n2*20;g=55+n2*30;b=140+n2*40;}else{r=bR+(n1-0.5)*40;g=bG+(n1-0.5)*30;b=bB+(n1-0.5)*25;}const i=(y*sz+x)*4;d[i]=Math.max(0,Math.min(255,r));d[i+1]=Math.max(0,Math.min(255,g));d[i+2]=Math.max(0,Math.min(255,b));d[i+3]=255;}}
+      ctx.putImageData(img,0,0);return new THREE.CanvasTexture(c);
+    };
+    st.planet.material.map=makeTex();st.planet.material.map.needsUpdate=true;
+    if(st.atm){const c=vals.H2S>2?0xD4A017:vals.CO2>5?0xF5A623:0x00D4AA;st.atm.material.color.set(c);}
+    if(st.clouds)st.clouds.material.opacity=vals.H2O>20?0.6:vals.H2O>5?0.3:0.05;
+  },[vals]);
+  
+  return <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block'}}/>;
+}
+
+function App(){
+  const initVals={};SLIDERS.forEach(s=>initVals[s.sym]=s.def);
+  const [vals,setVals]=useState(initVals);
+  const [activePreset,setActivePreset]=useState('Tierra');
+  const [tab,setTab]=useState('planet');
+  const [creature,setCreature]=useState('');
+  const [generating,setGenerating]=useState(false);
+
+  const score=calcScore(vals);
+  const rules=evalRules(vals);
+  const scoreColor=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+  const scoreLabel=score>=0.8?'ALTAMENTE HABITABLE':score>=0.6?'HABITABLE':score>=0.4?'MARGINAL':score>=0.2?'SOLO EXTREMÓFILOS':'INHÓSPITO';
+
+  function setVal(sym,v){setVals(prev=>({...prev,[sym]:v}));setActivePreset('');}
+  function applyPreset(name){const p=PRESETS[name];setVals(prev=>({...prev,...p}));setActivePreset(name);}
+
+  async function generateCreature(){
+    setGenerating(true);setCreature('');
+    const traitSummary=rules.map(r=>`${r.cat}: ${r.name}`).join(', ');
+    const prompt=`Planeta: Ca=${vals.Ca}K ppm, Fe=${vals.Fe}K ppm, O₂=${vals.O2}%, CO₂=${vals.CO2}%, H₂S=${vals.H2S}%, T°=${vals.Temp}°C, pH=${vals.pH}, agua=${vals.H2O}%. Rasgos: ${traitSummary}. Score habitabilidad: ${Math.round(score*100)}%. Describe en 3 párrafos el ser vivo más probable: nombre científico inventado en latín, anatomía, metabolismo, comportamiento. Solo prosa narrativa.`;
+    try{
+      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:prompt}]})});
+      const data=await res.json();
+      setCreature(data.content?.[0]?.text||'Error al generar.');
+    }catch(e){setCreature('Error de conexión.');}
+    setGenerating(false);
+  }
+
+  const groups={};SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+
+  return(
+    <div style={{background:'#04080F',minHeight:'100vh',color:'#DDE6F5',fontFamily:'system-ui,sans-serif',fontSize:13}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px',height:46,borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7.5" stroke="#00D4AA" strokeWidth="1.3"/><ellipse cx="9" cy="9" rx="7.5" ry="2.8" stroke="#00D4AA" strokeWidth="0.8" strokeDasharray="2 2"/><circle cx="9" cy="9" r="2" fill="#00D4AA" opacity=".5"/></svg>
+          <b style={{fontSize:14}}>Bio<span style={{color:'#00D4AA'}}>Planet</span></b>
+        </div>
+        <div style={{display:'flex',gap:4}}>
+          {['planet','creatures','ecosystem'].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{padding:'4px 12px',borderRadius:5,border:'none',fontSize:11,fontWeight:600,cursor:'pointer',background:tab===t?'#00D4AA':'transparent',color:tab===t?'#000':'#5A6A88',transition:'all .15s'}}>
+              {t==='planet'?'🌍 Planeta 3D':t==='creatures'?'🦎 Criaturas':'🕸 Ecosistema'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab==='planet'&&(
+        <div style={{display:'grid',gridTemplateColumns:'220px 1fr 190px',height:'calc(100vh - 46px)'}}>
+          <div className="scrollable" style={{borderRight:'1px solid rgba(255,255,255,0.06)',padding:'12px 10px'}}>
+            <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',color:'#2D3A55',marginBottom:7}}>Presets</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:12}}>
+              {Object.keys(PRESETS).map(name=>(
+                <button key={name} onClick={()=>applyPreset(name)} style={{fontSize:9,padding:'2px 7px',borderRadius:99,cursor:'pointer',border:`0.5px solid ${activePreset===name?'rgba(0,212,170,0.4)':'rgba(255,255,255,0.08)'}`,background:activePreset===name?'rgba(0,212,170,0.15)':'transparent',color:activePreset===name?'#00D4AA':'#5A6A88'}}>{name}</button>
+              ))}
+            </div>
+            {Object.entries(groups).map(([g,ms])=>(
+              <div key={g} style={{marginBottom:10}}>
+                <div style={{fontSize:8,textTransform:'uppercase',letterSpacing:'.08em',color:'#1A2A40',marginBottom:5,paddingBottom:3,borderBottom:'1px solid rgba(255,255,255,0.04)'}}>{g}</div>
+                {ms.map(m=>{
+                  const dec=m.step<1?(m.step<0.01?4:2):0;
+                  return(
+                    <div key={m.sym} style={{marginBottom:8}}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}>
+                        <span style={{fontSize:9,color:'#4A5A78',fontFamily:'monospace'}}>{m.sym} <span style={{color:'#2D3A55'}}>{m.label}</span></span>
+                        <span style={{fontSize:9,color:'#00D4AA',fontFamily:'monospace'}}>{vals[m.sym].toFixed(dec)} {m.unit}</span>
+                      </div>
+                      <input type="range" min={m.min} max={m.max} step={m.step} value={vals[m.sym]} onChange={e=>setVal(m.sym,parseFloat(e.target.value))}/>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{flex:'1',position:'relative',minHeight:300}}>
+              <PlanetCanvas vals={vals}/>
+              <div style={{position:'absolute',top:12,right:12,background:`${scoreColor}18`,border:`1px solid ${scoreColor}50`,borderRadius:10,padding:'10px 14px',textAlign:'center',pointerEvents:'none'}}>
+                <div style={{fontSize:30,fontWeight:800,color:scoreColor,fontFamily:'monospace',lineHeight:1}}>{Math.round(score*100)}</div>
+                <div style={{fontSize:9,color:scoreColor,letterSpacing:'.06em',marginTop:3}}>{scoreLabel}</div>
+              </div>
+              <div style={{position:'absolute',bottom:8,left:8,fontSize:9,color:'#1A2A40'}}>Arrastra · Scroll zoom</div>
+            </div>
+            <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',padding:12,background:'#070C16'}}>
+              <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',color:'#2D3A55',marginBottom:8}}>Rasgos emergentes</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6}}>
+                {rules.map((r,i)=>(
+                  <div key={i} style={{background:`${r.col}12`,border:`0.5px solid ${r.col}40`,borderRadius:7,padding:'6px 8px'}}>
+                    <div style={{fontSize:9,color:'#5A6A88',marginBottom:2}}>{r.cat}</div>
+                    <div style={{fontSize:10,fontWeight:600,color:r.col}}>{r.icon} {r.name}</div>
+                    <div style={{fontSize:9,color:'#3A4A60',marginTop:2}}>{r.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="scrollable" style={{borderLeft:'1px solid rgba(255,255,255,0.06)',padding:12,display:'flex',flexDirection:'column',gap:10}}>
+            <div>
+              <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',color:'#2D3A55',marginBottom:8}}>Ser vivo — IA</div>
+              <button onClick={generateCreature} disabled={generating} style={{width:'100%',padding:'7px',borderRadius:6,border:'0.5px solid #00D4AA',background:'rgba(0,212,170,0.1)',color:'#00D4AA',fontSize:11,cursor:'pointer',marginBottom:8,opacity:generating?0.6:1}}>
+                {generating?'Generando…':creature?'Regenerar ↻':'Generar →'}
+              </button>
+              {creature?<p style={{fontSize:10,color:'#8A9AB8',lineHeight:1.7}}>{creature}</p>:<p style={{fontSize:10,color:'#2D3A55',fontStyle:'italic'}}>Ajusta minerales y pulsa "Generar"</p>}
+            </div>
+            <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:10}}>
+              <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',color:'#2D3A55',marginBottom:8}}>Análogos terrestres</div>
+              {[
+                {cond:vals.O2>15&&vals.Ca>20,n:"Homo sapiens",d:"Alta Ca+O₂"},
+                {cond:vals.H2S>1&&vals.O2<5,n:"Riftia pachyptila",d:"Fumarola H₂S"},
+                {cond:vals.Temp<=-10,n:"Dissostichus mawsoni",d:"Pez antártico"},
+                {cond:vals.Si>100&&vals.H2O>10,n:"Thalassiosira sp.",d:"Diatomea"},
+                {cond:vals.Cu>0.04&&vals.Fe<10,n:"Octopus vulgaris",d:"Cu alto"},
+                {cond:vals.pH<3,n:"Picrophilus torridus",d:"pH 2 — arquea"},
+              ].filter(a=>a.cond).slice(0,4).map(a=>(
+                <div key={a.n} style={{background:'rgba(0,212,170,0.06)',border:'0.5px solid #2D7A5A',borderRadius:5,padding:'5px 8px',marginBottom:5}}>
+                  <div style={{fontSize:10,fontStyle:'italic',color:'#00D4AA'}}>{a.n}</div>
+                  <div style={{fontSize:9,color:'#2D3A55'}}>{a.d}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab==='creatures'&&(
+        <div style={{padding:20,maxWidth:900,margin:'0 auto'}}>
+          <div style={{fontSize:12,color:'#5A6A88',marginBottom:16}}>Seres vivos generados por el motor evolutivo según la composición mineral actual.</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            {[
+              {cond:vals.Ca>=30&&vals.O2>=15&&vals.Fe>=30, name:"Vertebrado calcico",latin:"Calciosapiens vertebratus",col:"#F87171",icon:"🦴",desc:`Organismo multicelular con endoesqueleto de hidroxiapatita. Sangre roja por hemoglobina con Fe²⁺. Homeotermo con temperatura interna estable. Sistema nervioso centralizado con encéfalo bien desarrollado.`,anim:"swim"},
+              {cond:vals.Cu>=40&&vals.Fe<25,              name:"Cefalópodo cuprífero",latin:"Cyanosquid cupriferus",col:"#60A5FA",icon:"🐙",desc:`Invertebrado con hemocianina (Cu²⁺) en hemolinfa — sangre azul característica. Sin esqueleto rígido. Sistema nervioso gangliado distribuido en brazos. Capaz de cambiar color y textura.`,anim:"float"},
+              {cond:vals.H2S>=1&&vals.O2<8,               name:"Gusano quimioautótrofo",latin:"Riftia chemosyntheta",col:"#FBBF24",icon:"🪱",desc:`Organismo tubular sin boca ni estómago en estado adulto. Alberga bacterias simbiontes que oxidan H₂S. Hemoglobina gigante de 36 subunidades que une simultáneamente H₂S y O₂.`,anim:"sway"},
+              {cond:vals.Si>=80&&vals.H2O>=10,             name:"Diatomea silícea gigante",latin:"Megadiatoma siliceus",col:"#A78BFA",icon:"💎",desc:`Alga unicelular con frustula de SiO₂ nanoestructurada. Fotosíntesis oxigénica. Alta acumulación de Si (25% del peso seco). Responsable del 20% de la productividad primaria oceánica.`,anim:"pulse"},
+              {cond:vals.Temp<=-10,                        name:"Criorganism AFP",latin:"Frigosapiens antifreezus",col:"#BAE6FD",icon:"❄️",desc:`Organismo adaptado a temperaturas bajo cero. Proteínas anticongelantes (AFP) tipo III inhiben la formación de cristales de hielo intracelulares. Trehalosa como crioprotector celular.`,anim:"float"},
+              {cond:vals.Mg>=15&&vals.O2>=5,               name:"Macroalga fotosintética",latin:"Chlorophytus magnificus",col:"#4ADE80",icon:"🌿",desc:`Eucariota multicelular con clorofila a/b (centro Mg²⁺). Fotosistema II con clúster Mn₄CaO₅ que oxida agua produciendo O₂. Pared celular de celulosa + lignina.`,anim:"sway"},
+            ].filter(c=>c.cond).slice(0,4).map(cr=>(
+              <div key={cr.name} style={{background:'rgba(255,255,255,0.03)',border:`0.5px solid ${cr.col}30`,borderRadius:10,padding:16}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:cr.col}}>{cr.icon} {cr.name}</div>
+                    <div style={{fontSize:9,fontStyle:'italic',color:'#5A6A88',marginTop:2}}>{cr.latin}</div>
+                  </div>
+                </div>
+                <p style={{fontSize:11,color:'#7A8AA0',lineHeight:1.6}}>{cr.desc}</p>
+              </div>
+            ))}
+            {[vals.Ca>=30&&vals.O2>=15&&vals.Fe>=30,vals.Cu>=40&&vals.Fe<25,vals.H2S>=1&&vals.O2<8,vals.Si>=80&&vals.H2O>=10,vals.Temp<=-10,vals.Mg>=15&&vals.O2>=5].filter(Boolean).length===0&&(
+              <div style={{gridColumn:'1/-1',textAlign:'center',padding:40,color:'#2D3A55'}}>Ajusta los minerales para generar criaturas.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab==='ecosystem'&&(
+        <div style={{padding:20,maxWidth:900,margin:'0 auto'}}>
+          <div style={{fontSize:12,color:'#5A6A88',marginBottom:16}}>Red trófica y equilibrio del ecosistema generado por la composición mineral actual.</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+            {[
+              {name:"Productores primarios", pop:score>0.5?80:30, max:100, col:"#4ADE80", desc:`Plantas/algas — base energética. ${vals.Mg>15?'Fotosíntesis activa con Mg.':'Quimiosíntesis si hay H₂S.'}`},
+              {name:"Herbívoros primarios",   pop:score>0.5?45:15, max:60,  col:"#60A5FA", desc:`Consumen productores. ${vals.Ca>20?'Exoesqueleto calcificado.':'Sin mineralización.'}`},
+              {name:"Carnívoros",             pop:score>0.5?20:8,  max:30,  col:"#F87171", desc:`Depredadores intermedios. ${vals.O2>15?'Aeróbicos eficientes.':'Metabolismo reducido.'}`},
+              {name:"Depredadores ápex",      pop:score>0.5?8:2,   max:15,  col:"#FBBF24", desc:`Cima de la cadena trófica. ${score>0.7?'Ecosistema estable.':'En riesgo de colapso.'}`},
+              {name:"Descomponedores",         pop:score>0.3?60:20, max:80,  col:"#A78BFA", desc:`Hongos y bacterias. Reciclan ${vals.P>0.3?'P, N, Ca':'nutrientes escasos'}.`},
+              {name:"Quimioautos",             pop:vals.H2S>1?50:5, max:70,  col:"#FBBF24", desc:vals.H2S>1?'Activos — H₂S abundante como energía.':'Inactivos — H₂S insuficiente.'},
+            ].map(n=>{
+              const pct=Math.round(n.pop/n.max*100);
+              const danger=pct<20;
+              return(
+                <div key={n.name} style={{background:'rgba(255,255,255,0.03)',border:`0.5px solid ${n.col}30`,borderRadius:9,padding:12}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:600,color:n.col}}>{n.name}</span>
+                    <span style={{fontSize:10,fontFamily:'monospace',color:danger?'#F87171':n.col}}>{Math.round(n.pop)}</span>
+                  </div>
+                  <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:2,marginBottom:8}}>
+                    <div style={{height:'100%',width:`${pct}%`,background:danger?'#F87171':n.col,borderRadius:2,transition:'width .5s'}}/>
+                  </div>
+                  <div style={{fontSize:10,color:'#5A6A88',lineHeight:1.5}}>{n.desc}</div>
+                  {danger&&<div style={{fontSize:9,color:'#F87171',marginTop:4}}>⚠ Riesgo de extinción</div>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{background:'rgba(0,212,170,0.05)',border:'0.5px solid rgba(0,212,170,0.2)',borderRadius:10,padding:14}}>
+            <div style={{fontSize:11,fontWeight:600,color:'#00D4AA',marginBottom:6}}>
+              {score>=0.7?'✓ Ecosistema estable — equilibrio trófico mantenido':score>=0.4?'⚠ Ecosistema frágil — algunas especies en riesgo':'✗ Colapso probable — condiciones extremas limitan la biodiversidad'}
+            </div>
+            <div style={{fontSize:10,color:'#5A6A88',lineHeight:1.6}}>
+              Ciclos activos: {[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.H2S>0.1&&'S',vals.Mg>=10&&'Mg'].filter(Boolean).join(' · ')||'ninguno'}.
+              {' '}Score de habitabilidad: {Math.round(score*100)}%.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
 </body>
 </html>
