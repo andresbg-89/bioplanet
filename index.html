@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>BioPlanet — Simulador Evolutivo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -441,6 +442,7 @@ void main(){
     </div>
     <div id="tab-btns" style="display:flex;gap:3px;"></div>
     <div style="display:flex;gap:6px;align-items:center;">
+      <button onclick="openGallery()" class="btn" style="font-size:11px;font-weight:600;padding:5px 12px;">🌐 Universo</button>
       <button onclick="toggleLang()" id="lang-btn" style="padding:4px 10px;border-radius:6px;border:0.5px solid var(--border);background:transparent;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:10px;cursor:pointer;">🌐 EN</button>
       <button onclick="createPlanet()" class="btn btn-teal" style="font-weight:700;font-size:11px;" id="create-btn">✦ Crear Planeta</button>
     </div>
@@ -451,25 +453,123 @@ void main(){
 <!-- MODAL -->
 <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
   <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.3);border-radius:16px;padding:28px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;animation:fadeIn .3s ease;box-shadow:0 0 60px rgba(0,212,170,0.2);">
-    <div style="text-align:center;margin-bottom:20px;">
+    <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:10px;color:var(--teal);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">✦ Planeta Registrado ✦</div>
       <div style="font-size:20px;font-weight:700;margin-bottom:10px;">Tu planeta es único en el universo</div>
       <div id="modal-code" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal);background:var(--teal-d);border:1px solid rgba(0,212,170,0.3);border-radius:8px;padding:10px 20px;display:inline-block;letter-spacing:.12em;animation:glow 2s ease infinite;"></div>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;">Este código identifica tu planeta — nadie más puede tenerlo igual</div>
+      <div id="modal-save-status" style="margin-top:8px;min-height:20px;display:flex;justify-content:center;"></div>
     </div>
-    <div id="modal-planet-img" style="height:200px;border-radius:10px;overflow:hidden;margin-bottom:14px;background:var(--bg3);display:flex;align-items:center;justify-content:center;">
-      <button onclick="genModalImg()" class="btn btn-teal" style="font-size:11px;">🌍 Generar imagen IA de tu planeta</button>
-    </div>
+    <div id="modal-planet-img" style="height:200px;border-radius:10px;overflow:hidden;margin-bottom:14px;background:var(--bg3);display:flex;align-items:center;justify-content:center;"></div>
     <div id="modal-stats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;"></div>
     <div id="modal-creatures" style="margin-bottom:16px;"></div>
     <div style="display:flex;gap:8px;">
       <button onclick="copyCode()" class="btn btn-teal" style="flex:1;">📋 Copiar código</button>
+      <button onclick="shareToGallery()" class="btn btn-teal" style="flex:1;">🌍 Ver galería</button>
       <button onclick="closeModal()" class="btn" style="flex:1;">Explorar</button>
     </div>
   </div>
 </div>
 
+<!-- MODAL GALERÍA -->
+<div id="modal-gallery" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.2);border-radius:16px;padding:24px;max-width:860px;width:95%;max-height:90vh;overflow-y:auto;animation:fadeIn .3s ease;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <div style="font-size:16px;font-weight:700;">🌍 Universo BioPlanet</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">Planetas creados por la comunidad</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="search-code-input" placeholder="Buscar por código BP-…" style="background:var(--bg3);border:0.5px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:11px;width:180px;outline:none;font-family:JetBrains Mono,monospace;" oninput="searchByCode()"/>
+        <button onclick="closeGallery()" style="background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div id="gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+      <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--dim);">
+        <div style="width:24px;height:24px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 8px;"></div>
+        Cargando planetas…
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+// ═══════════════════════════════════════════════════════
+// SUPABASE — Cliente y funciones de base de datos
+// ═══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://nlmzgxqbdqlyznhxnnuf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sbXpneHFiZHFseXpuaHhubnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTUxMDIsImV4cCI6MjA5NTA5MTEwMn0.VYFEIyPWkMmfr_HRRO_UFkGS46BPPkbc2Yh1kuGCTCs';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Guardar planeta en Supabase
+async function savePlanetToDB(vals, code, score, creatures) {
+  try {
+    // Guardar planeta
+    const { data: planet, error: pErr } = await sb
+      .from('planets')
+      .upsert({
+        code,
+        name: `Planeta ${code}`,
+        vals: vals,
+        score: Math.round(score * 100) / 100,
+        is_public: true,
+      }, { onConflict: 'code' })
+      .select()
+      .single();
+
+    if (pErr) throw pErr;
+
+    // Guardar criaturas
+    const creatureRows = creatures.map(c => ({
+      planet_id: planet.id,
+      latin_name: c.latinName,
+      traits: {
+        skeleton: c.skeleton, blood: c.blood, meta: c.meta,
+        nervous: c.nervous, thermo: c.thermo, loco: c.loco,
+        size: c.size, complexity: c.complexity,
+      },
+      seed: c.seed,
+    }));
+
+    // Borrar criaturas anteriores si existe el planeta
+    await sb.from('creatures').delete().eq('planet_id', planet.id);
+    await sb.from('creatures').insert(creatureRows);
+
+    return { ok: true, id: planet.id };
+  } catch (err) {
+    console.error('Error guardando planeta:', err);
+    return { ok: false, error: err.message };
+  }
+}
+
+// Cargar planetas recientes
+async function loadRecentPlanets(limit = 12) {
+  const { data, error } = await sb
+    .from('planets')
+    .select('id, code, name, score, vals, created_at, views')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data || [];
+}
+
+// Cargar un planeta por código
+async function loadPlanetByCode(code) {
+  const { data, error } = await sb
+    .from('planets')
+    .select('*, creatures(*)')
+    .eq('code', code)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+// Incrementar vistas
+async function incrementViews(code) {
+  await sb.rpc('increment_views', { planet_code: code }).catch(() => {});
+}
+
 // ═══════════════════════════════════════════════════════
 // DATOS
 // ═══════════════════════════════════════════════════════
@@ -1070,24 +1170,57 @@ function applyPreset(name){
   });
   if(threeState.update)threeState.update(vals);
 }
-function createPlanet(){
+async function createPlanet(){
   const code=planetCode(vals);
   const score=calcScore(vals);
   const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
   const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
   lastCreatures=creatures;
+
+  // Mostrar modal inmediatamente
   document.getElementById('modal-code').textContent=code;
+  document.getElementById('modal-save-status').innerHTML=`
+    <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);">
+      <div style="width:10px;height:10px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      Guardando en la nube…
+    </div>`;
   document.getElementById('modal-stats').innerHTML=[
-    {l:"Habitabilidad",v:`${Math.round(score*100)}%`,c:scoreCol},
-    {l:"Criaturas",v:`${creatures.length}`,c:'var(--teal)'},
-    {l:"Temperatura",v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
-    {l:"O₂",v:`${vals.O2}%`,c:vals.O2>15?'var(--teal)':'#F87171'},
-    {l:"H₂O",v:`${vals.H2O}%`,c:'#60A5FA'},
-    {l:"Gravedad",v:`${vals.gravity}g`,c:'#A78BFA'},
+    {l:lang==='en'?'Habitability':'Habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
+    {l:lang==='en'?'Creatures':'Criaturas',v:`${creatures.length}`,c:'var(--teal)'},
+    {l:lang==='en'?'Temperature':'Temperatura',v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+    {l:'O₂',v:`${vals.O2}%`,c:vals.O2>15?'var(--teal)':'#F87171'},
+    {l:'H₂O',v:`${vals.H2O}%`,c:'#60A5FA'},
+    {l:lang==='en'?'Gravity':'Gravedad',v:`${vals.gravity}g`,c:'#A78BFA'},
   ].map(({l,v,c})=>`<div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:9px;color:var(--muted);margin-bottom:3px;">${l}</div><div style="font-size:12px;font-weight:700;color:${c};">${v}</div></div>`).join('');
-  document.getElementById('modal-creatures').innerHTML=`<div class="label">Criaturas de tu planeta</div>${creatures.slice(0,3).map(c=>`<div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:7px;padding:7px 10px;margin-bottom:5px;"><div style="width:8px;height:8px;border-radius:50%;background:${c.orgCol};flex-shrink:0;"></div><div style="flex:1;"><div style="font-size:11px;font-style:italic;color:${c.orgCol};font-weight:600;">${c.latinName}</div><div style="font-size:9px;color:var(--muted);">${c.complexity} · ${c.meta}</div></div><span style="font-size:9px;color:var(--muted);">${c.size}</span></div>`).join('')}`;
-  document.getElementById('modal-planet-img').innerHTML=`<button onclick="genModalImg()" class="btn btn-teal" style="font-size:11px;">🌍 Generar imagen IA de tu planeta</button>`;
+  document.getElementById('modal-creatures').innerHTML=`
+    <div class="label">${lang==='en'?'Creatures of your planet':'Criaturas de tu planeta'}</div>
+    ${creatures.slice(0,3).map(c=>`
+      <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:7px;padding:7px 10px;margin-bottom:5px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:${c.orgCol};flex-shrink:0;box-shadow:0 0 5px ${c.orgCol};"></div>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-style:italic;color:${c.orgCol};font-weight:600;">${c.latinName}</div>
+          <div style="font-size:9px;color:var(--muted);">${c.complexity} · ${c.meta}</div>
+        </div>
+        <span style="font-size:9px;color:var(--muted);">${c.size}</span>
+      </div>`).join('')}`;
+  document.getElementById('modal-planet-img').innerHTML=`<button onclick="genModalImg()" class="btn btn-teal" style="font-size:11px;">🌍 ${lang==='en'?'Generate AI image of your planet':'Generar imagen IA de tu planeta'}</button>`;
   document.getElementById('modal').style.display='flex';
+
+  // Guardar en Supabase en background
+  const result = await savePlanetToDB(vals, code, score, creatures);
+  const statusEl = document.getElementById('modal-save-status');
+  if(statusEl){
+    if(result.ok){
+      statusEl.innerHTML=`
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--teal);">
+          <span style="font-size:14px;">✓</span>
+          ${lang==='en'?'Saved to cloud · Permanent ID:':'Guardado en la nube · ID permanente:'}
+          <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--muted);">${result.id?.substring(0,8)}…</span>
+        </div>`;
+    } else {
+      statusEl.innerHTML=`<div style="font-size:9px;color:#F87171;">⚠ ${lang==='en'?'Could not save to cloud':'No se pudo guardar en la nube'}</div>`;
+    }
+  }
 }
 function genModalImg(){
   const el=document.getElementById('modal-planet-img');
@@ -1098,6 +1231,102 @@ function closeModal(){document.getElementById('modal').style.display='none';}
 function copyCode(){
   const code=document.getElementById('modal-code').textContent;
   navigator.clipboard?.writeText(code).then(()=>{const btn=event.target;const orig=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=orig,2000);});
+}
+
+// ─── Galería de planetas ──────────────────────────────
+async function shareToGallery(){
+  closeModal();
+  openGallery();
+}
+
+async function openGallery(){
+  document.getElementById('modal-gallery').style.display='flex';
+  const planets = await loadRecentPlanets(24);
+  renderGalleryGrid(planets);
+}
+
+function closeGallery(){
+  document.getElementById('modal-gallery').style.display='none';
+}
+
+function renderGalleryGrid(planets){
+  const grid = document.getElementById('gallery-grid');
+  if(!grid) return;
+  if(!planets || planets.length === 0){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--dim);">No hay planetas guardados aún. ¡Crea el primero!</div>`;
+    return;
+  }
+  grid.innerHTML = planets.map(p => {
+    const score = p.score || 0;
+    const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+    const v = p.vals || {};
+    const date = new Date(p.created_at).toLocaleDateString(lang==='en'?'en-US':'es-ES',{day:'numeric',month:'short'});
+    // Mini planeta SVG basado en vals
+    const planetCol = v.H2S>2?'#B8860B':v.Temp<-20?'#7AA0C4':v.Temp>50?'#C0441A':v.H2O>30?'#1D6B8C':'#4A7A4A';
+    return`
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .2s;"
+      onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'"
+      onclick="loadPlanetFromGallery('${p.code}')">
+      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+        <svg viewBox="0 0 60 60" width="60" height="60">
+          <circle cx="30" cy="30" r="24" fill="${planetCol}"/>
+          <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <ellipse cx="22" cy="22" rx="8" ry="5" fill="white" opacity="0.08"/>
+          ${v.H2O>25?`<ellipse cx="25" cy="35" rx="8" ry="5" fill="#1E90FF" opacity="0.4"/>`:'' }
+          ${v.Temp<-15?`<ellipse cx="30" cy="8" rx="10" ry="4" fill="white" opacity="0.5"/>`:'' }
+          <ellipse cx="30" cy="30" rx="24" ry="6" fill="none" stroke="${scoreCol}30" stroke-width="0.8" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+      <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--teal);text-align:center;margin-bottom:4px;letter-spacing:.05em;">${p.code}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:var(--dim);">${date}</div>
+        <div style="font-size:10px;font-weight:700;color:${scoreCol};">${Math.round(score*100)}%</div>
+      </div>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">
+        ${[
+          v.O2>15?{l:'O₂',c:'#00D4AA'}:null,
+          v.H2O>30?{l:'H₂O',c:'#60A5FA'}:null,
+          v.H2S>1?{l:'H₂S',c:'#FBBF24'}:null,
+          v.Temp<-20?{l:'❄',c:'#60A5FA'}:null,
+          v.Temp>50?{l:'🌋',c:'#F87171'}:null,
+        ].filter(Boolean).slice(0,3).map(t=>`
+          <span style="font-size:8px;padding:1px 5px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
+        `).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadPlanetFromGallery(code){
+  closeGallery();
+  const planet = await loadPlanetByCode(code);
+  if(!planet || !planet.vals){
+    alert(`No se pudo cargar el planeta ${code}`);
+    return;
+  }
+  // Aplicar valores del planeta cargado
+  Object.entries(planet.vals).forEach(([sym, v]) => {
+    if(vals[sym] !== undefined) vals[sym] = v;
+    const sl = document.querySelector(`input[oninput*="'${sym}'"]`);
+    if(sl) sl.value = v;
+    const m = SLIDERS.find(s => s.sym === sym);
+    const vl = document.getElementById('vl-'+sym);
+    if(vl && m){ const dec=m.step<1?(m.step<0.01?4:2):0; vl.textContent=`${parseFloat(v).toFixed(dec)} ${m.unit}`; }
+  });
+  if(threeState.update) threeState.update(vals);
+  // Mostrar notificación
+  const notif = document.createElement('div');
+  notif.style.cssText=`position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,212,170,0.15);border:1px solid rgba(0,212,170,0.4);border-radius:8px;padding:10px 20px;font-size:12px;color:var(--teal);z-index:9999;font-family:'JetBrains Mono',monospace;`;
+  notif.textContent = `✓ Planeta ${code} cargado`;
+  document.body.appendChild(notif);
+  setTimeout(()=>notif.remove(), 3000);
+}
+
+async function searchByCode(){
+  const query = document.getElementById('search-code-input')?.value?.trim();
+  if(!query || query.length < 3){ openGallery(); return; }
+  const { data } = await sb.from('planets').select('*').ilike('code', `%${query}%`).limit(12);
+  renderGalleryGrid(data || []);
 }
 
 // ═══════════════════════════════════════════════════════
