@@ -6,6 +6,10 @@
 <title>BioPlanet — Simulador Evolutivo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script async crossorigin="anonymous" data-clerk-publishable-key="pk_test_Y2FwYWJsZS1ob3JzZS00OC5jbGVyay5hY2NvdW50cy5kZXYk"
+  src="https://capable-horse-48.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  type="text/javascript">
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -442,8 +446,34 @@ void main(){
     </div>
     <div id="tab-btns" style="display:flex;gap:3px;"></div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <button onclick="openGallery()" class="btn" style="font-size:11px;font-weight:600;padding:5px 12px;">🌐 Universo</button>
+      <button onclick="openGallery()" class="btn" style="font-size:11px;font-weight:600;padding:5px 12px;">🌍 Universo</button>
       <button onclick="toggleLang()" id="lang-btn" style="padding:4px 10px;border-radius:6px;border:0.5px solid var(--border);background:transparent;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:10px;cursor:pointer;">🌐 EN</button>
+      <!-- Clerk user button -->
+      <div id="user-btn-area" style="display:flex;align-items:center;gap:6px;">
+        <button onclick="openSignIn()" id="sign-in-btn" class="btn" style="font-size:11px;padding:5px 12px;display:none;">
+          👤 Entrar
+        </button>
+        <div id="user-menu" style="display:none;position:relative;">
+          <button onclick="toggleUserMenu()" id="user-avatar-btn" style="display:flex;align-items:center;gap:6px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--teal);font-size:11px;font-family:inherit;">
+            <div id="user-avatar" style="width:22px;height:22px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#000;"></div>
+            <span id="user-name" style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            <span style="font-size:8px;opacity:.6;">▼</span>
+          </button>
+          <div id="user-dropdown" style="display:none;position:absolute;right:0;top:34px;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+            <div id="user-email" style="padding:6px 10px;font-size:9px;color:var(--muted);border-bottom:0.5px solid var(--border);margin-bottom:4px;font-family:'JetBrains Mono',monospace;"></div>
+            <button onclick="switchTab('myplanets');toggleUserMenu();" style="width:100%;text-align:left;background:transparent;border:none;color:var(--text);font-size:11px;padding:7px 10px;cursor:pointer;border-radius:6px;font-family:inherit;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+              🪐 Mis planetas
+            </button>
+            <button onclick="openGallery();toggleUserMenu();" style="width:100%;text-align:left;background:transparent;border:none;color:var(--text);font-size:11px;padding:7px 10px;cursor:pointer;border-radius:6px;font-family:inherit;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+              🌍 Universo
+            </button>
+            <div style="border-top:0.5px solid var(--border);margin:4px 0;"></div>
+            <button onclick="signOut()" style="width:100%;text-align:left;background:transparent;border:none;color:#F87171;font-size:11px;padding:7px 10px;cursor:pointer;border-radius:6px;font-family:inherit;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background='transparent'">
+              ↩ Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
       <button onclick="createPlanet()" class="btn btn-teal" style="font-weight:700;font-size:11px;" id="create-btn">✦ Crear Planeta</button>
     </div>
   </div>
@@ -493,7 +523,124 @@ void main(){
   </div>
 </div>
 
+<!-- CLERK SIGN-IN MODAL -->
+<div id="clerk-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+  <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.3);border-radius:16px;padding:28px;max-width:380px;width:90%;animation:fadeIn .3s ease;box-shadow:0 0 60px rgba(0,212,170,0.15);">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:28px;margin-bottom:8px;">🪐</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Entra a BioPlanet</div>
+      <div style="font-size:11px;color:var(--muted);">Guarda tus planetas y accede desde cualquier dispositivo</div>
+    </div>
+    <div id="clerk-signin-container"></div>
+    <button onclick="closeSignIn()" style="width:100%;margin-top:12px;background:transparent;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:6px;font-family:inherit;">Cancelar</button>
+  </div>
+</div>
+
 <script>
+// ═══════════════════════════════════════════════════════
+// CLERK — Autenticación de usuarios
+// ═══════════════════════════════════════════════════════
+let clerkUser = null;
+let clerkInstance = null;
+
+window.addEventListener('load', async () => {
+  try {
+    await window.Clerk?.load();
+    clerkInstance = window.Clerk;
+    clerkUser = clerkInstance?.user || null;
+    updateUserUI();
+
+    // Escuchar cambios de sesión
+    clerkInstance?.addListener(({ user }) => {
+      clerkUser = user;
+      updateUserUI();
+      if(user) closeSignIn();
+    });
+  } catch(e) {
+    console.warn('Clerk no disponible:', e);
+  }
+});
+
+function updateUserUI(){
+  const signInBtn   = document.getElementById('sign-in-btn');
+  const userMenu    = document.getElementById('user-menu');
+  const userAvatar  = document.getElementById('user-avatar');
+  const userNameEl  = document.getElementById('user-name');
+  const userEmailEl = document.getElementById('user-email');
+
+  if(clerkUser){
+    if(signInBtn)  signInBtn.style.display  = 'none';
+    if(userMenu)   userMenu.style.display   = 'block';
+    const name = clerkUser.firstName || clerkUser.username || clerkUser.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User';
+    const email = clerkUser.emailAddresses?.[0]?.emailAddress || '';
+    const initials = name.slice(0,2).toUpperCase();
+    if(userAvatar)  userAvatar.textContent  = initials;
+    if(userNameEl)  userNameEl.textContent  = name;
+    if(userEmailEl) userEmailEl.textContent = email;
+  } else {
+    if(signInBtn)  signInBtn.style.display  = 'block';
+    if(userMenu)   userMenu.style.display   = 'none';
+  }
+}
+
+function toggleUserMenu(){
+  const dd = document.getElementById('user-dropdown');
+  if(dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+// Cerrar dropdown al click fuera
+document.addEventListener('click', e => {
+  if(!e.target.closest('#user-menu')){
+    const dd = document.getElementById('user-dropdown');
+    if(dd) dd.style.display = 'none';
+  }
+});
+
+async function openSignIn(){
+  const modal = document.getElementById('clerk-modal');
+  const container = document.getElementById('clerk-signin-container');
+  if(!modal || !container) return;
+  modal.style.display = 'flex';
+  try {
+    await clerkInstance?.mountSignIn(container, {
+      appearance:{
+        variables:{ colorPrimary:'#00D4AA', colorBackground:'#070D1A', colorText:'#DDE6F5', colorInputBackground:'#0C1525', borderRadius:'8px' }
+      }
+    });
+  } catch(e){
+    // Fallback si Clerk no cargó
+    container.innerHTML=`
+      <div style="text-align:center;padding:20px;color:var(--muted);font-size:11px;">
+        <div style="font-size:24px;margin-bottom:8px;">⚠</div>
+        Clerk no pudo cargar.<br>Verifica tu conexión a internet.
+      </div>`;
+  }
+}
+
+function closeSignIn(){
+  const modal = document.getElementById('clerk-modal');
+  if(modal) modal.style.display = 'none';
+  try { clerkInstance?.unmountSignIn(document.getElementById('clerk-signin-container')); } catch(e){}
+}
+
+async function signOut(){
+  try {
+    await clerkInstance?.signOut();
+    clerkUser = null;
+    updateUserUI();
+    toggleUserMenu();
+    // Notificación
+    showNotif('✓ Sesión cerrada','#94A3B8');
+  } catch(e){ console.warn('Error al cerrar sesión:', e); }
+}
+
+function showNotif(msg, color='var(--teal)'){
+  const notif = document.createElement('div');
+  notif.style.cssText=`position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);border:1px solid ${color};border-radius:8px;padding:10px 20px;font-size:12px;color:${color};z-index:9999;font-family:'JetBrains Mono',monospace;pointer-events:none;`;
+  notif.textContent = msg;
+  document.body.appendChild(notif);
+  setTimeout(()=>{notif.style.opacity='0';notif.style.transition='opacity .5s';setTimeout(()=>notif.remove(),500);}, 2500);
+}
+
 // ═══════════════════════════════════════════════════════
 // SUPABASE — Cliente y funciones de base de datos
 // ═══════════════════════════════════════════════════════
@@ -504,6 +651,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Guardar planeta en Supabase
 async function savePlanetToDB(vals, code, score, creatures) {
   try {
+    const userId   = clerkUser?.id    || null;
+    const userName = clerkUser?.firstName || clerkUser?.username || null;
     // Guardar planeta
     const { data: planet, error: pErr } = await sb
       .from('planets')
@@ -513,6 +662,8 @@ async function savePlanetToDB(vals, code, score, creatures) {
         vals: vals,
         score: Math.round(score * 100) / 100,
         is_public: true,
+        user_id:   userId,
+        user_name: userName,
       }, { onConflict: 'code' })
       .select()
       .single();
@@ -955,7 +1106,7 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','creatures','ecosystem','gallery','minerals'];
+  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
@@ -967,11 +1118,12 @@ function switchTab(tab){
 
 function renderMain(){
   const el=document.getElementById('main');
-  if(currentTab==='planet')renderPlanet(el);
-  else if(currentTab==='creatures')renderCreatures(el);
-  else if(currentTab==='ecosystem')renderEcosystem(el);
-  else if(currentTab==='gallery')renderGallery(el);
-  else if(currentTab==='minerals')renderMinerals(el);
+  if(currentTab==='planet')     renderPlanet(el);
+  else if(currentTab==='creatures') renderCreatures(el);
+  else if(currentTab==='ecosystem') renderEcosystem(el);
+  else if(currentTab==='gallery')   renderGallery(el);
+  else if(currentTab==='minerals')  renderMinerals(el);
+  else if(currentTab==='myplanets') renderMyPlanets(el);
 }
 
 // ─── PLANET TAB ──────────────────────────────────────
@@ -1336,7 +1488,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales'],
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -1397,7 +1549,7 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals'],
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets'],
     createBtn: '✦ Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
@@ -1792,6 +1944,142 @@ function renderMinerals(el){
     </div>
   </div>
 </div>`;
+}
+
+
+// ─── Mis Planetas ────────────────────────────────────
+async function renderMyPlanets(el){
+  // Si no hay sesión, mostrar pantalla de login
+  if(!clerkUser){
+    el.innerHTML=`
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;padding:40px;">
+        <div style="font-size:48px;">🪐</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text);">${lang==='en'?'Your planet collection':'Tu colección de planetas'}</div>
+        <div style="font-size:12px;color:var(--muted);text-align:center;max-width:360px;line-height:1.7;">
+          ${lang==='en'
+            ?'Sign in to save your planets permanently and access them from any device.'
+            :'Inicia sesión para guardar tus planetas permanentemente y acceder desde cualquier dispositivo.'}
+        </div>
+        <button onclick="openSignIn()" class="btn btn-teal" style="font-size:13px;padding:10px 28px;font-weight:700;">
+          👤 ${lang==='en'?'Sign in / Register':'Iniciar sesión / Registrarse'}
+        </button>
+        <div style="font-size:10px;color:var(--dim);">
+          ${lang==='en'?'Free · No credit card required':'Gratis · Sin tarjeta de crédito'}
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Mostrar loading
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:10px;">
+      <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <div style="font-size:11px;color:var(--muted);">Cargando tus planetas…</div>
+    </div>`;
+
+  // Cargar planetas del usuario
+  const { data: planets, error } = await sb
+    .from('planets')
+    .select('*')
+    .eq('user_id', clerkUser.id)
+    .order('created_at', { ascending: false });
+
+  if(error || !planets){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted);">Error cargando planetas.</div>`;
+    return;
+  }
+
+  const name = clerkUser.firstName || clerkUser.username || 'Explorador';
+
+  el.innerHTML=`
+    <div style="padding:20px 24px;overflow-y:auto;height:100%;">
+      <!-- Header usuario -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:16px;background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;">
+        <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#60A5FA);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#000;flex-shrink:0;">
+          ${name.slice(0,2).toUpperCase()}
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;">${lang==='en'?'Welcome back,':'Bienvenido,'} ${name}</div>
+          <div style="font-size:11px;color:var(--muted);">${clerkUser.emailAddresses?.[0]?.emailAddress || ''}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right;">
+          <div style="font-size:28px;font-weight:800;color:var(--teal);font-family:'JetBrains Mono',monospace;">${planets.length}</div>
+          <div style="font-size:10px;color:var(--muted);">${lang==='en'?'planets created':'planetas creados'}</div>
+        </div>
+      </div>
+
+      ${planets.length === 0 ? `
+        <div style="text-align:center;padding:40px;color:var(--muted);">
+          <div style="font-size:32px;margin-bottom:10px;">🌌</div>
+          <div style="font-size:14px;margin-bottom:6px;">${lang==='en'?'No planets yet':'Sin planetas aún'}</div>
+          <div style="font-size:11px;">${lang==='en'?'Create your first planet!':'¡Crea tu primer planeta!'}</div>
+          <button onclick="switchTab('planet')" class="btn btn-teal" style="margin-top:14px;font-size:12px;">🌍 ${lang==='en'?'Create planet':'Crear planeta'}</button>
+        </div>
+      ` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+          ${planets.map(p => {
+            const score = p.score || 0;
+            const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+            const v = p.vals || {};
+            const date = new Date(p.created_at).toLocaleDateString(lang==='en'?'en-US':'es-ES',{day:'numeric',month:'short',year:'numeric'});
+            const planetCol = v.H2S>2?'#B8860B':v.Temp<-20?'#7AA0C4':v.Temp>50?'#C0441A':v.H2O>30?'#1D6B8C':'#4A7A4A';
+            const minerals = getMineralsForPlanet(v).slice(0,3).map(m=>m.name_es||m.name).join(', ');
+            return`
+            <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s;"
+              onmouseover="this.style.borderColor='var(--teal)';this.style.transform='translateY(-2px)'"
+              onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'"
+              onclick="loadPlanetFromGallery('${p.code}');switchTab('planet');">
+              <!-- Mini planeta -->
+              <div style="display:flex;justify-content:center;margin-bottom:10px;">
+                <svg viewBox="0 0 80 80" width="80" height="80">
+                  <defs>
+                    <radialGradient id="pg-${p.code}" cx="35%" cy="35%">
+                      <stop offset="0%" stop-color="white" stop-opacity="0.15"/>
+                      <stop offset="100%" stop-color="${planetCol}"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="40" cy="40" r="34" fill="${scoreCol}15"/>
+                  <circle cx="40" cy="40" r="28" fill="url(#pg-${p.code})"/>
+                  ${v.H2O>25?`<ellipse cx="32" cy="46" rx="10" ry="6" fill="#1E90FF" opacity="0.4"/>`:'' }
+                  ${v.Temp<-15?`<ellipse cx="40" cy="14" rx="14" ry="5" fill="white" opacity="0.5"/>`:'' }
+                  <ellipse cx="30" cy="30" rx="10" ry="6" fill="white" opacity="0.08"/>
+                  <ellipse cx="40" cy="40" rx="34" ry="8" fill="none" stroke="${scoreCol}40" stroke-width="1" stroke-dasharray="4 3"/>
+                </svg>
+              </div>
+              <!-- Código -->
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--teal);text-align:center;margin-bottom:6px;letter-spacing:.06em;">${p.code}</div>
+              <!-- Score -->
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-size:9px;color:var(--muted);">${date}</div>
+                <div style="font-size:13px;font-weight:800;color:${scoreCol};font-family:'JetBrains Mono',monospace;">${Math.round(score*100)}%</div>
+              </div>
+              <!-- Barra score -->
+              <div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:8px;">
+                <div style="height:100%;width:${Math.round(score*100)}%;background:${scoreCol};border-radius:2px;"></div>
+              </div>
+              <!-- Condiciones -->
+              <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;">
+                ${[
+                  v.O2>15?{l:`O₂ ${v.O2}%`,c:'#00D4AA'}:null,
+                  v.H2O>30?{l:`H₂O ${v.H2O}%`,c:'#60A5FA'}:null,
+                  v.H2S>1?{l:`H₂S ${v.H2S}%`,c:'#FBBF24'}:null,
+                  v.Temp?{l:`${v.Temp}°C`,c:v.Temp<-20?'#60A5FA':v.Temp>50?'#F87171':'#4ADE80'}:null,
+                ].filter(Boolean).slice(0,3).map(t=>`
+                  <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
+                `).join('')}
+              </div>
+              <!-- Minerales -->
+              <div style="font-size:9px;color:var(--dim);line-height:1.4;">⬡ ${minerals}</div>
+              <!-- Botón cargar -->
+              <button onclick="event.stopPropagation();loadPlanetFromGallery('${p.code}');switchTab('planet');"
+                class="btn btn-teal" style="width:100%;margin-top:10px;font-size:10px;padding:5px;">
+                ${lang==='en'?'Load planet':'Cargar planeta'} →
+              </button>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
 }
 
 // ═══════════════════════════════════════════════════════
