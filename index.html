@@ -485,9 +485,9 @@ void main(){
   <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.3);border-radius:16px;padding:28px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;animation:fadeIn .3s ease;box-shadow:0 0 60px rgba(0,212,170,0.2);">
     <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:10px;color:var(--teal);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">✦ Planeta Registrado ✦</div>
-      <div style="font-size:20px;font-weight:700;margin-bottom:10px;">Tu planeta es único en el universo</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:10px;">Tu planeta ha sido registrado</div>
       <div id="modal-code" style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--teal);background:var(--teal-d);border:1px solid rgba(0,212,170,0.3);border-radius:8px;padding:10px 20px;display:inline-block;letter-spacing:.12em;animation:glow 2s ease infinite;"></div>
-      <div style="font-size:10px;color:var(--muted);margin-top:8px;">Este código identifica tu planeta — nadie más puede tenerlo igual</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;">Código de referencia — puede que otro explorador haya creado uno similar</div>
       <div id="modal-save-status" style="margin-top:8px;min-height:20px;display:flex;justify-content:center;"></div>
     </div>
     <div id="modal-planet-img" style="height:200px;border-radius:10px;overflow:hidden;margin-bottom:14px;background:var(--bg3);display:flex;align-items:center;justify-content:center;"></div>
@@ -656,7 +656,7 @@ async function savePlanetToDB(vals, code, score, creatures) {
     // Guardar planeta
     const { data: planet, error: pErr } = await sb
       .from('planets')
-      .upsert({
+      .insert({
         code,
         name: `Planeta ${code}`,
         vals: vals,
@@ -664,7 +664,7 @@ async function savePlanetToDB(vals, code, score, creatures) {
         is_public: true,
         user_id:   userId,
         user_name: userName,
-      }, { onConflict: 'code' })
+      })
       .select()
       .single();
 
@@ -777,6 +777,204 @@ function generateCreatureSeed(v,i){
   const keys=["Ca","Fe","Si","P","Mg","Cu","O2","H2S","Temp","pH"];
   return Math.abs(keys.reduce((a,k,j)=>a+(v[k]||0)*(j+1),i*1000))%99999;
 }
+
+// ═══════════════════════════════════════════════════════
+// MOTOR DE HABILIDADES EMERGENTES
+// Sistema científico + imaginativo de capacidades
+// basadas en la composición mineral y habitabilidad
+// ═══════════════════════════════════════════════════════
+function generateAbilities(v, seed, sc){
+  const {Ca,Fe,Si,P,Mg,Cu,Mn,Mo,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
+  const r=(n)=>rng(seed,n);
+  const abilities=[];
+
+  // ── SENTIDOS ────────────────────────────────────────
+
+  // Visión
+  if(O2>15&&Ca>20&&sc>0.5){
+    const eyes=sc>0.75?
+      (r(10)>0.5?"Dos ojos con visión estereoscópica (percepción de profundidad)":"Cuatro ojos independientes (campo visual 300°)"):
+      (r(10)>0.5?"Ojos compuestos (miles de lentes — detección de movimiento)":"Un ojo central — visión panorámica simple");
+    abilities.push({cat:"👁 Visión",name:eyes,col:"#60A5FA",
+      detail:"Fotorreceptores basados en rodopsina-Fe. Detecta 380–750nm."});
+  }
+  if(O2<3&&H2S>1){
+    abilities.push({cat:"👁 Visión",name:"Quimiorreceptores ópticos (sin ojos)",col:"#FBBF24",
+      detail:"Proteínas sensibles a gradientes químicos en lugar de fotones. Detecta H₂S, O₂ y CO₂ a distancia."});
+  }
+  if(Temp<-20){
+    abilities.push({cat:"👁 Visión",name:"Visión infrarroja — detección de calor",col:"#F87171",
+      detail:"Pit organs con membranas sensibles a radiación IR. Caza en oscuridad total por gradiente térmico."});
+  }
+  if(Si>150&&H2O>10){
+    abilities.push({cat:"👁 Visión",name:"Visión UV — percibe ultravioleta",col:"#A78BFA",
+      detail:"Cristalino de SiO₂ transparente al UV. Ve patrones fluorescentes invisibles para otros."});
+  }
+  if(Mg>30&&CO2>1){
+    abilities.push({cat:"👁 Visión",name:"Fotosíntesis cutánea — piel como sensor de luz",col:"#4ADE80",
+      detail:"Clorofila dérmicae. Toda la superficie corporal detecta dirección e intensidad lumínica."});
+  }
+
+  // Audición / Vibración
+  if(Ca>25&&O2>10&&sc>0.4){
+    const ears=gravity>1.5?"Sistema de línea lateral (vibración en suelo denso)":
+               H2O>40?"Audición subacuática — detección 0.01–200kHz":
+               "Audición aérea — rango 20Hz–20kHz";
+    abilities.push({cat:"👂 Audición",name:ears,col:"#FBBF24",
+      detail:"Células ciliadas Ca-dependientes en membrana basilar. Ca²⁺ regula la transducción mecano-eléctrica."});
+  }
+  if(gravity>1.8||Temp<-30){
+    abilities.push({cat:"👂 Audición",name:"Sismorreceptores — percibe terremotos y vibraciones sísmicas",col:"#F87171",
+      detail:"Órganos de Johnston hipersensibles conectados al sustrato. Detecta movimientos de 0.001mm en roca."});
+  }
+  if(H2O>60&&Fe>20){
+    abilities.push({cat:"👂 Audición",name:"Ecolocalización activa — sonares biológicos",col:"#60A5FA",
+      detail:"Genera pulsos ultrasónicos 40–120kHz. Mapea entorno 3D con resolución milimétrica en agua."});
+  }
+
+  // Olfato / Gusto / Quimio
+  if(S>500||H2S>0.5){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Olfato sulfúrico ultra-sensible",col:"#FBBF24",
+      detail:"Detecta H₂S a concentraciones de 1 parte por billón. Navega por gradientes de azufre en la oscuridad."});
+  }
+  if(Mo>=0.5&&Ni>20){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Detección de metales pesados",col:"#94A3B8",
+      detail:"Metaloreceptores con proteínas similares a metalotioneínas. Detecta Fe, Ni, Mo, Cu disueltos."});
+  }
+  if(sc>0.6&&O2>10){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Feromonas moleculares complejas",col:"#A78BFA",
+      detail:"Sistema de comunicación química con más de 200 compuestos. Transmite identidad, estado reproductivo y alertas."});
+  }
+
+  // Tacto / Presión
+  if(gravity>1.2||H2O>50){
+    abilities.push({cat:"✋ Tacto",name:"Mecanorreceptores de alta resolución",col:"#4ADE80",
+      detail:"Corpúsculos de Pacini Ca-sensibles. Resolución táctil de 0.5mm. Detecta presiones de 0.01 Pa."});
+  }
+  if(H2O>70&&sc>0.4){
+    abilities.push({cat:"✋ Tacto",name:"Línea lateral — percepción de corrientes de fluido",col:"#60A5FA",
+      detail:"Canal lleno de linfa conecta al exterior. Detecta perturbaciones hidrodinámicas a 10m de distancia."});
+  }
+
+  // ── HABILIDADES FÍSICAS ESPECIALES ─────────────────
+
+  if(Fe>25&&V>100){
+    abilities.push({cat:"⚡ Electricidad",name:"Electrorrecepción pasiva — detecta campos eléctricos",col:"#FBBF24",
+      detail:"Ampollas de Lorenzini con V-proteínas. Detecta campos eléctricos de 5 nanovoltios/cm. Localiza presas ocultas."});
+  }
+  if(Fe>40&&V>200){
+    abilities.push({cat:"⚡ Electricidad",name:"Electrolocomotción activa — genera pulsos eléctricos",col:"#FBBF24",
+      detail:"Órgano eléctrico de 500-6,000 células eléctricas. Genera 600V para defensa, caza y comunicación."});
+  }
+  if(Fe>30&&Ni>50){
+    abilities.push({cat:"🧲 Magnetismo",name:"Magnetorrecepción — percibe el campo magnético planetario",col:"#F87171",
+      detail:"Cristales de magnetita Fe₃O₄ en tejido nervioso. Navegación geomagnética de precisión GPS sin satélites."});
+  }
+  if(H2S>3||Temp>70){
+    abilities.push({cat:"🛡 Resistencia",name:"Resistencia extrema a toxinas sulfurosas",col:"#FBBF24",
+      detail:"Metalotioneínas y citocromos modificados metabolizan H₂S como sustrato energético en vez de veneno."});
+  }
+  if(Temp<-30){
+    abilities.push({cat:"🛡 Resistencia",name:"Criobiosis — suspensión animada en frío extremo",col:"#60A5FA",
+      detail:"Trehalosa reemplaza agua intracelular. Metabolismo se detiene a -60°C y se reactiva al calentarse. Inmortalidad criogénica."});
+  }
+  if(Temp>80){
+    abilities.push({cat:"🛡 Resistencia",name:"Termoestabilidad proteica a 120°C",col:"#F87171",
+      detail:"Proteínas con puentes disulfuro adicionales. ADN protegido por histonas termoestables. Vive en lava volcánica."});
+  }
+  if(pH<3){
+    abilities.push({cat:"🛡 Resistencia",name:"Resistencia a pH extremadamente ácido",col:"#A78BFA",
+      detail:"Membrana celular reforzada con hopanoides. Bombas de protones extraordinariamente potentes. Vive en H₂SO₄ puro."});
+  }
+  if(gravity>2){
+    abilities.push({cat:"🛡 Resistencia",name:"Exoesqueleto hiperdensificado (alta gravedad)",col:"#94A3B8",
+      detail:"Estructura ósea o quitinosa 10× más densa que la terrestre. Músculos en proporción — cuerpo muy compacto y bajo."});
+  }
+  if(P>1&&Ca>30&&sc>0.6){
+    abilities.push({cat:"🔄 Regeneración",name:"Regeneración de tejidos y miembros",col:"#4ADE80",
+      detail:"Células madre Ca-P distribuidas en todo el cuerpo. Reconstruye extremidades en 30-90 días. Órganos en 2 semanas."});
+  }
+  if(Cu>100&&O2<10){
+    abilities.push({cat:"🎨 Camuflaje",name:"Camuflaje cromático activo (cambio de color)",col:"#60A5FA",
+      detail:"Cromatóforos Cu-basados controlados neuralmente. 256 patrones de color. Invisibilidad total en <0.3 segundos."});
+  }
+  if(Mg>30&&CO2>1&&O2>5){
+    abilities.push({cat:"🌿 Fotosíntesis",name:"Fotosíntesis dérmico — energía solar corporal",col:"#4ADE80",
+      detail:"Cloroplastos simbióntes en piel. Genera hasta 40% de su energía del sol. Sin necesidad de comer en períodos de luz."});
+  }
+  if(H2O>80&&sc<0.4&&O2<5){
+    abilities.push({cat:"💧 Agua",name:"Hidrolocalización — percepción 3D del agua",col:"#60A5FA",
+      detail:"Sensores de presión osmótica en toda la membrana. Mapea corrientes, temperatura y salinidad simultáneamente."});
+  }
+  if(Si>200&&H2O>30){
+    abilities.push({cat:"💎 Silicio",name:"Biomineralización activa — construye estructuras de SiO₂",col:"#60A5FA",
+      detail:"Segrega sílice biogénica para construir herramientas, nidos y armadura. El único organismo constructor mineral conocido."});
+  }
+
+  // ── HABILIDADES MENTALES / COGNITIVAS ──────────────
+
+  if(sc>0.75&&O2>18&&Fe>30&&P>0.8){
+    abilities.push({cat:"🧠 Inteligencia",name:"Inteligencia superior — uso de herramientas complejas",col:"#A78BFA",
+      detail:"Corteza prefrontal desarrollada. Planificación a largo plazo, lenguaje simbólico, transmisión cultural. Comparable a primates."});
+  }
+  if(sc>0.85&&O2>20&&Ca>35&&P>1){
+    abilities.push({cat:"🧠 Inteligencia",name:"Lenguaje complejo — comunicación simbólica avanzada",col:"#A78BFA",
+      detail:"Sistema nervioso con área de Broca equivalente. 10,000+ vocalizaciones únicas. Gramática generativa. Escritura posible."});
+  }
+  if(sc>0.6&&V>150&&Cu>60){
+    abilities.push({cat:"📡 Comunicación",name:"Comunicación bioeléctrica de corto alcance",col:"#FBBF24",
+      detail:"Transmite señales eléctricas entre individuos en contacto. Comparte estados emocionales y mapas mentales directamente."});
+  }
+  if(sc>0.5&&Mg>25&&P>0.5&&r(20)>0.6){
+    abilities.push({cat:"📡 Comunicación",name:"Señalización química intergeneracional (epigenética)",col:"#4ADE80",
+      detail:"Transmite experiencias adquiridas a la descendencia mediante marcadores químicos en el ADN. Aprendizaje heredable."});
+  }
+  if(sc<0.3&&H2S>2){
+    abilities.push({cat:"🧠 Inteligencia",name:"Inteligencia distribuida — mente sin cerebro central",col:"#94A3B8",
+      detail:"Red de 10⁸ neuronas distribuidas. Sin localización central. Cada parte del cuerpo procesa información de forma autónoma."});
+  }
+  if(sc>0.7&&O2>15&&r(25)>0.7){
+    abilities.push({cat:"🧠 Inteligencia",name:"Memoria fotográfica — registro perfecto de experiencias",col:"#A78BFA",
+      detail:"Hipocampo expandido con sinapsis de alta fidelidad. Recuerda cada evento con resolución milisegundo toda su vida."});
+  }
+  if(r(30)>0.75&&sc>0.5&&Cu>50){
+    abilities.push({cat:"📡 Comunicación",name:"Bioluminiscencia comunicativa — lenguaje de luz",col:"#60A5FA",
+      detail:"Luciferina Cu-dependiente en órganos dérmicos especializados. 40+ patrones de pulsos codifican mensajes complejos."});
+  }
+  if(gravity<0.4&&O2>10){
+    abilities.push({cat:"🕊 Locomoción",name:"Vuelo activo — alas con superficie alar eficiente",col:"#4ADE80",
+      detail:"Baja gravedad permite estructuras voladoras grandes. Huesos huecos o vejigas de gas. Migración intercontinental."});
+  }
+  if(H2O>60&&sc>0.5&&r(35)>0.5){
+    abilities.push({cat:"💧 Adaptación acuática",name:"Respiración branquial y pulmonar simultánea",col:"#60A5FA",
+      detail:"Branquias lamelares + pulmones primitivos. Vive indefinidamente en agua o aire. Explorador de ambos mundos."});
+  }
+  if(sc>0.8&&r(40)>0.65){
+    abilities.push({cat:"🔬 Biología avanzada",name:"Sistema inmune adaptativo de alta complejidad",col:"#4ADE80",
+      detail:"150+ tipos de células inmunes. Memoria inmunológica de 500 años. Resistente a prácticamente cualquier patógeno conocido."});
+  }
+
+  // Habilidades raras / especulativas (solo en condiciones muy específicas)
+  if(V>300&&Fe>50&&Temp>30&&Temp<60&&sc>0.6){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Metabolismo de vanadio — sangre verde metálica",col:"#4ADE80",
+      detail:"V³⁺ en vanádocitos circulantes. 100× más concentrado que el agua de mar. Rol en catálisis oxidativa único."});
+  }
+  if(Ni>150&&CO2>5&&O2<2){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Metabolismo de níquel — cofactor F₄₃₀",col:"#94A3B8",
+      detail:"Ni en el centro de la enzima metil-CoM reductasa. Produce CH₄ como subproducto energético. Vive sin O₂."});
+  }
+  if(S>10000&&H2S>5&&Temp>40){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Sulfuro como disolvente metabólico",col:"#FBBF24",
+      detail:"Enzimas estables en H₂S. Usa ciclo de azufre en vez de ciclo de Krebs. Desconocido en la Tierra."});
+  }
+  if(sc>0.9&&r(45)>0.8){
+    abilities.push({cat:"🌌 Especulativo",name:"Percepción cuántica — coherencia cuántica neuronal",col:"#A78BFA",
+      detail:"Hipótesis Penrose-Hameroff. Microtúbulos en neuronas mantienen superposición cuántica. Procesamiento de información exponencial."});
+  }
+
+  return abilities.slice(0, 12); // máximo 12 habilidades por criatura
+}
+
 function makeCreature(v,seed){
   const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
   const sc=calcScore(v);
@@ -821,14 +1019,21 @@ function makeCreature(v,seed){
   else if(baseSize>10)size="Mediano (10–100kg)";
   else if(baseSize>0.1)size="Pequeño (<10kg)";
   else size="Microscópico";
-  const genera=["Astrobiota","Xenovita","Cosmozoa","Abiogenus","Exobiota","Lithovita","Chemovita","Thermozoa","Cryptovita","Halobiota","Pyrovita","Glaciovita","Silicovita","Ferrobiota","Cuprovita"];
-  const species=["stellaris","extremophilus","mineralis","novus","alienus","profundus","thermalis","glacialis","sulfuricus","magneticus","siliceus","cupriferus","vanadicus","ferrophilus","calcarius"];
+  const genera=["Astrobiota","Xenovita","Cosmozoa","Abiogenus","Exobiota","Lithovita","Chemovita","Thermozoa","Cryptovita","Halobiota","Pyrovita","Glaciovita","Silicovita","Ferrobiota","Cuprovita","Riftovita","Magnovita","Vanadovita","Sulfovita","Glaciozoa"];
+  const species=["stellaris","extremophilus","mineralis","novus","alienus","profundus","thermalis","glacialis","sulfuricus","magneticus","siliceus","cupriferus","vanadicus","ferrophilus","calcarius","lucidus","cogitans","volans","chemicus","sapiens"];
   const genus=genera[Math.floor(rng(seed,3)*genera.length)];
   const sp=species[Math.floor(rng(seed,4)*species.length)];
   const complexity=sc>0.75?"vertebrado":sc>0.55?"invertebrado":sc>0.35?"simple":sc>0.15?"colonial":"unicelular";
   const orgCol=bCol;
-  return {latinName:`${genus} ${sp}`,complexity,skeleton,skCol,blood,bCol,meta,metaCol,nervous,nCol,thermo,tCol,loco,size,orgCol,seed,sc,
-    imgPrompt:`Hyper-detailed scientific concept art of ${genus} ${sp}, a ${complexity} alien organism, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, bioluminescent, scientifically coherent alien biology, otherworldly, dramatic lighting, 8k ultra detailed`};
+
+  // Generar habilidades emergentes
+  const abilities=generateAbilities(v,seed,sc);
+
+  // Descripción para imagen IA — incluye habilidades más llamativas
+  const topAbilities=abilities.slice(0,3).map(a=>a.name).join(', ');
+  const imgPrompt=`Hyper-detailed scientific concept art of ${genus} ${sp}, a ${complexity} alien organism, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, abilities: ${topAbilities}, bioluminescent details, scientifically coherent alien biology, otherworldly dramatic environment, 8k ultra detailed concept art`;
+
+  return {latinName:`${genus} ${sp}`,complexity,skeleton,skCol,blood,bCol,meta,metaCol,nervous,nCol,thermo,tCol,loco,size,orgCol,seed,sc,abilities,imgPrompt};
 }
 
 function planetCode(v){
@@ -1271,10 +1476,33 @@ function renderCreatures(el){
             <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
               <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar imagen IA</button>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">
+            <!-- Rasgos base -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
               ${[{l:"Esqueleto",v:cr.skeleton,c:cr.skCol},{l:"Sangre",v:cr.blood,c:cr.bCol},{l:"Nervioso",v:cr.nervous,c:cr.nCol},{l:"Termoreg.",v:cr.thermo,c:cr.tCol},{l:"Locomoción",v:cr.loco,c:"#60A5FA"},{l:"Tamaño",v:cr.size,c:"#94A3B8"}].map(({l,v,c})=>`<div style="background:${c}10;border:0.5px solid ${c}30;border-radius:5px;padding:5px 7px;"><div style="font-size:8px;color:var(--muted);margin-bottom:1px;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;">${v}</div></div>`).join('')}
             </div>
-            <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;border-top:0.5px solid var(--border);padding-top:6px;">${cr.complexity} · Semilla: ${cr.seed.toString(36).toUpperCase()} · Score: ${Math.round(cr.sc*100)}%</div>
+            <!-- Habilidades emergentes -->
+            ${cr.abilities&&cr.abilities.length>0?`
+            <div style="border-top:0.5px solid var(--border);padding-top:10px;margin-bottom:8px;">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">✨ Habilidades emergentes</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                ${cr.abilities.map(ab=>`
+                  <div style="background:${ab.col}0D;border:0.5px solid ${ab.col}35;border-radius:7px;padding:7px 10px;cursor:pointer;"
+                    onclick="this.querySelector('.ab-detail').style.display=this.querySelector('.ab-detail').style.display==='none'?'block':'none'">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:11px;">${ab.cat.split(' ')[0]}</span>
+                      <div style="flex:1;">
+                        <div style="font-size:10px;font-weight:600;color:${ab.col};">${ab.name}</div>
+                        <div style="font-size:8px;color:var(--muted);margin-top:1px;">${ab.cat.split(' ').slice(1).join(' ')}</div>
+                      </div>
+                      <span style="font-size:9px;color:${ab.col};opacity:.5;">▾</span>
+                    </div>
+                    <div class="ab-detail" style="display:none;margin-top:6px;font-size:9px;color:#8A9AB8;line-height:1.6;border-top:0.5px solid ${ab.col}25;padding-top:5px;">
+                      ${ab.detail}
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>`:''}
+            <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;border-top:0.5px solid var(--border);padding-top:6px;">${cr.complexity} · Semilla: ${cr.seed.toString(36).toUpperCase()} · Score: ${Math.round(cr.sc*100)}% · ${cr.abilities?.length||0} habilidades</div>
           </div>`;}).join('')}
       </div>
     </div>`;
