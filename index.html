@@ -1509,18 +1509,393 @@ function renderCreatures(el){
 }
 
 // ─── ECOSYSTEM TAB ────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// MOTOR DE DEPREDACIÓN
+// Basado en: Lotka-Volterra, Gause (1934),
+// Principio de Exclusión Competitiva,
+// Teoría de Nicho Ecológico
+// ═══════════════════════════════════════════════════════
+
+function calcPredationScore(cr, v){
+  let score = 0;
+  const {O2, Ca, Fe, P, Mg, H2O, Temp, gravity, H2S, Cu, S, Si} = v;
+
+  // ── Inteligencia (factor más importante — como los humanos) ──
+  if(cr.nervous==="Cerebro centralizado")           score += 40;
+  else if(cr.nervous==="Sistema gangliado")          score += 22;
+  else                                               score += 5;
+
+  // ── Tamaño ──
+  if(cr.size==="Megafauna (>10t)")                  score += 28;
+  else if(cr.size==="Grande (100kg–10t)")            score += 22;
+  else if(cr.size==="Mediano (10–100kg)")            score += 15;
+  else if(cr.size==="Pequeño (<10kg)")               score += 7;
+  else                                               score += 1;
+
+  // ── Metabolismo (energía disponible para cazar) ──
+  if(cr.meta==="Aeróbico eficiente")                score += 18;
+  else if(cr.meta==="Quimiosíntesis H₂S")           score += 10;
+  else if(cr.meta==="Fotosíntesis")                 score += 3; // productores, no cazadores
+  else if(cr.meta==="Metanogénesis")                score += 2;
+  else                                               score += 5;
+
+  // ── Locomoción ──
+  if(cr.loco==="Flotación/vuelo")                   score += 14;
+  else if(cr.loco==="Cuadrúpedo")                   score += 12;
+  else if(cr.loco==="Natación")                     score += 10;
+  else if(cr.loco==="Ondulatorio")                  score += 6;
+  else                                               score += 3;
+
+  // ── Habilidades especiales de caza ──
+  if(cr.abilities){
+    cr.abilities.forEach(ab=>{
+      if(ab.name.includes("Inteligencia superior"))        score += 20;
+      if(ab.name.includes("Lenguaje complejo"))            score += 15;
+      if(ab.name.includes("electr"))                       score += 14;
+      if(ab.name.includes("Ecolocalización"))              score += 12;
+      if(ab.name.includes("infrarroja"))                   score += 11;
+      if(ab.name.includes("magneto") || ab.name.includes("Magneto")) score += 8;
+      if(ab.name.includes("Camuflaje"))                    score += 10;
+      if(ab.name.includes("Regeneración"))                 score += 7;
+      if(ab.name.includes("Memoria fotográfica"))          score += 8;
+      if(ab.name.includes("visión UV"))                    score += 6;
+      if(ab.name.includes("Sismo"))                        score += 5;
+      if(ab.name.includes("Línea lateral"))                score += 6;
+      if(ab.name.includes("simbólica") || ab.name.includes("herramientas")) score += 18;
+    });
+  }
+
+  // ── Termorregulación ──
+  if(cr.thermo==="Homeotermo")                      score += 8;
+  else if(cr.thermo==="Termoestable")               score += 6;
+  else                                               score += 2;
+
+  return Math.round(score);
+}
+
+function assignTrophicRole(predScore, maxScore, minScore, cr){
+  const range = maxScore - minScore || 1;
+  const rel = (predScore - minScore) / range;
+
+  if(cr.meta==="Fotosíntesis" || cr.meta==="Quimiosíntesis H₂S" || cr.meta==="Metanogénesis"){
+    if(rel < 0.3) return {role:"Productor primario",    tier:1, col:"#4ADE80", icon:"🌿"};
+  }
+  if(rel >= 0.85) return {role:"Depredador Ápex",       tier:5, col:"#F87171", icon:"👑"};
+  if(rel >= 0.65) return {role:"Carnívoro secundario",  tier:4, col:"#FBBF24", icon:"🦁"};
+  if(rel >= 0.40) return {role:"Omnívoro oportunista",  tier:3, col:"#60A5FA", icon:"🦊"};
+  if(rel >= 0.20) return {role:"Herbívoro primario",    tier:2, col:"#4ADE80", icon:"🦌"};
+  return               {role:"Productor/descomponedor", tier:1, col:"#A78BFA", icon:"🍄"};
+}
+
+function simulateDualApex(apex1, apex2, score, v){
+  // Diferencia de puntaje de depredación
+  const diff = Math.abs(apex1.predScore - apex2.predScore);
+  const totalResources = score * 100;
+  const sc1 = apex1.predScore;
+  const sc2 = apex2.predScore;
+
+  // Factor inteligencia
+  const int1 = apex1.cr.nervous==="Cerebro centralizado"?3:apex1.cr.nervous==="Sistema gangliado"?2:1;
+  const int2 = apex2.cr.nervous==="Cerebro centralizado"?3:apex2.cr.nervous==="Sistema gangliado"?2:1;
+
+  // Factor hábitat
+  const hab1 = apex1.cr.loco==="Natación"?"acuático":apex1.cr.loco==="Flotación/vuelo"?"aéreo":"terrestre";
+  const hab2 = apex2.cr.loco==="Natación"?"acuático":apex2.cr.loco==="Flotación/vuelo"?"aéreo":"terrestre";
+  const differentHabitat = hab1 !== hab2;
+
+  // Determinar escenario
+  let scenario, outcome, timeline, details, evolutionEffect;
+
+  if(differentHabitat && diff < 20){
+    scenario = "Partición de nicho";
+    outcome  = "COEXISTENCIA ESTABLE";
+    timeline = "Permanente";
+    details  = `${apex1.cr.latinName} domina el hábitat ${hab1} mientras ${apex2.cr.latinName} domina el ${hab2}. Al no competir por las mismas presas ni territorio, ambas especies coexisten indefinidamente. Este es el mecanismo que permite que tiburones y águilas coexistan en la Tierra.`;
+    evolutionEffect = `Baja presión evolutiva mutua. Ambas especies evolucionan principalmente en respuesta a sus presas, no entre sí. Diversificación moderada en ~10,000 generaciones.`;
+  } else if(int1 >= 3 && int2 < 3){
+    scenario = "Dominancia intelectual";
+    outcome  = `${apex1.cr.latinName.toUpperCase()} DOMINA`;
+    timeline = "500–2,000 generaciones";
+    details  = `La inteligencia superior de ${apex1.cr.latinName} le permite usar herramientas, estrategias colectivas y modificar el entorno para desventaja de ${apex2.cr.latinName}. Exactamente como Homo sapiens eliminó o redujo poblaciones de todos sus competidores ápex (leones de cueva, osos de cara corta). La inteligencia no necesita fuerza — necesita planificación.`;
+    evolutionEffect = `${apex2.cr.latinName} experimenta presión evolutiva extrema: evoluciona comportamientos de evasión, nocturno, migración. O se extingue. En 10,000 generaciones puede surgir una subespecie secundaria adaptada.`;
+  } else if(int2 >= 3 && int1 < 3){
+    scenario = "Dominancia intelectual";
+    outcome  = `${apex2.cr.latinName.toUpperCase()} DOMINA`;
+    timeline = "500–2,000 generaciones";
+    details  = `La inteligencia superior de ${apex2.cr.latinName} le permite dominar el ecosistema completo. ${apex1.cr.latinName}, a pesar de su tamaño o fuerza, no puede competir contra la planificación estratégica y uso de herramientas. La fuerza bruta pierde ante la mente.`;
+    evolutionEffect = `Presión evolutiva intensa sobre ${apex1.cr.latinName}. Puede evolucionar inteligencia cooperativa (cardúmenes, manadas) como respuesta adaptativa.`;
+  } else if(diff < 10 && totalResources > 60){
+    scenario = "Carrera armamentística evolutiva";
+    outcome  = "COEXISTENCIA DINÁMICA";
+    timeline = "Indefinido — ciclos de 1,000–5,000 generaciones";
+    details  = `Dos depredadores casi iguales en un planeta rico. Ninguno puede eliminar al otro eficientemente. Se inicia una carrera armamentística: cuando uno evoluciona mejor visión, el otro evoluciona mejor camuflaje. Cuando uno gana velocidad, el otro gana resistencia. Este mecanismo acelera la evolución de ambas especies exponencialmente. Resultado: las dos criaturas más avanzadas del universo conocido.`;
+    evolutionEffect = `Aceleración evolutiva 10–50×. En 50,000 generaciones pueden surgir capacidades cognitivas, tecnológicas o bioquímicas completamente nuevas en ambas líneas.`;
+  } else if(diff < 10 && totalResources <= 60){
+    scenario = "Exclusión competitiva (Gause)";
+    outcome  = "UNA SE EXTINGUE";
+    timeline = "200–800 generaciones";
+    details  = `Recursos insuficientes para dos ápex iguales. El Principio de Exclusión Competitiva de Gause (1934) predice que dos especies en idéntico nicho no pueden coexistir. Pequeñas ventajas aleatorias se amplifican: la especie con 1% de ventaja reproduce 1% más eficientemente. En pocas generaciones, esa ventaja se vuelve insuperable. La perdedora se extingue o se refugia en un nicho marginal.`;
+    evolutionEffect = `La especie ganadora sufre una explosión adaptativa al quedar sola como ápex. Diversificación rápida en múltiples subespecies que ocupan los nichos vacíos.`;
+  } else if(diff >= 20){
+    scenario = "Jerarquía clara";
+    outcome  = `${sc1>sc2?apex1.cr.latinName:apex2.cr.latinName} ES EL ÁPEX REAL`;
+    timeline = "Estable";
+    const winner = sc1>sc2?apex1:apex2;
+    const loser  = sc1>sc2?apex2:apex1;
+    details  = `Diferencia suficiente para que ${winner.cr.latinName} (score ${winner.predScore}) domine a ${loser.cr.latinName} (score ${loser.predScore}). ${loser.cr.latinName} ocupa el nivel de carnívoro secundario — sigue siendo un depredador formidable, pero reconoce y evita al ápex real. Coexistencia estable con jerarquía clara.`;
+    evolutionEffect = `${loser.cr.latinName} evoluciona comportamientos de evasión y cacería de presas que el ápex no explota. Especialización en nicho secundario en ~5,000 generaciones.`;
+  } else {
+    scenario = "Equilibrio inestable";
+    outcome  = "IMPREDECIBLE";
+    timeline = "Variable — puede cambiar en cualquier momento";
+    details  = `Dos depredadores similares en un planeta de recursos medios. El sistema es caóticamente sensible: una sequía, una enfermedad, un cambio climático — cualquier perturbación puede romper el equilibrio hacia cualquiera de los 4 escenarios anteriores. El ecosistema vive en el filo de la navaja.`;
+    evolutionEffect = `Alta variabilidad evolutiva. Cualquier mutación ventajosa puede desencadenar un cambio de dominancia en pocas generaciones.`;
+  }
+
+  return {scenario, outcome, timeline, details, evolutionEffect, differentHabitat, hab1, hab2};
+}
+
 function renderEcosystem(el){
-  const score=calcScore(vals);
-  const pops=[
-    {name:"Productores primarios",pop:score>0.5?80:score>0.3?40:15,max:100,col:"#4ADE80",desc:vals.Mg>12?'Fotosíntesis activa':'Quimiosíntesis'},
-    {name:"Herbívoros",           pop:score>0.5?45:score>0.3?20:8, max:60, col:"#60A5FA",desc:vals.Ca>20?'Exoesqueleto mineralizado':'Sin mineralización'},
-    {name:"Carnívoros",           pop:score>0.5?22:score>0.3?10:3, max:35, col:"#F87171",desc:vals.O2>15?'Aeróbicos eficientes':'Limitados por O₂'},
-    {name:"Depredadores Ápex",    pop:score>0.5?8:score>0.3?3:1,   max:15, col:"#FBBF24",desc:score>0.7?'Ecosistema estable':'Crítico'},
-    {name:"Descomponedores",      pop:score>0.3?65:20,              max:80, col:"#A78BFA",desc:'Cierran ciclos de nutrientes'},
-    {name:"Quimioautos",          pop:vals.H2S>1?55:vals.S>1000?25:5,max:70,col:"#FBBF24",desc:vals.H2S>1?'H₂S abundante':'Inactivos'},
-  ];
-  const status=score>=0.7?{t:'✓ Ecosistema estable',c:'#00D4AA'}:score>=0.4?{t:'⚠ Ecosistema frágil',c:'#FBBF24'}:{t:'✗ Colapso probable',c:'#F87171'};
-  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:4px;">Equilibrio del Ecosistema</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Dinámica de poblaciones basada en condiciones minerales</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">${pops.map(p=>{const pct=Math.round(p.pop/p.max*100);const danger=pct<20;return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:11px;font-weight:600;color:${p.col};">${p.name}</span><span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${danger?'#F87171':p.col};">${p.pop}</span></div><div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:7px;"><div style="height:100%;width:${pct}%;background:${danger?'#F87171':p.col};border-radius:2px;${!danger?`box-shadow:0 0 5px ${p.col}60`:''}"></div></div><div style="font-size:9px;color:var(--muted);">${p.desc}</div>${danger?'<div style="font-size:9px;color:#F87171;margin-top:4px;">⚠ Riesgo de extinción</div>':''}</div>`;}).join('')}</div><div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:14px;"><div style="font-size:12px;font-weight:600;color:${status.c};margin-bottom:6px;">${status.t}</div><div style="font-size:11px;color:var(--muted);line-height:1.7;">Score: <b style="color:var(--teal);">${Math.round(score*100)}%</b> · Ciclos: <b style="color:#4ADE80;">${[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.H2S>0.1&&'S',vals.Mg>=10&&'Mg'].filter(Boolean).join(', ')||'ninguno'}</b> · T°: <b style="color:${vals.Temp>50?'#F87171':vals.Temp<-20?'#60A5FA':'#4ADE80'};">${vals.Temp}°C</b> · Gravedad: <b style="color:#A78BFA;">${vals.gravity}g</b></div></div></div>`;
+  const score = calcScore(vals);
+  const creatures = Array.from({length:Math.max(numCreatures,2)},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+
+  // Calcular score de depredación para cada criatura
+  const scores = creatures.map(cr=>calcPredationScore(cr,vals));
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+
+  // Asignar rol trófico
+  const creaturesWithRoles = creatures.map((cr,i)=>({
+    cr, predScore:scores[i],
+    ...assignTrophicRole(scores[i], maxScore, minScore, cr)
+  }));
+
+  // Ordenar por score (ápex primero)
+  const sorted = [...creaturesWithRoles].sort((a,b)=>b.predScore-a.predScore);
+
+  // Identificar ápex (pueden ser 1 o 2)
+  const apexCreatures = sorted.filter(c=>c.tier===5);
+  const hasDoubleApex = apexCreatures.length >= 2;
+  const dualApexResult = hasDoubleApex ? simulateDualApex(apexCreatures[0], apexCreatures[1], score, vals) : null;
+
+  // Pirámide de biomasa (Lotka-Volterra simplificado)
+  const producers   = score>0.5?100:score>0.3?55:20;
+  const herbivores  = Math.round(producers * 0.12);
+  const carnivores  = Math.round(herbivores * 0.10);
+  const apex        = Math.round(carnivores * 0.08);
+  const decomp      = Math.round(producers * 0.8);
+
+  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">Red Trófica y Teoría de Depredación</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Basado en Lotka-Volterra · Principio de Gause · Teoría de Nicho Ecológico</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+    <!-- Jerarquía de depredación -->
+    <div class="card">
+      <div class="label">Jerarquía de depredación — Score Trófico</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${sorted.map((c,i)=>{
+          const barW = Math.round((c.predScore/Math.max(maxScore,1))*100);
+          const isApex = c.tier===5;
+          return`
+          <div style="background:${c.col}0D;border:0.5px solid ${c.col}${isApex?'60':'25'};border-radius:8px;padding:10px 12px;${isApex?`box-shadow:0 0 12px ${c.col}30;`:''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:16px;">${c.icon}</span>
+              <div style="flex:1;">
+                <div style="font-size:11px;font-style:italic;font-weight:700;color:${c.col};">${c.cr.latinName}</div>
+                <div style="font-size:9px;color:var(--muted);">${c.role}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:16px;font-weight:800;color:${c.col};font-family:'JetBrains Mono',monospace;">${c.predScore}</div>
+                <div style="font-size:8px;color:var(--muted);">score</div>
+              </div>
+            </div>
+            <!-- Barra de score -->
+            <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:6px;">
+              <div style="height:100%;width:${barW}%;background:${c.col};border-radius:2px;box-shadow:0 0 6px ${c.col}60;transition:width .5s;"></div>
+            </div>
+            <!-- Factores clave -->
+            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.nervous}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.size}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.loco}</span>
+              ${c.cr.abilities?.slice(0,1).map(ab=>`<span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${ab.col}15;color:${ab.col};">✨ ${ab.name.split(' ').slice(0,2).join(' ')}</span>`).join('')||''}
+            </div>
+            ${isApex?`<div style="margin-top:6px;font-size:8px;color:${c.col};font-weight:600;letter-spacing:.06em;">▲ DEPREDADOR ÁPEX</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Columna derecha -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <!-- Pirámide de biomasa -->
+      <div class="card">
+        <div class="label">Pirámide de biomasa (Eltonian)</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;">
+          ${[
+            {label:`Ápex (${apex} ind)`,     w:15,  col:"#F87171", icon:"👑"},
+            {label:`Carnívoros (${carnivores})`,w:28, col:"#FBBF24", icon:"🦁"},
+            {label:`Herbívoros (${herbivores})`,w:50, col:"#60A5FA", icon:"🦌"},
+            {label:`Productores (${producers})`,w:80, col:"#4ADE80", icon:"🌿"},
+            {label:`Descomp. (${decomp})`,    w:65,  col:"#A78BFA", icon:"🍄"},
+          ].map(({label,w,col,icon})=>`
+            <div style="display:flex;align-items:center;gap:8px;width:100%;">
+              <div style="width:${w}%;background:${col}25;border:0.5px solid ${col}50;border-radius:4px;padding:3px 8px;text-align:center;font-size:9px;color:${col};transition:width .5s;white-space:nowrap;overflow:hidden;">${icon} ${label}</div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:9px;color:var(--dim);margin-top:6px;line-height:1.6;">
+          Regla del 10%: solo el 10% de energía pasa de un nivel al siguiente.
+          Productores: ${producers*10} unidades energéticas → Ápex: ${Math.round(producers*0.01)} unidades.
+        </div>
+      </div>
+
+      <!-- Estado del ecosistema -->
+      <div class="card">
+        <div class="label">Estado del ecosistema</div>
+        ${[
+          {l:"Score habitabilidad",v:`${Math.round(score*100)}%`,c:scoreCol},
+          {l:"Temperatura",v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+          {l:"Ciclos minerales",v:[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.Mg>=10&&'Mg',vals.H2S>0.1&&'S'].filter(Boolean).join(', ')||'ninguno',c:'#4ADE80'},
+          {l:"Depredadores ápex",v:`${apexCreatures.length}`,c:apexCreatures.length>=2?'#F87171':apexCreatures.length===1?'#FBBF24':'#94A3B8'},
+          {l:"Estabilidad trófica",v:score>=0.7?'Alta':score>=0.4?'Media':'Frágil',c:score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171'},
+        ].map(({l,v,c})=>`
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
+            <span style="font-size:10px;color:var(--muted);">${l}</span>
+            <span style="font-size:10px;font-weight:600;color:${c};">${v}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- ESCENARIO DOBLE ÁPEX -->
+  ${hasDoubleApex && dualApexResult ? `
+  <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.3);border-radius:14px;padding:18px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="font-size:24px;">⚔️</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#F87171;">Dos Depredadores Ápex Detectados</div>
+        <div style="font-size:10px;color:var(--muted);">Principio de Exclusión Competitiva — Gause (1934)</div>
+      </div>
+      <div style="margin-left:auto;text-align:right;">
+        <div style="font-size:11px;font-weight:700;color:#F87171;">${dualApexResult.outcome}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.timeline}</div>
+      </div>
+    </div>
+
+    <!-- Combate de scores -->
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:14px;">
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[0].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[0].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[0].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[0].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab1}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:22px;">⚔</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">VS</div>
+      </div>
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[1].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[1].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[1].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[1].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab2}</div>
+      </div>
+    </div>
+
+    <!-- Escenario y resultado -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Escenario científico</div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:8px;">${dualApexResult.scenario}</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.details}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Efecto evolutivo a largo plazo</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.evolutionEffect}</div>
+        <div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);">
+          <div style="font-size:9px;color:var(--muted);">Hábitats:</div>
+          <div style="font-size:10px;color:#60A5FA;">
+            ${dualApexResult.differentHabitat
+              ?`✓ Distintos — ${dualApexResult.hab1} vs ${dualApexResult.hab2}`
+              :`✗ Idénticos — ${dualApexResult.hab1} compartido`}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escala de tiempo evolutivo -->
+    <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Línea de tiempo evolutiva</div>
+      <div style="display:flex;gap:0;position:relative;">
+        <div style="position:absolute;top:10px;left:0;right:0;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;"></div>
+        ${[
+          {t:"0",label:"Estado actual",desc:"Dos ápex compiten"},
+          {t:"100–500 gen",label:"Tensión máxima",desc:"Recursos se dividen"},
+          {t:"500–2K gen",label:"Punto de inflexión",desc:"Escenario se determina"},
+          {t:"10K+ gen",label:"Equilibrio nuevo",desc:"Ecosistema estabilizado"},
+        ].map((pt,i,arr)=>`
+          <div style="flex:1;position:relative;padding-top:22px;text-align:center;">
+            <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#F87171;box-shadow:0 0 8px rgba(248,113,113,0.6);z-index:1;"></div>
+            <div style="font-size:8px;color:#F87171;font-weight:600;margin-bottom:2px;">${pt.t}</div>
+            <div style="font-size:9px;color:var(--text);font-weight:600;">${pt.label}</div>
+            <div style="font-size:8px;color:var(--muted);">${pt.desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  ` : apexCreatures.length===1 ? `
+  <div style="background:rgba(251,191,36,0.06);border:0.5px solid rgba(251,191,36,0.3);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">👑</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;">Un depredador ápex — Ecosistema estable</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+          <i>${apexCreatures[0].cr.latinName}</i> (score ${apexCreatures[0].predScore}) domina la cadena trófica.
+          Ninguna otra especie compite por su posición. Análogo a los grandes felinos en sabanas aisladas.
+        </div>
+      </div>
+    </div>
+  </div>
+  ` : `
+  <div style="background:rgba(148,163,184,0.06);border:0.5px solid rgba(148,163,184,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--muted);">Sin depredadores ápex claros — ecosistema de productores/descomponedores. Añade más criaturas o mejora la habitabilidad.</div>
+  </div>
+  `}
+
+  <!-- Red de interacciones -->
+  <div class="card">
+    <div class="label">Red de interacciones tróficas</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+      ${sorted.map(c=>`
+        <div style="background:${c.col}08;border:0.5px solid ${c.col}25;border-radius:8px;padding:10px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:14px;">${c.icon}</span>
+            <div>
+              <div style="font-size:9px;font-style:italic;color:${c.col};font-weight:600;">${c.cr.latinName.split(' ')[0]}</div>
+              <div style="font-size:8px;color:var(--muted);">${c.role}</div>
+            </div>
+          </div>
+          ${sorted.filter(other=>other.cr.latinName!==c.cr.latinName&&other.predScore<c.predScore).slice(0,2).map(prey=>`
+            <div style="font-size:8px;color:var(--muted);display:flex;align-items:center;gap:3px;">
+              <span style="color:${c.col};">→</span> caza a <i style="color:${prey.col};">${prey.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+          ${sorted.filter(other=>other.predScore>c.predScore).slice(0,1).map(pred=>`
+            <div style="font-size:8px;color:#F87171;display:flex;align-items:center;gap:3px;margin-top:2px;">
+              <span>←</span> cazado por <i>${pred.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>
+  </div>
+
+</div>`;
 }
 
 // ─── GALLERY TAB ──────────────────────────────────────
