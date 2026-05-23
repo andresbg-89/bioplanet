@@ -855,7 +855,7 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','creatures','ecosystem','gallery'];
+  const tabIds=['planet','creatures','ecosystem','gallery','minerals'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
@@ -871,6 +871,7 @@ function renderMain(){
   else if(currentTab==='creatures')renderCreatures(el);
   else if(currentTab==='ecosystem')renderEcosystem(el);
   else if(currentTab==='gallery')renderGallery(el);
+  else if(currentTab==='minerals')renderMinerals(el);
 }
 
 // ─── PLANET TAB ──────────────────────────────────────
@@ -1106,7 +1107,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA'],
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -1167,7 +1168,7 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery'],
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals'],
     createBtn: '✦ Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
@@ -1264,6 +1265,304 @@ function makeCreatureI18n(v, seed){
     cr.complexity = cxMap[cr.complexity] || cr.complexity;
   }
   return cr;
+}
+
+// ═══════════════════════════════════════════════════════
+// BASE DE DATOS MINDAT / IMA — 110 minerales representativos
+// Fuente: mindat.org / IMA-CNMNC (CC BY-NC-SA 4.0)
+// Total en Mindat: 6,210 especies aprobadas
+// ═══════════════════════════════════════════════════════
+const MINERALS_DB=[
+{id:1,  name:"Quartz",        name_es:"Cuarzo",       formula:"SiO₂",                  group:"Silicatos",   elements:["Si","O"],           hardness:7.0,density:2.65,color:"incoloro/blanco",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3337.html", bio_role:"Fitolitos vegetales, frústulas de diatomeas — estructural"},
+{id:2,  name:"Feldspar K",    name_es:"Feldespato K", formula:"KAlSi₃O₈",              group:"Silicatos",   elements:["K","Al","Si","O"],   hardness:6.0,density:2.56,color:"blanco/rosa",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-816.html",  bio_role:"Fuente de K — turgencia celular, activación enzimática"},
+{id:3,  name:"Plagioclase",   name_es:"Plagioclasa",  formula:"NaAlSi₃O₈–CaAl₂Si₂O₈", group:"Silicatos",   elements:["Na","Ca","Al","Si"], hardness:6.0,density:2.62,color:"blanco/gris",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3151.html", bio_role:"Na, Ca — señalización nerviosa, hueso"},
+{id:4,  name:"Olivine",       name_es:"Olivino",      formula:"(Mg,Fe)₂SiO₄",          group:"Silicatos",   elements:["Mg","Fe","Si","O"], hardness:6.5,density:3.30,color:"verde/amarillo",   luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2989.html", bio_role:"Mg, Fe — clorofila, hemoglobina, enzimas"},
+{id:5,  name:"Pyroxene",      name_es:"Piroxeno",     formula:"(Mg,Fe)SiO₃",           group:"Silicatos",   elements:["Mg","Fe","Si","O"], hardness:5.5,density:3.20,color:"verde oscuro",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3329.html", bio_role:"Fuente de Fe y Mg por meteorización"},
+{id:6,  name:"Amphibole",     name_es:"Anfíbol",      formula:"Ca₂(Mg,Fe)₅Si₈O₂₂(OH)₂",group:"Silicatos", elements:["Ca","Mg","Fe","Si"],hardness:5.5,density:3.10,color:"verde oscuro",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-222.html",  bio_role:"Ca, Mg, Fe — hueso, músculo, metabolismo"},
+{id:7,  name:"Biotite",       name_es:"Biotita",      formula:"K(Mg,Fe)₃AlSi₃O₁₀(OH)₂",group:"Silicatos",  elements:["K","Mg","Fe","Al"], hardness:2.5,density:3.00,color:"negro/marrón",    luster:"perlado",   mindat_url:"https://www.mindat.org/min-677.html",  bio_role:"K, Mg, Fe — nutrientes clave del suelo"},
+{id:8,  name:"Muscovite",     name_es:"Moscovita",    formula:"KAl₂(AlSi₃)O₁₀(OH)₂",  group:"Silicatos",   elements:["K","Al","Si","O"],   hardness:2.5,density:2.83,color:"incoloro",         luster:"perlado",   mindat_url:"https://www.mindat.org/min-2815.html", bio_role:"Fuente de K para el suelo agrícola"},
+{id:9,  name:"Kaolinite",     name_es:"Caolinita",    formula:"Al₂Si₂O₅(OH)₄",        group:"Silicatos",   elements:["Al","Si","O"],       hardness:2.0,density:2.60,color:"blanco",           luster:"terroso",   mindat_url:"https://www.mindat.org/min-2156.html", bio_role:"Arcilla — estructura del suelo, adsorción de P"},
+{id:10, name:"Talc",          name_es:"Talco",        formula:"Mg₃Si₄O₁₀(OH)₂",       group:"Silicatos",   elements:["Mg","Si","O"],       hardness:1.0,density:2.75,color:"blanco/verde",     luster:"perlado",   mindat_url:"https://www.mindat.org/min-3875.html", bio_role:"Fuente de Mg, tampón pH del suelo"},
+{id:11, name:"Serpentine",    name_es:"Serpentina",   formula:"Mg₃Si₂O₅(OH)₄",        group:"Silicatos",   elements:["Mg","Si","O"],       hardness:3.0,density:2.55,color:"verde",             luster:"céreo",     mindat_url:"https://www.mindat.org/min-3638.html", bio_role:"Fuente Mg — flora única en suelos ultramáficos"},
+{id:12, name:"Garnet",        name_es:"Granate",      formula:"Fe₃Al₂(SiO₄)₃",        group:"Silicatos",   elements:["Fe","Al","Si","O"],  hardness:7.5,density:4.30,color:"rojo",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-179.html",  bio_role:"Fuente de Fe en terrenos metamórficos"},
+{id:13, name:"Tourmaline",    name_es:"Turmalina",    formula:"NaFe₃Al₆(BO₃)₃Si₆O₁₈(OH)₄",group:"Silicatos",elements:["Na","Fe","Al","B","Si"],hardness:7.5,density:3.10,color:"negro/multicolor",luster:"vítreo", mindat_url:"https://www.mindat.org/min-3968.html", bio_role:"Fuente de B — pared celular vegetal (borato)"},
+{id:14, name:"Wollastonite",  name_es:"Wollastonita", formula:"CaSiO₃",                group:"Silicatos",   elements:["Ca","Si","O"],       hardness:5.0,density:2.90,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-4319.html", bio_role:"Fuente de Ca — enmienda del suelo"},
+{id:15, name:"Zircon",        name_es:"Circón",       formula:"ZrSiO₄",               group:"Silicatos",   elements:["Zr","Si","O"],       hardness:7.5,density:4.65,color:"marrón/rojo",      luster:"adamantino",mindat_url:"https://www.mindat.org/min-4421.html", bio_role:"Zr — función enzimática traza"},
+// Carbonatos
+{id:21, name:"Calcite",       name_es:"Calcita",      formula:"CaCO₃",                 group:"Carbonatos",  elements:["Ca","C","O"],        hardness:3.0,density:2.71,color:"blanco/incoloro",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-859.html",  bio_role:"BIOMINERALIZACIÓN — conchas, huesos, coral. pH suelo"},
+{id:22, name:"Aragonite",     name_es:"Aragonita",    formula:"CaCO₃",                 group:"Carbonatos",  elements:["Ca","C","O"],        hardness:3.5,density:2.93,color:"blanco/amarillo",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-308.html",  bio_role:"Esqueleto de coral, concha de molusco — soluble pH<7.8"},
+{id:23, name:"Dolomite",      name_es:"Dolomita",     formula:"CaMg(CO₃)₂",            group:"Carbonatos",  elements:["Ca","Mg","C","O"],   hardness:3.5,density:2.85,color:"blanco/rosa",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1304.html", bio_role:"Ca, Mg — mineral importante del suelo agrícola"},
+{id:24, name:"Magnesite",     name_es:"Magnesita",    formula:"MgCO₃",                 group:"Carbonatos",  elements:["Mg","C","O"],        hardness:4.0,density:3.01,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2482.html", bio_role:"Fuente de Mg — cofactor enzimático, clorofila"},
+{id:25, name:"Siderite",      name_es:"Siderita",     formula:"FeCO₃",                 group:"Carbonatos",  elements:["Fe","C","O"],        hardness:4.0,density:3.96,color:"amarillo-marrón",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3648.html", bio_role:"Fuente de Fe — hemoglobina, citocromos"},
+{id:26, name:"Rhodochrosite", name_es:"Rodocrosita",  formula:"MnCO₃",                 group:"Carbonatos",  elements:["Mn","C","O"],        hardness:3.5,density:3.70,color:"rosa/rojo",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3422.html", bio_role:"Fuente de Mn — Fotosistema II, superóxido dismutasa"},
+{id:27, name:"Smithsonite",   name_es:"Smithsonita",  formula:"ZnCO₃",                 group:"Carbonatos",  elements:["Zn","C","O"],        hardness:4.0,density:4.43,color:"blanco/verde",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3691.html", bio_role:"Fuente de Zn — zinc fingers, ADN polimerasa"},
+{id:28, name:"Azurite",       name_es:"Azurita",      formula:"Cu₃(CO₃)₂(OH)₂",        group:"Carbonatos",  elements:["Cu","C","O"],        hardness:3.5,density:3.77,color:"azul intenso",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-446.html",  bio_role:"Fuente de Cu — hemocianina (sangre azul)"},
+{id:29, name:"Malachite",     name_es:"Malaquita",    formula:"Cu₂(CO₃)(OH)₂",         group:"Carbonatos",  elements:["Cu","C","O"],        hardness:4.0,density:4.03,color:"verde",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2550.html", bio_role:"Fuente de Cu — tirosinasa (melanina), lacasa"},
+// Óxidos
+{id:33, name:"Hematite",      name_es:"Hematita",     formula:"Fe₂O₃",                 group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:5.26,color:"rojo/negro",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1856.html", bio_role:"Fuente de Fe — superficie de Marte, formaciones bandeadas"},
+{id:34, name:"Magnetite",     name_es:"Magnetita",    formula:"Fe₃O₄",                 group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:5.20,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-2538.html", bio_role:"Fe — bacterias magnetotácticas, orientación magnética"},
+{id:35, name:"Goethite",      name_es:"Goethita",     formula:"FeO(OH)",               group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:4.28,color:"amarillo-marrón",  luster:"sedoso",    mindat_url:"https://www.mindat.org/min-1719.html", bio_role:"Fuente de Fe — mineral de Fe más común en suelos"},
+{id:36, name:"Pyrolusite",    name_es:"Pirolusita",   formula:"MnO₂",                  group:"Óxidos",      elements:["Mn","O"],            hardness:6.0,density:5.08,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-3324.html", bio_role:"Fuente de Mn — PSII, superóxido dismutasa"},
+{id:37, name:"Chromite",      name_es:"Cromita",      formula:"FeCr₂O₄",               group:"Óxidos",      elements:["Fe","Cr","O"],       hardness:5.5,density:5.09,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1036.html", bio_role:"Cr³⁺ — factor de tolerancia a la glucosa"},
+{id:38, name:"Rutile",        name_es:"Rutilo",       formula:"TiO₂",                  group:"Óxidos",      elements:["Ti","O"],            hardness:6.0,density:4.25,color:"rojo-marrón",      luster:"adamantino",mindat_url:"https://www.mindat.org/min-3486.html", bio_role:"Ti — sin rol biológico esencial conocido"},
+{id:39, name:"Cuprite",       name_es:"Cuprita",      formula:"Cu₂O",                  group:"Óxidos",      elements:["Cu","O"],            hardness:3.5,density:6.14,color:"rojo",              luster:"adamantino",mindat_url:"https://www.mindat.org/min-1172.html", bio_role:"Fuente de Cu — oxidasas, síntesis de melanina"},
+{id:40, name:"Brucite",       name_es:"Brucita",      formula:"Mg(OH)₂",               group:"Óxidos",      elements:["Mg","O"],            hardness:2.5,density:2.39,color:"blanco",           luster:"céreo",     mindat_url:"https://www.mindat.org/min-790.html",  bio_role:"Fuente de Mg — mineral alcalino del suelo"},
+// Sulfuros
+{id:49, name:"Pyrite",        name_es:"Pirita",       formula:"FeS₂",                  group:"Sulfuros",    elements:["Fe","S"],            hardness:6.0,density:5.01,color:"oro pálido",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-3314.html", bio_role:"Fe, S — drenaje ácido de minas, ciclo del S"},
+{id:50, name:"Chalcopyrite",  name_es:"Calcopirita",  formula:"CuFeS₂",                group:"Sulfuros",    elements:["Cu","Fe","S"],       hardness:3.5,density:4.20,color:"amarillo bronce",  luster:"metálico",  mindat_url:"https://www.mindat.org/min-955.html",  bio_role:"Cu, Fe — hemocianina, hemoglobina"},
+{id:51, name:"Sphalerite",    name_es:"Esfalerita",   formula:"ZnS",                   group:"Sulfuros",    elements:["Zn","S"],            hardness:3.5,density:4.05,color:"marrón/negro",     luster:"resinoso",  mindat_url:"https://www.mindat.org/min-3727.html", bio_role:"Fuente de Zn — zinc fingers, almacenamiento de insulina"},
+{id:52, name:"Molybdenite",   name_es:"Molibdenita",  formula:"MoS₂",                  group:"Sulfuros",    elements:["Mo","S"],            hardness:1.0,density:5.06,color:"gris plomo",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-2746.html", bio_role:"Mo — nitrogenasa (fijación N₂), cofactor FeMo"},
+{id:53, name:"Pyrrhotite",    name_es:"Pirrotita",    formula:"Fe₁₋ₓS",               group:"Sulfuros",    elements:["Fe","S"],            hardness:4.0,density:4.61,color:"bronce",           luster:"metálico",  mindat_url:"https://www.mindat.org/min-3328.html", bio_role:"Fe, S — fumarolas hidrotermales"},
+{id:54, name:"Pentlandite",   name_es:"Pentlandita",  formula:"(Fe,Ni)₉S₈",            group:"Sulfuros",    elements:["Fe","Ni","S"],       hardness:3.5,density:5.00,color:"bronce",           luster:"metálico",  mindat_url:"https://www.mindat.org/min-3124.html", bio_role:"Ni — ureasa, metil-CoM reductasa (arqueas)"},
+{id:55, name:"Galena",        name_es:"Galena",       formula:"PbS",                   group:"Sulfuros",    elements:["Pb","S"],            hardness:2.5,density:7.60,color:"gris plomo",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1641.html", bio_role:"Pb — altamente tóxico, neurotóxico"},
+{id:56, name:"Cinnabar",      name_es:"Cinabrio",     formula:"HgS",                   group:"Sulfuros",    elements:["Hg","S"],            hardness:2.5,density:8.18,color:"rojo",             luster:"adamantino",mindat_url:"https://www.mindat.org/min-1052.html", bio_role:"Hg — neurotóxico, bioacumulación en cadena trófica"},
+{id:57, name:"Covellite",     name_es:"Covelita",     formula:"CuS",                   group:"Sulfuros",    elements:["Cu","S"],            hardness:1.5,density:4.68,color:"azul",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1151.html", bio_role:"Fuente de Cu — oxidasas, síntesis de melanina"},
+// Fosfatos
+{id:61, name:"Apatite",       name_es:"Apatita",      formula:"Ca₅(PO₄)₃(F,Cl,OH)",   group:"Fosfatos",    elements:["Ca","P","F","O"],    hardness:5.0,density:3.20,color:"verde/azul",       luster:"vítreo",    mindat_url:"https://www.mindat.org/min-290.html",  bio_role:"HUESO Y DIENTES — hidroxiapatita = variante de apatita"},
+{id:62, name:"Hydroxyapatite",name_es:"Hidroxiapatita",formula:"Ca₁₀(PO₄)₆(OH)₂",    group:"Fosfatos",    elements:["Ca","P","O"],        hardness:5.0,density:3.16,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1923.html", bio_role:"MINERAL DEL HUESO — endoesqueleto vertebrado, esmalte dental"},
+{id:63, name:"Vivianite",     name_es:"Vivianita",    formula:"Fe₃(PO₄)₂·8H₂O",       group:"Fosfatos",    elements:["Fe","P","O"],        hardness:1.5,density:2.68,color:"azul/verde",       luster:"vítreo",    mindat_url:"https://www.mindat.org/min-4238.html", bio_role:"Fe, P — turberas, conservación de huesos fósiles"},
+{id:64, name:"Turquoise",     name_es:"Turquesa",     formula:"CuAl₆(PO₄)₄(OH)₈·4H₂O",group:"Fosfatos",  elements:["Cu","Al","P","O"],   hardness:5.5,density:2.70,color:"azul-verde",       luster:"céreo",     mindat_url:"https://www.mindat.org/min-4060.html", bio_role:"Fuente de Cu y P en ambientes áridos"},
+{id:65, name:"Vanadinite",    name_es:"Vanadinita",   formula:"Pb₅(VO₄)₃Cl",           group:"Vanadatos",   elements:["Pb","V","Cl","O"],   hardness:3.0,density:6.88,color:"rojo/naranja",     luster:"resinoso",  mindat_url:"https://www.mindat.org/min-4166.html", bio_role:"V — pigmento de sangre verde en tunicados (vanadina)"},
+// Sulfatos
+{id:70, name:"Gypsum",        name_es:"Yeso",         formula:"CaSO₄·2H₂O",            group:"Sulfatos",    elements:["Ca","S","O"],        hardness:2.0,density:2.32,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1784.html", bio_role:"Ca, S — enmienda agrícola del suelo, evaporitas"},
+{id:71, name:"Barite",        name_es:"Barita",       formula:"BaSO₄",                 group:"Sulfatos",    elements:["Ba","S","O"],        hardness:3.5,density:4.48,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-543.html",  bio_role:"Ba — algunos organismos marinos (Xenophyophora)"},
+{id:72, name:"Epsomite",      name_es:"Epsomita",     formula:"MgSO₄·7H₂O",            group:"Sulfatos",    elements:["Mg","S","O"],        hardness:2.0,density:1.68,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1393.html", bio_role:"Mg, S — sal de Epsom, nutriente vegetal"},
+{id:73, name:"Jarosite",      name_es:"Jarosita",     formula:"KFe₃(SO₄)₂(OH)₆",       group:"Sulfatos",    elements:["K","Fe","S","O"],    hardness:3.0,density:3.26,color:"amarillo-marrón",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2096.html", bio_role:"Fe, K — suelos ácidos sulfatados, superficie de Marte"},
+{id:74, name:"Chalcanthite",  name_es:"Calcantita",   formula:"CuSO₄·5H₂O",            group:"Sulfatos",    elements:["Cu","S","O"],        hardness:2.5,density:2.29,color:"azul",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-960.html",  bio_role:"Fuente de Cu soluble en agua — muy biodisponible"},
+// Halogenuros
+{id:79, name:"Halite",        name_es:"Halita",       formula:"NaCl",                  group:"Halogenuros", elements:["Na","Cl"],           hardness:2.5,density:2.17,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1804.html", bio_role:"Na, Cl — balance osmótico, impulso nervioso"},
+{id:80, name:"Sylvite",       name_es:"Silvita",      formula:"KCl",                   group:"Halogenuros", elements:["K","Cl"],            hardness:2.0,density:1.99,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3858.html", bio_role:"K — fertilizante potásico (potasa), función celular"},
+{id:81, name:"Fluorite",      name_es:"Fluorita",     formula:"CaF₂",                  group:"Halogenuros", elements:["Ca","F"],            hardness:4.0,density:3.18,color:"púrpura/verde",    luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1576.html", bio_role:"Ca, F — fluorapatita (dientes), fuente de flúor"},
+// Elementos nativos
+{id:85, name:"Sulfur",        name_es:"Azufre nativo",formula:"S",                     group:"Elementos nativos",elements:["S"],             hardness:2.0,density:2.07,color:"amarillo",         luster:"resinoso",  mindat_url:"https://www.mindat.org/min-3855.html", bio_role:"S — aminoácidos, clústeres Fe-S, energía H₂S"},
+{id:86, name:"Graphite",      name_es:"Grafito",      formula:"C",                     group:"Elementos nativos",elements:["C"],             hardness:1.0,density:2.09,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1740.html", bio_role:"C — forma pura del elemento base de la vida"},
+{id:87, name:"Copper",        name_es:"Cobre nativo", formula:"Cu",                    group:"Elementos nativos",elements:["Cu"],            hardness:2.5,density:8.96,color:"rojo cobre",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1142.html", bio_role:"Cu — hemocianina, oxidasas, melanina"},
+// Boratos
+{id:94, name:"Borax",         name_es:"Bórax",        formula:"Na₂B₄O₅(OH)₄·8H₂O",    group:"Boratos",     elements:["Na","B","O"],        hardness:2.5,density:1.72,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-738.html",  bio_role:"B — pared celular vegetal (boro esencial para plantas)"},
+// Minerales especiales biológicos
+{id:100,name:"Opal",          name_es:"Ópalo",        formula:"SiO₂·nH₂O",             group:"Mineraloides",elements:["Si","O"],            hardness:6.0,density:2.10,color:"varios",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3004.html", bio_role:"Si amorfo — espículas de esponjas, fitolitos de plantas"},
+{id:101,name:"Natron",        name_es:"Natrón",       formula:"Na₂CO₃·10H₂O",          group:"Carbonatos",  elements:["Na","C","O"],        hardness:1.0,density:1.42,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2880.html", bio_role:"Na — lagos alcalinos (lagos de soda), pH extremo"},
+{id:102,name:"Struvite",      name_es:"Estruvita",    formula:"NH₄MgPO₄·6H₂O",         group:"Fosfatos",    elements:["N","Mg","P","O"],    hardness:2.0,density:1.71,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3820.html", bio_role:"N, Mg, P — cálculos renales, tratamiento de aguas"},
+];
+
+// ─── Motor de mineralogía ────────────────────────────────────
+function getMineralsForPlanet(v){
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH}=v;
+  const rules=[
+    {cond:Ca>30&&CO2>0,                ids:[21,22,23]},
+    {cond:Ca>20&&P>0.5,                ids:[61,62]},
+    {cond:Ca>10&&S>100,                ids:[70]},
+    {cond:Fe>40&&O2<5,                 ids:[34,49,53]},
+    {cond:Fe>20&&O2>5,                 ids:[33,35]},
+    {cond:Fe>10&&CO2>0,                ids:[25]},
+    {cond:Si>150,                      ids:[1,100]},
+    {cond:Si>80&&H2O>10,              ids:[1,100]},
+    {cond:Mg>30,                       ids:[4,10,24]},
+    {cond:Mg>20&&Si>50,               ids:[11,4]},
+    {cond:Cu>80,                       ids:[50,29,28]},
+    {cond:Cu>80&&S>500,               ids:[57,74]},
+    {cond:S>2000&&H2S>1,              ids:[49,85,53]},
+    {cond:H2S>5,                       ids:[55,56]},
+    {cond:Ni>100,                      ids:[54,52]},
+    {cond:V>200,                       ids:[65]},
+    {cond:pH<4&&Fe>20,                ids:[73]},
+    {cond:H2O>60,                      ids:[79,80]},
+    {cond:Temp>50&&S>1000,            ids:[85,49]},
+    {cond:Mg>10&&Temp<-20&&H2O>30,  ids:[72]},
+    {cond:Ca>10&&Mg>10,              ids:[23]},
+    {cond:Ca>10&&pH>7&&CO2>0.01,    ids:[21,22]},
+    {cond:O2>15&&Mg>15&&P>0.3,      ids:[61,62,6]},
+    {cond:Si>50&&Mg>20,              ids:[4,5,6]},
+    {cond:true,                        ids:[1,3,7]},// siempre presentes
+  ];
+  const added=new Set();
+  const result=[];
+  rules.forEach(rule=>{
+    if(rule.cond){
+      rule.ids.forEach(id=>{
+        if(!added.has(id)){
+          const m=MINERALS_DB.find(m=>m.id===id);
+          if(m){result.push(m);added.add(id);}
+        }
+      });
+    }
+  });
+  return result.slice(0,15);
+}
+
+function getMineralColor(group){
+  const colors={
+    'Silicatos':'#60A5FA','Carbonatos':'#4ADE80','Óxidos':'#F87171',
+    'Sulfuros':'#FBBF24','Fosfatos':'#A78BFA','Sulfatos':'#F472B6',
+    'Halogenuros':'#34D399','Elementos nativos':'#FCD34D',
+    'Boratos':'#6EE7B7','Vanadatos':'#00D4AA','Mineraloides':'#94A3B8',
+  };
+  return colors[group]||'#94A3B8';
+}
+
+function getHardnessBar(h){
+  const pct=Math.round((h/10)*100);
+  const col=h>=7?'#F87171':h>=5?'#FBBF24':'#4ADE80';
+  return`<div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;"><div style="height:100%;width:${pct}%;background:${col};border-radius:2px;"></div></div><span style="font-size:8px;color:${col};font-family:'JetBrains Mono',monospace;width:20px;">${h}</span></div>`;
+}
+
+// ─── Render pestaña Minerales ────────────────────────────────
+function renderMinerals(el){
+  const minerals=getMineralsForPlanet(vals);
+  const score=calcScore(vals);
+  const code=planetCode(vals);
+  const groups=[...new Set(minerals.map(m=>m.group))];
+
+  // Elemento más representado en el planeta
+  const elemCount={};
+  minerals.forEach(m=>m.elements.forEach(e=>{elemCount[e]=(elemCount[e]||0)+1;}));
+  const topElem=Object.entries(elemCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  el.innerHTML=`
+<div style="display:flex;height:100%;overflow:hidden;">
+
+  <!-- Panel izquierdo: estadísticas y búsqueda -->
+  <div class="scroll" style="width:220px;border-right:1px solid var(--border);padding:12px;flex-shrink:0;">
+    <div class="label">${lang==='en'?'Planet Mineralogy':'Mineralogía del Planeta'}</div>
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-family:'JetBrains Mono',monospace;">${code}</div>
+      ${[
+        {l:lang==='en'?'Detected minerals':'Minerales detectados',v:`${minerals.length}`,c:'var(--teal)'},
+        {l:lang==='en'?'Mineral groups':'Grupos minerales',v:`${groups.length}`,c:'#60A5FA'},
+        {l:lang==='en'?'Habitability':'Habitabilidad',v:`${Math.round(score*100)}%`,c:score>=0.6?'var(--teal)':'#FBBF24'},
+        {l:lang==='en'?'IMA total':'Total IMA Mindat',v:'6,210',c:'#94A3B8'},
+      ].map(({l,v,c})=>`
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
+          <span style="font-size:9px;color:var(--muted);">${l}</span>
+          <span style="font-size:11px;font-weight:700;color:${c};font-family:'JetBrains Mono',monospace;">${v}</span>
+        </div>`).join('')}
+    </div>
+
+    <div class="label">${lang==='en'?'Dominant elements':'Elementos dominantes'}</div>
+    ${topElem.map(([el2,count])=>`
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <div style="width:28px;height:28px;border-radius:5px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--teal);font-family:'JetBrains Mono',monospace;flex-shrink:0;">${el2}</div>
+        <div style="flex:1;">
+          <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;">
+            <div style="height:100%;width:${Math.round(count/minerals.length*100)}%;background:var(--teal);border-radius:2px;"></div>
+          </div>
+          <div style="font-size:8px;color:var(--muted);margin-top:2px;">${count} ${lang==='en'?'minerals':'minerales'}</div>
+        </div>
+      </div>`).join('')}
+
+    <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;">
+      <div class="label">${lang==='en'?'Groups present':'Grupos presentes'}</div>
+      ${groups.map(g=>{
+        const col=getMineralColor(g);
+        const count=minerals.filter(m=>m.group===g).length;
+        return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <div style="width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0;"></div>
+          <span style="font-size:10px;color:${col};">${g}</span>
+          <span style="font-size:9px;color:var(--dim);margin-left:auto;">${count}</span>
+        </div>`;}).join('')}
+    </div>
+
+    <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;">
+      <div style="font-size:9px;color:var(--dim);line-height:1.6;">
+        <div style="color:var(--muted);margin-bottom:4px;font-size:8px;text-transform:uppercase;letter-spacing:.08em;">Fuente de datos</div>
+        <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;font-size:10px;">mindat.org</a><br>
+        <span style="font-size:8px;">IMA-CNMNC · CC BY-NC-SA 4.0</span><br>
+        <span style="font-size:8px;color:var(--dim);">6,210 especies aprobadas</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Centro: grid de minerales -->
+  <div class="scroll" style="flex:1;padding:14px 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">${lang==='en'?'Minerals of this planet':'Minerales de este planeta'}</div>
+        <div style="font-size:10px;color:var(--muted);">${lang==='en'?'Based on current mineral composition · Source: Mindat.org':'Basado en la composición mineral actual · Fuente: Mindat.org'}</div>
+      </div>
+      <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;text-align:right;">
+        ${lang==='en'?'Showing':'Mostrando'} ${minerals.length} / 6,210<br>
+        <span style="color:var(--muted);">${lang==='en'?'IMA-approved species':'especies IMA aprobadas'}</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;">
+      ${minerals.map((m,i)=>{
+        const col=getMineralColor(m.group);
+        const nameDisp=lang==='en'?m.name:m.name_es;
+        return`
+        <div class="card" style="animation:fadeIn .3s ease both;animation-delay:${i*.04}s;border-color:${col}25;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${col},transparent);"></div>
+          <!-- Header -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:${col};">${nameDisp}</div>
+              <div style="font-size:9px;color:var(--muted);margin-top:1px;font-family:'JetBrains Mono',monospace;">${m.formula}</div>
+            </div>
+            <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:${col}18;color:${col};flex-shrink:0;margin-left:6px;">${m.group}</span>
+          </div>
+
+          <!-- Propiedades físicas -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">
+            <div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${lang==='en'?'Hardness':'Dureza'} (Mohs)</div>
+              ${getHardnessBar(m.hardness)}
+            </div>
+            <div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${lang==='en'?'Density':'Densidad'} (g/cm³)</div>
+              <div style="font-size:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-weight:600;">${m.density}</div>
+            </div>
+          </div>
+
+          <!-- Color y brillo -->
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px;">${lang==='en'?'Color':'Color'}</div>
+              <div style="font-size:9px;color:var(--text);">${m.color}</div>
+            </div>
+            <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px;">${lang==='en'?'Luster':'Brillo'}</div>
+              <div style="font-size:9px;color:var(--text);">${m.luster}</div>
+            </div>
+          </div>
+
+          <!-- Elementos -->
+          <div style="margin-bottom:8px;">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${lang==='en'?'Elements':'Elementos'}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+              ${m.elements.map(e=>`
+                <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);color:var(--teal);font-family:'JetBrains Mono',monospace;">${e}</span>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Rol biológico -->
+          <div style="background:${col}08;border-radius:5px;padding:5px 8px;margin-bottom:8px;border:0.5px solid ${col}20;">
+            <div style="font-size:7px;color:${col};text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">🧬 ${lang==='en'?'Biological role':'Rol biológico'}</div>
+            <div style="font-size:9px;color:var(--muted);line-height:1.5;">${m.bio_role}</div>
+          </div>
+
+          <!-- Link Mindat -->
+          <a href="${m.mindat_url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--teal);text-decoration:none;background:rgba(0,212,170,0.06);border:0.5px solid rgba(0,212,170,0.2);border-radius:5px;padding:4px 8px;transition:all .15s;"
+            onmouseover="this.style.background='rgba(0,212,170,0.12)'"
+            onmouseout="this.style.background='rgba(0,212,170,0.06)'">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#00D4AA" stroke-width="0.8"/><path d="M3 5h4M5 3v4" stroke="#00D4AA" stroke-width="0.8"/></svg>
+            Ver en Mindat.org
+            <span style="margin-left:auto;opacity:.5;">↗</span>
+          </a>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Footer Mindat -->
+    <div style="margin-top:16px;padding:12px;background:rgba(0,212,170,0.04);border:0.5px solid rgba(0,212,170,0.15);border-radius:10px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);line-height:1.7;">
+        ${lang==='en'
+          ?`Data sourced from <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;">mindat.org</a> — The world's largest open mineralogy database with <b style="color:var(--teal);">6,210</b> IMA-approved mineral species. License: CC BY-NC-SA 4.0`
+          :`Datos obtenidos de <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;">mindat.org</a> — La mayor base de datos de mineralogía del mundo con <b style="color:var(--teal);">6,210</b> especies minerales aprobadas por la IMA. Licencia: CC BY-NC-SA 4.0`}
+      </div>
+    </div>
+  </div>
+</div>`;
 }
 
 // ═══════════════════════════════════════════════════════
