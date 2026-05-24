@@ -517,7 +517,7 @@ void main(){
     <div id="gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
       <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--dim);">
         <div style="width:24px;height:24px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 8px;"></div>
-        Cargando planetas…
+        ${lang==='en'?'Loading planets…':'Cargando planetas…'}
       </div>
     </div>
   </div>
@@ -1311,7 +1311,7 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation'];
+  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation','phenomena'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
@@ -1330,6 +1330,7 @@ function renderMain(){
   else if(currentTab==='minerals')   renderMinerals(el);
   else if(currentTab==='myplanets')  renderMyPlanets(el);
   else if(currentTab==='validation') renderValidation(el);
+  else if(currentTab==='phenomena')  renderPhenomena(el);
 }
 
 // ─── PLANET TAB ──────────────────────────────────────
@@ -1463,7 +1464,7 @@ function renderCreatures(el){
   el.innerHTML=`
     <div style="padding:18px 20px;overflow-y:auto;height:100%;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <div><div style="font-size:17px;font-weight:700;margin-bottom:3px;">Criaturas del planeta ${code}</div><div style="font-size:11px;color:var(--muted);">Motor evolutivo · Cada ser es científicamente coherente e irrepetible</div></div>
+        <div><div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('creaturesTitle')} ${code}</div><div style="font-size:11px;color:var(--muted);">${t('creaturesDesc')}</div></div>
         <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">Criaturas:</span>${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
@@ -1942,7 +1943,7 @@ function renderEcosystem(el){
 // ─── GALLERY TAB ──────────────────────────────────────
 function renderGallery(el){
   const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
-  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:3px;">Galería IA · Imágenes Únicas</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Imágenes generadas por IA · Cada una es irrepetible</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;"><div><div class="label">Vista orbital del planeta</div><div id="gal-planet" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')" class="btn btn-teal">🌍 Generar imagen del planeta</button></div></div><div><div class="label">Superficie del planeta</div><div id="gal-surface" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('Alien planet surface level view, ${vals.Temp>50?'volcanic hot lava flows':''}${vals.Temp<-20?'frozen icy tundra':''}${vals.H2S>2?'sulfuric geysers and acid pools':''}${vals.O2>15?'alien vegetation forests':'rocky barren terrain'} landscape, dramatic alien sky with ${vals.H2S>2?'yellow sulfuric':'blue oxygen'} atmosphere, hyper detailed, 8k, cinematic lighting',600,400,'gal-surface')" class="btn btn-teal">🏔 Generar superficie</button></div></div></div><div class="label">Arte conceptual de criaturas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">${creatures.map((cr,i)=>{const imgId=`gal-cr-${i}`;return`<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);"><div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar</button></div><div style="padding:8px 10px;"><div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div></div></div>`;}).join('')}</div></div>`;
+  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('galTitle')}</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${t('galDesc')}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;"><div><div class="label">${t('orbitalView')}</div><div id="gal-planet" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')" class="btn btn-teal">🌍 ${t('genPlanet')}</button></div></div><div><div class="label">${t('surfaceView')}</div><div id="gal-surface" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('Alien planet surface level view, ${vals.Temp>50?'volcanic hot lava flows':''}${vals.Temp<-20?'frozen icy tundra':''}${vals.H2S>2?'sulfuric geysers and acid pools':''}${vals.O2>15?'alien vegetation forests':'rocky barren terrain'} landscape, dramatic alien sky with ${vals.H2S>2?'yellow sulfuric':'blue oxygen'} atmosphere, hyper detailed, 8k, cinematic lighting',600,400,'gal-surface')" class="btn btn-teal">🏔 ${lang==='en'?'Generate surface':'Generar superficie'}</button></div></div></div><div class="label">${t('creatureArt')}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">${creatures.map((cr,i)=>{const imgId=`gal-cr-${i}`;return`<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);"><div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate':'Generar'}</button></div><div style="padding:8px 10px;"><div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div></div></div>`;}).join('')}</div></div>`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1978,7 +1979,7 @@ async function createPlanet(){
   document.getElementById('modal-save-status').innerHTML=`
     <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);">
       <div style="width:10px;height:10px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
-      Guardando en la nube…
+      ${lang==='en'?'Saving to cloud…':'Guardando en la nube…'}
     </div>`;
   document.getElementById('modal-stats').innerHTML=[
     {l:lang==='en'?'Habitability':'Habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
@@ -2097,7 +2098,7 @@ async function loadPlanetFromGallery(code){
   closeGallery();
   const planet = await loadPlanetByCode(code);
   if(!planet || !planet.vals){
-    alert(`No se pudo cargar el planeta ${code}`);
+    alert(lang==='en'?`Could not load planet ${code}`:`No se pudo cargar el planeta ${code}`);
     return;
   }
   // Aplicar valores del planeta cargado
@@ -2132,7 +2133,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación'],
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -2193,7 +2194,64 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation'],
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena'],
+    createBtn: 'Create Planet',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
+    traitLabels: ['Skeleton','Blood','Metabolism','Nervous','Thermoreg.','Size'],
+    analogsTitle: 'Earth analogs',
+    cyclesTitle: 'Active mineral cycles',
+    stellarTitle: 'Stellar parameters',
+    creaturesTitle: 'Planet creatures',
+    creaturesDesc: 'Evolutionary engine · Every being is scientifically coherent and unique',
+    numCreatures: 'Creatures:',
+    genImageBtn: '🎨 Generate AI image',
+    habitability: 'Habitability',
+    temperature: 'Temperature',
+    gravity: 'Gravity',
+    atmosphere: 'Atmosphere',
+    magnetosphere: 'Magnetosphere',
+    habitableZone: 'Habitable zone',
+    stellarType: 'Star type',
+    active: 'active',
+    extinct: '⚠ Extinction risk',
+    ecoTitle: 'Ecosystem Balance',
+    ecoDesc: 'Population dynamics based on mineral conditions',
+    galTitle: 'AI Gallery · Unique Images',
+    galDesc: 'AI generated images · Each one is unrepeatable',
+    orbitalView: 'Orbital view of planet',
+    surfaceView: 'Planet surface',
+    genPlanet: '🌍 Generate planet image',
+    genSurface: '🏔 Generate surface',
+    genEco: '🦅 Generate aerial ecosystem',
+    creatureArt: 'Creature concept art',
+    copyCode: '📋 Copy code',
+    explore: 'Explore',
+    modalTitle: '✦ Planet Registered ✦',
+    modalSub: 'Your planet has been registered',
+    modalNote: 'Reference code · Another explorer may have created a similar one',
+    genPlanetImg: '🌍 Generate AI image of your planet',
+    noAnalogs: 'No known analogs',
+    rotate: 'Drag to rotate · Scroll to zoom · Axial tilt: 23.5°',
+    natureLink: '🕸 View Nature Connections →',
+    habitable:'HABITABLE',moderate:'MODERATE',marginal:'MARGINAL',extreme:'EXTREME',inhospitable:'INHOSPITABLE',
+    stable:'✓ Stable ecosystem',fragile:'⚠ Fragile ecosystem',collapse:'✗ Collapse likely',
+    bodyRef:'REF BODY',codeId:'PLANET ID',tempMean:'MEAN TEMP',pressure:'PRESSURE',
+    dense:'Dense',thin:'Thin',noAtm:'No atmosphere',
+    strong:'Strong',weak:'Weak',noField:'No field',
+    yes:'Yes ✓',no:'No ✗',
+    pops:['Primary producers','Herbivores','Carnivores','Apex predators','Decomposers','Chemoautotrophs'],
+    cycles:['Carbon','Nitrogen','Phosphorus','Iron','Calcium','Sulfur','Vanadium'],
+    connecting:'Connect to internet for AI images',
+    generating:'Generating AI image…',
+    copied:'✓ Copied',
+    phenomenaTitle:'Natural Phenomena',
+    phenomenaDesc:'Unique phenomena generated from planetary mineral composition',
+    earthAnalogs:'Earth analog',
+    evolutionImpact:'Evolutionary impact on creatures',
+    frequency:'Frequency',
+    intensity:'Intensity',
+    affectedCreatures:'Affected traits',
     createBtn: '✦ Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
@@ -2900,7 +2958,7 @@ async function renderMyPlanets(el){
   el.innerHTML=`
     <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:10px;">
       <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
-      <div style="font-size:11px;color:var(--muted);">Cargando tus planetas…</div>
+      <div style="font-size:11px;color:var(--muted);">${lang==='en'?'Loading your planets…':'Cargando tus planetas…'}</div>
     </div>`;
 
   // Cargar planetas del usuario
@@ -2911,7 +2969,7 @@ async function renderMyPlanets(el){
     .order('created_at', { ascending: false });
 
   if(error || !planets){
-    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted);">Error cargando planetas.</div>`;
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted);">${lang==='en'?'Error loading planets.':'Error cargando planetas.'}</div>`;
     return;
   }
 
@@ -3198,6 +3256,490 @@ function renderValidation(el){
   </div>
 
 </div>`;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// MOTOR DE FENÓMENOS NATURALES
+// Genera fenómenos únicos basados en composición mineral
+// Ciencia: termodinámica, electroquímica, geología planetaria
+// ═══════════════════════════════════════════════════════
+
+function generatePhenomena(v){
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,pressure,gravity}=v;
+  const score=calcScore(v);
+  const phenomena=[];
+
+  // ─── FENÓMENOS TERRESTRES (presentes si las condiciones coinciden) ───
+
+  if(H2O>20&&Temp>-10&&Temp<80&&pressure>0.3){
+    const intensity=Math.min(100,Math.round(H2O*0.8+pressure*20));
+    const frequency=H2O>60?'Constant':H2O>40?'Daily':'Seasonal';
+    phenomena.push({
+      id:'rain', icon:'🌧',
+      name:lang==='en'?'Rain / Water precipitation':'Lluvia / Precipitación de agua',
+      type:'terrestrial',
+      col:'#60A5FA',
+      intensity, frequency,
+      earth_analog:lang==='en'?'Identical to Earth rain':'Idéntico a la lluvia terrestre',
+      science:lang==='en'
+        ?`Water evaporates at surface (${Temp}°C) and condenses in upper atmosphere where T° is lower. pH of rain: ${pH<5.5?pH.toFixed(1)+' (acid rain due to low pH)':'~5.6 (natural carbonic acid)'}. Precipitation rate estimated at ${Math.round(H2O*0.8)} mm/year.`
+        :`El agua se evapora en la superficie (${Temp}°C) y condensa en la alta atmósfera donde T° es menor. pH de la lluvia: ${pH<5.5?pH.toFixed(1)+' (lluvia ácida por pH bajo)':'~5.6 (ácido carbónico natural)'}. Tasa de precipitación estimada: ${Math.round(H2O*0.8)} mm/año.`,
+      evolution:lang==='en'
+        ?'Drives mineral dissolution and transport. Plants and root systems evolve to capture water. Waterproof cuticles develop.'
+        :'Impulsa la disolución y transporte de minerales. Plantas y sistemas radiculares evolucionan para capturar agua. Se desarrollan cutículas impermeables.',
+      affected_traits:lang==='en'?['Skin/cuticle','Root systems','Mineral absorption']:['Tegumento/cutícula','Sistemas radiculares','Absorción mineral'],
+    });
+  }
+
+  if(H2O>25&&Temp>5&&pressure>0.5&&gravity>0.3){
+    const intensity=Math.min(100,Math.round((H2O/100)*gravity*50+pressure*15));
+    phenomena.push({
+      id:'storm', icon:'⛈',
+      name:lang==='en'?'Electrical storms / Lightning':'Tormentas eléctricas / Rayos',
+      type:'terrestrial',
+      col:'#FBBF24',
+      intensity, frequency:H2O>50?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Similar to Earth thunderstorms':'Similar a tormentas terrestres',
+      science:lang==='en'
+        ?`Charge separation in water droplet clouds generates potentials of ${Math.round(intensity*3)} MV. Lightning channels reach 30,000K — 5× hotter than the sun's surface. Each bolt fixes ~${Math.round(N2||78)} g of atmospheric N₂ as NH₃, feeding the nitrogen cycle.`
+        :`La separación de cargas en nubes de gotas de agua genera potenciales de ${Math.round(intensity*3)} MV. Los canales de rayo alcanzan 30,000K — 5× más caliente que la superficie solar. Cada rayo fija ~${Math.round(N2||78)} g de N₂ atmosférico como NH₃, alimentando el ciclo del nitrógeno.`,
+      evolution:lang==='en'
+        ?'Lightning fixes nitrogen → fertilizes ecosystems. Creatures evolve electroreception to predict storms. Some develop electrical resistance membranes.'
+        :'Los rayos fijan nitrógeno → fertilizan ecosistemas. Las criaturas evolucionan electrorrecepción para predecir tormentas. Algunas desarrollan membranas de resistencia eléctrica.',
+      affected_traits:lang==='en'?['Electroreception','Nitrogen metabolism','Shelter behavior']:['Electrorrecepción','Metabolismo del nitrógeno','Comportamiento de refugio'],
+    });
+  }
+
+  if(H2O>40&&Temp>20&&pressure>0.8&&gravity>0.5){
+    const intensity=Math.min(100,Math.round(H2O*0.6+Temp*0.8));
+    phenomena.push({
+      id:'hurricane', icon:'🌀',
+      name:lang==='en'?'Tropical cyclones / Hurricanes':'Ciclones tropicales / Huracanes',
+      type:'terrestrial',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'Similar to Atlantic/Pacific hurricanes':'Similar a huracanes Atlántico/Pacífico',
+      science:lang==='en'
+        ?`Warm ocean evaporation (${Temp}°C) + Coriolis effect from rotation + low pressure center. Sustained winds up to ${Math.round(intensity*2.5)} km/h. Eye diameter: ${Math.round(intensity*0.5+20)} km. Energy equivalent of ${Math.round(intensity*100)} nuclear bombs/day.`
+        :`Evaporación oceánica cálida (${Temp}°C) + efecto Coriolis de la rotación + centro de baja presión. Vientos sostenidos hasta ${Math.round(intensity*2.5)} km/h. Diámetro del ojo: ${Math.round(intensity*0.5+20)} km. Energía equivalente a ${Math.round(intensity*100)} bombas nucleares/día.`,
+      evolution:lang==='en'
+        ?'Coastal creatures develop streamlined bodies. Flying species become seasonal migrants. Underground sheltering becomes dominant behavior.'
+        :'Las criaturas costeras desarrollan cuerpos aerodinámicos. Las especies voladoras se vuelven migradores estacionales. El refugio subterráneo se vuelve comportamiento dominante.',
+      affected_traits:lang==='en'?['Body streamlining','Migration','Burrowing']:['Aerodinámica corporal','Migración','Excavación'],
+    });
+  }
+
+  if(Fe>30&&Si>100&&pressure>1&&gravity>0.5){
+    const intensity=Math.min(100,Math.round(Fe*0.5+Si*0.1+pressure*10));
+    phenomena.push({
+      id:'seismic', icon:'🌋',
+      name:lang==='en'?'Seismic activity / Tectonic earthquakes':'Actividad sísmica / Terremotos tectónicos',
+      type:'terrestrial',
+      col:'#F87171',
+      intensity, frequency:intensity>70?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Similar to Earth plate tectonics':'Similar a la tectónica terrestre',
+      science:lang==='en'
+        ?`High Fe (${Fe}K ppm) and Si (${Si}K ppm) content indicates active mantle convection. Estimated magnitude: ${(intensity/20+4).toFixed(1)} Richter average. Tectonic plates driven by Fe-rich magma at ${Math.round(Temp+800)}°C in the mantle.`
+        :`Alto contenido de Fe (${Fe}K ppm) y Si (${Si}K ppm) indica convección del manto activa. Magnitud estimada: ${(intensity/20+4).toFixed(1)} Richter promedio. Placas tectónicas impulsadas por magma rico en Fe a ${Math.round(Temp+800)}°C en el manto.`,
+      evolution:lang==='en'
+        ?'Seismoreceptor organs become standard. Burrowing species gain advantage. Exoskeletons thicken for crush resistance. Communal early warning systems evolve.'
+        :'Los órganos sismorreceptores se vuelven estándar. Las especies excavadoras ganan ventaja. Los exoesqueletos se engrosan para resistir aplastamiento. Evolucionan sistemas comunitarios de alerta temprana.',
+      affected_traits:lang==='en'?['Seismoreception','Burrowing','Exoskeleton thickness']:['Sismorreceptores','Excavación','Grosor del exoesqueleto'],
+    });
+  }
+
+  if(Temp>-20&&Temp<50&&H2O>15&&gravity>0.3){
+    const intensity=Math.min(100,Math.round((50-Math.abs(Temp-15))*1.5+gravity*10));
+    phenomena.push({
+      id:'wind', icon:'💨',
+      name:lang==='en'?'Atmospheric winds / Planetary circulation':'Vientos atmosféricos / Circulación planetaria',
+      type:'terrestrial',
+      col:'#94A3B8',
+      intensity, frequency:'Constant',
+      earth_analog:lang==='en'?'Trade winds, jet streams':'Vientos alisios, corrientes en chorro',
+      science:lang==='en'
+        ?`Atmospheric pressure differential of ${(pressure*0.3).toFixed(2)} atm drives wind circulation. Estimated average speed: ${Math.round(intensity*0.8)} km/h. Polar cells + Ferrel cells + Hadley cells create global circulation pattern. ${gravity>1.5?'High gravity compresses atmosphere — stronger surface winds.':'Low gravity allows thin extended atmosphere.'}`
+        :`Diferencial de presión atmosférica de ${(pressure*0.3).toFixed(2)} atm impulsa la circulación. Velocidad media estimada: ${Math.round(intensity*0.8)} km/h. Células polares + células de Ferrel + células de Hadley crean el patrón global. ${gravity>1.5?'Alta gravedad comprime la atmósfera — vientos superficiales más fuertes.':'Baja gravedad permite atmósfera extendida y delgada.'}`,
+      evolution:lang==='en'
+        ?'Seeds and spores dispersed by wind — accelerates plant colonization. Winged species evolve efficient soaring. Aerodynamic body shapes selected strongly.'
+        :'Semillas y esporas dispersadas por el viento — acelera la colonización vegetal. Las especies aladas evolucionan el planeo eficiente. Las formas corporales aerodinámicas se seleccionan con fuerza.',
+      affected_traits:lang==='en'?['Flight efficiency','Spore dispersal','Body shape']:['Eficiencia de vuelo','Dispersión de esporas','Forma corporal'],
+    });
+  }
+
+  // ─── FENÓMENOS ALIENÍGENAS ───────────────────────────
+
+  if(Fe>55&&Temp>60){
+    const intensity=Math.min(100,Math.round(Fe*0.8+Temp*0.3));
+    phenomena.push({
+      id:'iron_rain', icon:'🔴',
+      name:lang==='en'?'Iron Rain — liquid metal precipitation':'Lluvia de hierro líquido',
+      type:'alien',
+      col:'#F87171',
+      intensity, frequency:Temp>100?'Daily':'Seasonal',
+      earth_analog:lang==='en'?'Similar to exoplanet WASP-76b (2020 discovery)':'Similar al exoplaneta WASP-76b (descubierto 2020)',
+      science:lang==='en'
+        ?`Fe concentration of ${Fe}K ppm combined with T° ${Temp}°C volatilizes iron oxides at high altitude. As temperature drops with altitude, liquid Fe droplets precipitate. Droplet diameter: 0.1–5mm. Contact temperature on impact: ~${Math.round(Temp*0.7)}°C. Chemical reaction: Fe₂O₃ → 2Fe(l) + 3/2O₂. WASP-76b confirmed this phenomenon in 2020 with ESPRESSO spectrograph.`
+        :`La concentración de Fe de ${Fe}K ppm combinada con T° ${Temp}°C volatiliza óxidos de hierro en la alta atmósfera. Al bajar la temperatura con la altitud, gotitas de Fe líquido precipitan. Diámetro de gotitas: 0.1–5mm. Temperatura de contacto al impactar: ~${Math.round(Temp*0.7)}°C. Reacción: Fe₂O₃ → 2Fe(l) + 3/2O₂. WASP-76b confirmó este fenómeno en 2020 con el espectrógrafo ESPRESSO.`,
+      evolution:lang==='en'
+        ?'Creatures develop metallic armor plating. Underground or cave-dwelling becomes mandatory. Photosynthetic organisms evolve metal-reflective surfaces. Fe-resistant protein structures selected.'
+        :'Las criaturas desarrollan placas de armadura metálica. La vida subterránea o en cuevas se vuelve obligatoria. Los organismos fotosintéticos evolucionan superficies reflectoras de metal. Se seleccionan estructuras proteicas resistentes al Fe.',
+      affected_traits:lang==='en'?['Armored exoskeleton','Burrowing','Metal resistance']:['Exoesqueleto blindado','Excavación','Resistencia metálica'],
+    });
+  }
+
+  if(H2S>4||S>10000){
+    const intensity=Math.min(100,Math.round(H2S*8+S*0.003));
+    phenomena.push({
+      id:'acid_storm', icon:'☠',
+      name:lang==='en'?'Sulfuric acid storms — H₂SO₄ clouds':'Tormentas de ácido sulfúrico — nubes de H₂SO₄',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:intensity>70?'Daily':'Weekly',
+      earth_analog:lang==='en'?'Identical to Venus cloud layer (H₂SO₄ at 48–70km altitude)':'Idéntico a las nubes de Venus (H₂SO₄ a 48–70km de altitud)',
+      science:lang==='en'
+        ?`H₂S (${H2S}%) + atmospheric O₂ → SO₃ → H₂SO₄ in the presence of water vapor. Cloud droplet pH: ${(2-H2S*0.1).toFixed(1)} (concentrated sulfuric acid). Temperature inside clouds: ${Math.round(Temp+30)}°C. These clouds reflect ~80% of solar radiation — causing surface cooling. On Venus confirmed at densities of 1–100 mg/m³.`
+        :`H₂S (${H2S}%) + O₂ atmosférico → SO₃ → H₂SO₄ en presencia de vapor de agua. pH de las gotitas de nube: ${(2-H2S*0.1).toFixed(1)} (ácido sulfúrico concentrado). Temperatura interior de nubes: ${Math.round(Temp+30)}°C. Estas nubes reflejan ~80% de la radiación solar — causando enfriamiento superficial. En Venus confirmado a densidades de 1–100 mg/m³.`,
+      evolution:lang==='en'
+        ?'Acid-resistant biochemistry becomes mandatory. Metalloprotein-based exoskeletons (sulfur cross-links). Creatures retreat underground during storms. Chemosynthetic organisms thrive in acid clouds.'
+        :'La bioquímica resistente al ácido se vuelve obligatoria. Exoesqueletos de metaloproteínas (puentes de azufre). Las criaturas se retiran bajo tierra durante las tormentas. Los organismos quimiosintéticos prosperan en las nubes ácidas.',
+      affected_traits:lang==='en'?['Chemical resistance','Acid-proof membrane','Chemosynthesis']:['Resistencia química','Membrana ácido-resistente','Quimiosíntesis'],
+    });
+  }
+
+  if(Si>180&&Temp<-30){
+    const intensity=Math.min(100,Math.round(Si*0.3+(Math.abs(Temp))*0.5));
+    phenomena.push({
+      id:'silicon_snow', icon:'❄',
+      name:lang==='en'?'Silicon snow — SiO₂ crystal precipitation':'Nieve de silicio — precipitación de cristales SiO₂',
+      type:'alien',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for early rocky planets':'Sin equivalente terrestre — propuesto para planetas rocosos primitivos',
+      science:lang==='en'
+        ?`At temperatures of ${Temp}°C and Si concentrations of ${Si}K ppm, SiO₂ sublimates from surface minerals and recondenses as microscopic crystals at altitude. Crystal diameter: 0.01–0.5mm. Mohs hardness 7 — abrasive like sandpaper. Accumulates in layers of ${Math.round(intensity*0.5)} cm/year. Acts as photonic reflector — increases surface albedo.`
+        :`A temperaturas de ${Temp}°C y concentraciones de Si de ${Si}K ppm, el SiO₂ sublima de minerales superficiales y recondensa como cristales microscópicos en altitud. Diámetro de cristal: 0.01–0.5mm. Dureza Mohs 7 — abrasivo como lija. Se acumula en capas de ${Math.round(intensity*0.5)} cm/año. Actúa como reflector fotónico — aumenta el albedo superficial.`,
+      evolution:lang==='en'
+        ?'Silica-resistant integument (ironically similar to diatom frustules). Creatures evolve internal SiO₂ filtration. Vision organs develop crystal-proof membranes. Some organisms biomineralize Si as armor.'
+        :'Integumento resistente a la sílice (irónicamente similar a las frústulas de diatomeas). Las criaturas evolucionan filtración interna de SiO₂. Los órganos visuales desarrollan membranas protegidas de cristales. Algunos organismos biomineralizan Si como armadura.',
+      affected_traits:lang==='en'?['Siliceous exoskeleton','Vision protection','Si biomineralization']:['Exoesqueleto silíceo','Protección visual','Biomineralización Si'],
+    });
+  }
+
+  if(Temp<-100){
+    const intensity=Math.min(100,Math.round(Math.abs(Temp)*0.6+pressure*10));
+    phenomena.push({
+      id:'methane_rain', icon:'🟡',
+      name:lang==='en'?'Methane rain — cryogenic hydrocarbon cycle':'Lluvia de metano — ciclo criogénico de hidrocarburos',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'Confirmed on Titan (Saturn moon) — methane lakes at -179°C':'Confirmado en Titán (luna de Saturno) — lagos de metano a -179°C',
+      science:lang==='en'
+        ?`At ${Temp}°C, methane (CH₄) condenses as liquid (boiling point: -162°C). Methane evaporates from surface → rises → condenses → precipitates as golden rain. Lakes of liquid methane estimated at ${Math.round(intensity*50)} km² surface area. Titan confirmed this with Cassini-Huygens in 2005. Ethane (C₂H₆) also present as seasonal component.`
+        :`A ${Temp}°C, el metano (CH₄) se condensa como líquido (punto de ebullición: -162°C). El metano evapora de la superficie → asciende → condensa → precipita como lluvia dorada. Lagos de metano líquido estimados en ${Math.round(intensity*50)} km² de superficie. Titán lo confirmó con Cassini-Huygens en 2005. El etano (C₂H₆) también presente como componente estacional.`,
+      evolution:lang==='en'
+        ?'Life based on liquid methane solvent instead of water. Cell membranes made of nitrogen compounds (azotosomes). Metabolism at -179°C — chemical reactions 10,000× slower than on Earth. Unique non-aqueous biochemistry.'
+        :'Vida basada en metano líquido como solvente en lugar de agua. Membranas celulares de compuestos nitrogenados (azotosomas). Metabolismo a -179°C — reacciones químicas 10,000× más lentas que en la Tierra. Bioquímica no acuosa única.',
+      affected_traits:lang==='en'?['Non-aqueous biochemistry','Cryogenic metabolism','Azotosome membranes']:['Bioquímica no acuosa','Metabolismo criogénico','Membranas de azotosoma'],
+    });
+  }
+
+  if(Fe>40&&Ni>100){
+    const intensity=Math.min(100,Math.round(Fe*0.4+Ni*0.2));
+    phenomena.push({
+      id:'magnetic_storm', icon:'🌐',
+      name:lang==='en'?'Magnetic storms — electromagnetic pulses':'Tormentas magnéticas — pulsos electromagnéticos',
+      type:'alien',
+      col:'#A78BFA',
+      intensity, frequency:intensity>70?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Like Earth geomagnetic storms but 10–100× stronger':'Como tormentas geomagnéticas terrestres pero 10–100× más fuertes',
+      science:lang==='en'
+        ?`Fe (${Fe}K ppm) + Ni (${Ni} ppm) generate a planetary magnetic field of ${Math.round(Fe*0.02+Ni*0.01)} Tesla (Earth: 0.00005T). Solar wind interaction creates electromagnetic pulses of ${Math.round(intensity*50)} kV/m at surface. Induced currents in conductive organisms can reach ${Math.round(intensity*0.1)} mA — enough to disrupt neural function.`
+        :`Fe (${Fe}K ppm) + Ni (${Ni} ppm) generan un campo magnético planetario de ${Math.round(Fe*0.02+Ni*0.01)} Tesla (Tierra: 0.00005T). La interacción del viento solar crea pulsos electromagnéticos de ${Math.round(intensity*50)} kV/m en la superficie. Las corrientes inducidas en organismos conductores pueden alcanzar ${Math.round(intensity*0.1)} mA — suficiente para disrupt la función neural.`,
+      evolution:lang==='en'
+        ?'Neural systems evolve Faraday-cage-like biological shielding (ferritin layers). Magnetoreception becomes universal — organisms navigate with precision. Some develop magnetic field "vision" as primary sense.'
+        :'Los sistemas nerviosos evolucionan blindaje biológico tipo jaula de Faraday (capas de ferritina). La magnetorrecepción se vuelve universal — los organismos navegan con precisión. Algunos desarrollan "visión" del campo magnético como sentido primario.',
+      affected_traits:lang==='en'?['Magnetoreception','Neural shielding','EM resistance']:['Magnetorrecepción','Blindaje neural','Resistencia EM'],
+    });
+  }
+
+  if(V>250&&Fe>30&&Temp>20&&Temp<60){
+    const intensity=Math.min(100,Math.round(V*0.2+Fe*0.3));
+    phenomena.push({
+      id:'vanadium_aurora', icon:'🟢',
+      name:lang==='en'?'Vanadium auroras — metallic green sky':'Auroras de vanadio — cielo verde metálico',
+      type:'alien',
+      col:'#4ADE80',
+      intensity, frequency:'Nightly',
+      earth_analog:lang==='en'?'Like Earth auroras but vanadium-emission green (520nm)':'Como auroras terrestres pero en verde de emisión de vanadio (520nm)',
+      science:lang==='en'
+        ?`V³⁺ ions (${V} ppm) excited by solar wind emit at 519nm (metallic green). Auroral altitude: 80–300km. Intensity: ${Math.round(intensity*10)} Rayleigh (Earth aurora: 1–1,000 kR). The vanadium spectral line is distinctive — no Earth aurora produces this exact color. Visible from surface at night as permanent shimmering curtains.`
+        :`Iones V³⁺ (${V} ppm) excitados por el viento solar emiten a 519nm (verde metálico). Altitud auroral: 80–300km. Intensidad: ${Math.round(intensity*10)} Rayleigh (aurora terrestre: 1–1,000 kR). La línea espectral del vanadio es distintiva — ninguna aurora terrestre produce este color exacto. Visible desde la superficie de noche como cortinas permanentes titilantes.`,
+      evolution:lang==='en'
+        ?'Night vision optimized for 520nm (vanadium green). Nocturnal species become dominant — permanent aurora provides navigation light. Bioluminescence evolves to match aurora wavelength for camouflage.'
+        :'La visión nocturna se optimiza para 520nm (verde vanadio). Las especies nocturnas se vuelven dominantes — la aurora permanente proporciona luz de navegación. La bioluminiscencia evoluciona para coincidir con la longitud de onda de la aurora como camuflaje.',
+      affected_traits:lang==='en'?['Night vision 520nm','Nocturnal behavior','Bioluminescence']:['Visión nocturna 520nm','Comportamiento nocturno','Bioluminiscencia'],
+    });
+  }
+
+  if(Ca>55&&Temp>40&&CO2>2){
+    const intensity=Math.min(100,Math.round(Ca*0.8+CO2*5));
+    phenomena.push({
+      id:'crystal_precipitation', icon:'💎',
+      name:lang==='en'?'Aerial mineral crystallization — CaCO₃ falls from sky':'Cristalización mineral aérea — CaCO₃ cae del cielo',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for super-Earth planets':'Sin equivalente terrestre — propuesto para súper-Tierras',
+      science:lang==='en'
+        ?`Ca (${Ca}K ppm) + CO₂ (${CO2}%) + high temperature create supersaturated CaCO₃ vapor. Rapid cooling at altitude causes direct crystal precipitation: Ca²⁺ + CO₃²⁻ → CaCO₃↓. Crystal size: 0.5–10mm. Falls as mineral hail at terminal velocity ${Math.round(gravity*12)} m/s. Rate: ${Math.round(intensity*0.2)} g/m²/year. Visible as white glittering precipitation.`
+        :`Ca (${Ca}K ppm) + CO₂ (${CO2}%) + temperatura alta crean vapor de CaCO₃ supersaturado. El enfriamiento rápido en altitud causa precipitación directa de cristales: Ca²⁺ + CO₃²⁻ → CaCO₃↓. Tamaño de cristal: 0.5–10mm. Cae como granizo mineral a velocidad terminal ${Math.round(gravity*12)} m/s. Tasa: ${Math.round(intensity*0.2)} g/m²/año. Visible como precipitación blanca brillante.`,
+      evolution:lang==='en'
+        ?'Creatures develop hard dorsal shields (convergent with turtle shells). Cave dwelling becomes common. Organisms evolve to use falling minerals as building material — first mineral architecture.'
+        :'Las criaturas desarrollan escudos dorsales duros (convergente con caparazones de tortuga). La vida en cuevas se vuelve común. Los organismos evolucionan para usar los minerales caídos como material de construcción — primera arquitectura mineral.',
+      affected_traits:lang==='en'?['Dorsal shell','Cave dwelling','Mineral construction']:['Caparazón dorsal','Vida en cuevas','Construcción mineral'],
+    });
+  }
+
+  if(S>8000&&H2S>3&&pressure>1.5){
+    const intensity=Math.min(100,Math.round(S*0.005+H2S*6+pressure*8));
+    phenomena.push({
+      id:'geyser_h2s', icon:'🌋',
+      name:lang==='en'?'H₂S geysers — sulfur hydrothermal columns':'Géiseres de H₂S — columnas hidrotermales sulfurosas',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:intensity>60?'Continuous':'Daily',
+      earth_analog:lang==='en'?'Like Earth geysers but sulfuric — similar to hydrothermal vents':'Como géiseres terrestres pero sulfurosos — similar a fumarolas hidrotermales',
+      science:lang==='en'
+        ?`Subsurface H₂S (${H2S}%) heated by geothermal energy (${Math.round(Temp+300)}°C at depth) and released through fractures. Column height: ${Math.round(intensity*2)} m. Temperature at vent: ${Math.round(Temp+150)}°C. H₂S concentration at base: ${Math.round(H2S*10)}% v/v. Carries dissolved minerals: Fe, S, Si. Creates unique localized oasis ecosystems where chemosynthesis thrives.`
+        :`H₂S subsuperficial (${H2S}%) calentado por energía geotérmica (${Math.round(Temp+300)}°C en profundidad) y liberado por fracturas. Altura de la columna: ${Math.round(intensity*2)} m. Temperatura en el orificio: ${Math.round(Temp+150)}°C. Concentración de H₂S en la base: ${Math.round(H2S*10)}% v/v. Transporta minerales disueltos: Fe, S, Si. Crea ecosistemas oasis localizados únicos donde prospera la quimiosíntesis.`,
+      evolution:lang==='en'
+        ?'Entire ecosystems organized around geysers. Chemosynthetic base replaces photosynthesis. Creatures develop thermophilic enzymes. Geyser timing becomes evolutionary selective pressure — organisms synchronize reproduction with eruption cycles.'
+        :'Ecosistemas enteros organizados alrededor de los géiseres. La base quimiosintética reemplaza la fotosíntesis. Las criaturas desarrollan enzimas termófilas. El ritmo del géiser se convierte en presión selectiva evolutiva — los organismos sincronizan la reproducción con los ciclos de erupción.',
+      affected_traits:lang==='en'?['Chemosynthesis','Thermophilic enzymes','Eruption timing']:['Quimiosíntesis','Enzimas termófilas','Sincronización de erupción'],
+    });
+  }
+
+  if(Cu>180&&H2S>2){
+    const intensity=Math.min(100,Math.round(Cu*0.4+H2S*5));
+    phenomena.push({
+      id:'copper_vortex', icon:'🌀',
+      name:lang==='en'?'Copper vortices — blue-green gas whirlwinds':'Vórtices de cobre — remolinos de gas azul-verdoso',
+      type:'alien',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for copper-rich exoplanets':'Sin equivalente terrestre — propuesto para exoplanetas ricos en Cu',
+      science:lang==='en'
+        ?`Cu (${Cu} ppm) + H₂S → CuS nanoparticles (2–20nm) suspended in atmosphere. These nanoparticles absorb red/yellow wavelengths, making the sky appear blue-green (487nm peak). Atmospheric vortices concentrate CuS to ${Math.round(Cu*0.01)} mg/m³ — visible as tinted whirlwinds. Electrically conductive: generates static discharges of ${Math.round(intensity*50)} kV.`
+        :`Cu (${Cu} ppm) + H₂S → nanopartículas de CuS (2–20nm) suspendidas en la atmósfera. Estas nanopartículas absorben longitudes de onda rojo/amarillo, haciendo que el cielo aparezca azul-verdoso (pico 487nm). Los vórtices atmosféricos concentran CuS a ${Math.round(Cu*0.01)} mg/m³ — visibles como remolinos teñidos. Eléctricamente conductores: generan descargas estáticas de ${Math.round(intensity*50)} kV.`,
+      evolution:lang==='en'
+        ?'Color vision shifts to blue-green spectrum. Hemocyanin (Cu-based blood) becomes dominant blood pigment. Organisms evolve Cu-sequestration proteins for protection. Bioluminescence at 487nm used for mate signaling.'
+        :'La visión de color se desplaza hacia el espectro azul-verde. La hemocianina (sangre basada en Cu) se convierte en el pigmento sanguíneo dominante. Los organismos evolucionan proteínas de secuestro de Cu para protección. La bioluminiscencia a 487nm se usa para señalización de apareamiento.',
+      affected_traits:lang==='en'?['Hemocyanin blood','Blue-green vision','Cu-binding proteins']:['Sangre hemocianina','Visión azul-verde','Proteínas de unión a Cu'],
+    });
+  }
+
+  if(pressure>3&&gravity>2){
+    const intensity=Math.min(100,Math.round(pressure*15+gravity*12));
+    phenomena.push({
+      id:'compression_wave', icon:'💥',
+      name:lang==='en'?'Hyperbaric pressure waves — atmospheric compression':'Ondas de presión hiperbárica — compresión atmosférica',
+      type:'alien',
+      col:'#94A3B8',
+      intensity, frequency:'Daily',
+      earth_analog:lang==='en'?'Like deep ocean pressure but in atmosphere — no Earth equivalent':'Como presión del océano profundo pero en atmósfera — sin equivalente terrestre',
+      science:lang==='en'
+        ?`Pressure of ${pressure} atm + gravity ${gravity}g creates atmospheric density ${Math.round(pressure*gravity*1.2)}× Earth's. Sound travels at ${Math.round(340*Math.sqrt(pressure))} m/s (vs 340 m/s on Earth). Pressure waves from geological events propagate globally. At ground level: organisms experience ${Math.round(pressure*101.3)} kPa — equivalent to ${Math.round(pressure*10)} m underwater continuously.`
+        :`Presión de ${pressure} atm + gravedad ${gravity}g crea densidad atmosférica ${Math.round(pressure*gravity*1.2)}× la de la Tierra. El sonido viaja a ${Math.round(340*Math.sqrt(pressure))} m/s (vs 340 m/s en la Tierra). Las ondas de presión de eventos geológicos se propagan globalmente. A nivel del suelo: los organismos experimentan ${Math.round(pressure*101.3)} kPa — equivalente a ${Math.round(pressure*10)} m bajo el agua continuamente.`,
+      evolution:lang==='en'
+        ?'Compact, low-profile body plans. No flying organisms above insect size. Internal gas bladders reinforced. Bone density 3–5× Earth vertebrates. Exceptional pressure resistance — organisms survive what would crush terrestrial life.'
+        :'Planes corporales compactos y de perfil bajo. Sin organismos voladores de más de tamaño insecto. Vejigas de gas internas reforzadas. Densidad ósea 3–5× vertebrados terrestres. Resistencia a la presión excepcional — los organismos sobreviven lo que aplastaría a la vida terrestre.',
+      affected_traits:lang==='en'?['Compact body plan','Bone density','Pressure resistance']:['Plan corporal compacto','Densidad ósea','Resistencia a la presión'],
+    });
+  }
+
+  if(score>0.7&&O2>22&&Mg>20){
+    const intensity=Math.min(100,Math.round(score*80+O2*1.5));
+    phenomena.push({
+      id:'biological_haze', icon:'🟢',
+      name:lang==='en'?'Biological aerosol haze — living atmosphere':'Neblina biológica — atmósfera viva',
+      type:'alien',
+      col:'#4ADE80',
+      intensity, frequency:'Constant',
+      earth_analog:lang==='en'?'Like Earth atmosphere but 100–1000× more biologically active':'Como la atmósfera terrestre pero 100–1000× más biológicamente activa',
+      science:lang==='en'
+        ?`High habitability (${Math.round(score*100)}%) + O₂ (${O2}%) + Mg generates explosive microbial populations. Atmosphere contains ${Math.round(intensity*1000)} cells/m³ (Earth: 10–1,000/m³). Spores, pollen, bacteria and archaea in suspension. Visible as green tint in sky. These organisms perform aerial photosynthesis and chemosynthesis, fixing CO₂ at altitude.`
+        :`Alta habitabilidad (${Math.round(score*100)}%) + O₂ (${O2}%) + Mg genera poblaciones microbianas explosivas. La atmósfera contiene ${Math.round(intensity*1000)} células/m³ (Tierra: 10–1,000/m³). Esporas, polen, bacterias y arqueas en suspensión. Visible como tinte verde en el cielo. Estos organismos realizan fotosíntesis y quimiosíntesis aérea, fijando CO₂ en altitud.`,
+      evolution:lang==='en'
+        ?'Respiratory filters evolve (spiral nostrils, mucus traps). Immune systems become extraordinarily sophisticated. Aerial microbiome co-evolves with all organisms. Some organisms develop mutualistic relationships with specific atmospheric microbes.'
+        :'Los filtros respiratorios evolucionan (fosas nasales en espiral, trampas de moco). Los sistemas inmunes se vuelven extraordinariamente sofisticados. El microbioma aéreo coevoluciona con todos los organismos. Algunos organismos desarrollan relaciones mutualistas con microbios atmosféricos específicos.',
+      affected_traits:lang==='en'?['Respiratory filters','Immune complexity','Aerial symbiosis']:['Filtros respiratorios','Complejidad inmune','Simbiosis aérea'],
+    });
+  }
+
+  // Si no hay fenómenos, añadir fenómeno básico
+  if(phenomena.length===0){
+    phenomena.push({
+      id:'calm', icon:'🌑',
+      name:lang==='en'?'Atmospheric calm — minimal phenomena':'Calma atmosférica — fenómenos mínimos',
+      type:'terrestrial', col:'#94A3B8',
+      intensity:5, frequency:'Rare',
+      earth_analog:lang==='en'?'Like Earth stratosphere':'Como la estratosfera terrestre',
+      science:lang==='en'
+        ?'Extreme conditions (very low temperature, pressure or water) prevent formation of complex atmospheric phenomena. The planet has minimal meteorological activity.'
+        :'Las condiciones extremas (temperatura, presión o agua muy bajas) impiden la formación de fenómenos atmosféricos complejos. El planeta tiene actividad meteorológica mínima.',
+      evolution:lang==='en'?'No atmospheric evolutionary pressure. Creatures evolve based on surface chemistry alone.':'Sin presión evolutiva atmosférica. Las criaturas evolucionan basándose únicamente en la química superficial.',
+      affected_traits:[],
+    });
+  }
+
+  return phenomena;
+}
+
+// ─── Render Fenómenos ──────────────────────────────────
+function renderPhenomena(el){
+  const phenomena = generatePhenomena(vals);
+  const score = calcScore(vals);
+  const earthPhenomena = phenomena.filter(p=>p.type==='terrestrial');
+  const alienPhenomena  = phenomena.filter(p=>p.type==='alien');
+
+  const intensityLabel=(i)=>i>=80?(lang==='en'?'Extreme':'Extremo'):i>=60?(lang==='en'?'High':'Alto'):i>=40?(lang==='en'?'Moderate':'Moderado'):i>=20?(lang==='en'?'Low':'Bajo'):(lang==='en'?'Minimal':'Mínimo');
+  const intensityCol=(i)=>i>=80?'#F87171':i>=60?'#FBBF24':i>=40?'#60A5FA':'#94A3B8';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+    <div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">
+        🌪 ${lang==='en'?'Natural Phenomena':'Fenómenos Naturales'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);">
+        ${lang==='en'
+          ?`${phenomena.length} phenomena detected · ${earthPhenomena.length} Earth-type · ${alienPhenomena.length} alien · Based on planetary mineralogy`
+          :`${phenomena.length} fenómenos detectados · ${earthPhenomena.length} tipo terrestre · ${alienPhenomena.length} alienígenas · Basado en mineralogía planetaria`}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;">
+        <div style="font-size:22px;font-weight:800;color:#60A5FA;font-family:'JetBrains Mono',monospace;">${earthPhenomena.length}</div>
+        <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Earth-type':'Terrestres'}</div>
+      </div>
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;">
+        <div style="font-size:22px;font-weight:800;color:#A78BFA;font-family:'JetBrains Mono',monospace;">${alienPhenomena.length}</div>
+        <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Alien':'Alienígenas'}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Earth-type phenomena -->
+  ${earthPhenomena.length>0?`
+  <div class="label">${lang==='en'?'Earth-type phenomena — familiar physics':'Fenómenos tipo terrestre — física conocida'}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">
+    ${earthPhenomena.map(p=>phenomenonCard(p,intensityLabel,intensityCol)).join('')}
+  </div>`:''}
+
+  <!-- Alien phenomena -->
+  ${alienPhenomena.length>0?`
+  <div class="label" style="color:#A78BFA;">${lang==='en'?'Alien phenomena — no Earth equivalent':'Fenómenos alienígenas — sin equivalente terrestre'}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">
+    ${alienPhenomena.map(p=>phenomenonCard(p,intensityLabel,intensityCol)).join('')}
+  </div>`:''}
+
+  <!-- Impact summary -->
+  <div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:16px;">
+    <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:10px;">
+      🧬 ${lang==='en'?'Global evolutionary impact on creatures':'Impacto evolutivo global sobre las criaturas'}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${[...new Set(phenomena.flatMap(p=>p.affected_traits||[]))].map(trait=>`
+        <span style="font-size:10px;padding:4px 10px;border-radius:99px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);color:var(--teal);">
+          ${trait}
+        </span>`).join('')}
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.7;">
+      ${lang==='en'
+        ?`These ${phenomena.length} phenomena create a unique evolutionary pressure on this planet. Creatures that survive must develop adaptations for: ${phenomena.map(p=>p.name.split('—')[0].trim()).join(', ')}.`
+        :`Estos ${phenomena.length} fenómenos crean una presión evolutiva única en este planeta. Las criaturas que sobrevivan deberán desarrollar adaptaciones para: ${phenomena.map(p=>p.name.split('—')[0].trim()).join(', ')}.`}
+    </div>
+  </div>
+
+</div>`;
+}
+
+function phenomenonCard(p, intensityLabel, intensityCol){
+  const iCol = intensityCol(p.intensity);
+  const iLbl = intensityLabel(p.intensity);
+  const isAlien = p.type==='alien';
+  return`
+  <div class="card" style="border-color:${p.col}25;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${p.col},transparent);"></div>
+    ${isAlien?`<div style="position:absolute;top:8px;right:8px;font-size:8px;padding:2px 7px;border-radius:99px;background:#A78BFA18;color:#A78BFA;font-weight:700;">${lang==='en'?'ALIEN':'ALIENÍGENA'}</div>`:''}
+
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+      <span style="font-size:28px;flex-shrink:0;">${p.icon}</span>
+      <div style="flex:1;">
+        <div style="font-size:12px;font-weight:700;color:${p.col};line-height:1.3;">${p.name}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${p.earth_analog}</div>
+      </div>
+    </div>
+
+    <!-- Intensity + Frequency -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+      <div style="background:${iCol}10;border:0.5px solid ${iCol}30;border-radius:6px;padding:6px 8px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${lang==='en'?'Intensity':'Intensidad'}</div>
+        <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:3px;">
+          <div style="height:100%;width:${p.intensity}%;background:${iCol};border-radius:2px;box-shadow:0 0 6px ${iCol}60;"></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:${iCol};">${iLbl} (${p.intensity}%)</div>
+      </div>
+      <div style="background:${p.col}10;border:0.5px solid ${p.col}30;border-radius:6px;padding:6px 8px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${lang==='en'?'Frequency':'Frecuencia'}</div>
+        <div style="font-size:14px;text-align:center;">${p.frequency==='Constant'||p.frequency==='Constante'?'♾':'📅'}</div>
+        <div style="font-size:10px;font-weight:700;color:${p.col};">${p.frequency}</div>
+      </div>
+    </div>
+
+    <!-- Science (expandable) -->
+    <div style="background:${p.col}08;border:0.5px solid ${p.col}20;border-radius:7px;padding:8px 10px;cursor:pointer;margin-bottom:8px;"
+      onclick="this.querySelector('.pheno-detail').style.display=this.querySelector('.pheno-detail').style.display==='none'?'block':'none'">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:${p.col};font-weight:700;text-transform:uppercase;letter-spacing:.06em;">
+          🔬 ${lang==='en'?'Scientific explanation':'Explicación científica'}
+        </div>
+        <span style="font-size:9px;color:${p.col};">▾</span>
+      </div>
+      <div class="pheno-detail" style="display:none;margin-top:7px;font-size:9px;color:#9BAEC8;line-height:1.7;">
+        ${p.science}
+      </div>
+    </div>
+
+    <!-- Evolution impact -->
+    <div style="background:rgba(0,212,170,0.06);border:0.5px solid rgba(0,212,170,0.2);border-radius:7px;padding:7px 9px;cursor:pointer;"
+      onclick="this.querySelector('.evo-detail').style.display=this.querySelector('.evo-detail').style.display==='none'?'block':'none'">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">
+          🧬 ${lang==='en'?'Evolutionary impact':'Impacto evolutivo'}
+        </div>
+        <span style="font-size:9px;color:var(--teal);">▾</span>
+      </div>
+      <div class="evo-detail" style="display:none;margin-top:6px;font-size:9px;color:#9BAEC8;line-height:1.7;">
+        ${p.evolution}
+      </div>
+    </div>
+
+    <!-- Affected traits chips -->
+    ${p.affected_traits&&p.affected_traits.length>0?`
+    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px;">
+      ${p.affected_traits.map(tr=>`
+        <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:${p.col}12;color:${p.col};border:0.5px solid ${p.col}30;">${tr}</span>
+      `).join('')}
+    </div>`:''}
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════
