@@ -1311,13 +1311,14 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation','phenomena'];
+  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation','phenomena','surface'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
 function switchTab(tab){
   currentTab=tab;buildTabBtns();
   if(threeState.cleanup){threeState.cleanup();threeState={};}
+  if(surfaceState.cleanup){surfaceState.cleanup();surfaceState={};}
   renderMain();
 }
 
@@ -1331,6 +1332,7 @@ function renderMain(){
   else if(currentTab==='myplanets')  renderMyPlanets(el);
   else if(currentTab==='validation') renderValidation(el);
   else if(currentTab==='phenomena')  renderPhenomena(el);
+  else if(currentTab==='surface')    renderSurface(el);
 }
 
 // ─── PLANET TAB ──────────────────────────────────────
@@ -2134,7 +2136,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos'],
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -2195,7 +2197,7 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena'],
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface'],
     createBtn: 'Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
@@ -3764,6 +3766,704 @@ function phenomenonCard(p, intensityLabel, intensityCol){
       `).join('')}
     </div>`:''}
   </div>`;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// SURFACE RENDERER — Landscape estilo SpaceEngine
+// Terreno procedural + atmósfera Rayleigh + sol + nubes
+// ═══════════════════════════════════════════════════════
+let surfaceState = {};
+let surfaceTime  = 0;
+
+// Shaders de terreno
+const TERRAIN_VERT = `
+uniform float uTime;
+uniform float uScale;
+varying vec3  vPos;
+varying vec3  vNormal;
+varying vec2  vUv;
+varying float vElev;
+
+// Simplex noise
+vec3 mod289(vec3 x){return x - floor(x*(1./289.))*289.;}
+vec4 mod289(vec4 x){return x - floor(x*(1./289.))*289.;}
+vec4 permute(vec4 x){return mod289(((x*34.)+1.)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314*r;}
+vec3 fade(vec3 t){return t*t*t*(t*(t*6.-15.)+10.);}
+
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);
+  const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);
+  vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy);
+  vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;
+  vec3 x2=x0-i2+C.yyy;
+  vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(
+    i.z+vec4(0.,i1.z,i2.z,1.))+
+    i.y+vec4(0.,i1.y,i2.y,1.))+
+    i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z);
+  vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;
+  vec4 y=y_*ns.x+ns.yyyy;
+  vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);
+  vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;
+  vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);
+  vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z);
+  vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);
+  m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+float fbm(vec3 p){
+  float v=0.;float a=.5;
+  v+=a*snoise(p);       p*=2.1; a*=.5;
+  v+=a*snoise(p);       p*=2.1; a*=.5;
+  v+=a*snoise(p);       p*=2.1; a*=.5;
+  v+=a*snoise(p);       p*=2.1; a*=.5;
+  v+=a*snoise(p);       p*=2.1; a*=.5;
+  v+=a*snoise(p);
+  return v;
+}
+
+void main(){
+  vUv = uv;
+  vec3 pos = position;
+
+  // Heightmap multi-octave
+  vec3 noisePos = pos * 0.003 * uScale;
+  float h  = fbm(noisePos) * 0.5 + 0.5;
+  float h2 = fbm(noisePos * 3.7 + vec3(5.2,1.3,8.1)) * 0.5 + 0.5;
+  float h3 = fbm(noisePos * 11.0 + vec3(2.1,6.7,3.4)) * 0.5 + 0.5;
+
+  float elevation = h * 120. + h2 * 40. + h3 * 10.;
+
+  // Montañas de alta frecuencia
+  float ridges = abs(snoise(noisePos * 6.5)) * 30.;
+  elevation += ridges * smoothstep(0.55, 0.75, h);
+
+  pos.y += elevation;
+  vElev = h;
+
+  // Normal aproximada para lighting
+  float eps = 2.0;
+  float hL = fbm((pos + vec3(-eps,0,0)) * 0.003 * uScale) * 0.5 + 0.5;
+  float hR = fbm((pos + vec3(eps,0,0))  * 0.003 * uScale) * 0.5 + 0.5;
+  float hD = fbm((pos + vec3(0,0,-eps)) * 0.003 * uScale) * 0.5 + 0.5;
+  float hU = fbm((pos + vec3(0,0,eps))  * 0.003 * uScale) * 0.5 + 0.5;
+  vNormal = normalize(vec3(hL-hR, 0.8, hD-hU));
+
+  vPos = pos;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}`;
+
+const TERRAIN_FRAG = `
+uniform vec3  uLowColor;
+uniform vec3  uMidColor;
+uniform vec3  uHighColor;
+uniform vec3  uPeakColor;
+uniform vec3  uWaterColor;
+uniform vec3  uSnowColor;
+uniform float uWaterLevel;
+uniform float uHasWater;
+uniform float uHasSnow;
+uniform vec3  uSunDir;
+uniform float uFogDensity;
+uniform vec3  uFogColor;
+varying vec3  vPos;
+varying vec3  vNormal;
+varying vec2  vUv;
+varying float vElev;
+
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(uSunDir);
+
+  // Terrain color by elevation
+  vec3 col;
+  float e = vElev;
+  float waterLine = uWaterLevel;
+
+  if(uHasWater > 0.5 && e < waterLine){
+    // Water
+    float depth = (waterLine - e) / waterLine;
+    col = mix(uWaterColor * 1.4, uWaterColor * 0.4, depth);
+    // Specular on water
+    vec3 V = vec3(0.,1.,0.);
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N,H),0.),80.) * max(dot(N,L),0.) * 1.5;
+    col += vec3(1.,0.97,0.90) * spec;
+  } else {
+    // Land
+    float landE = uHasWater > 0.5 ? (e - waterLine) / (1. - waterLine) : e;
+    if(landE < 0.08){
+      col = mix(uLowColor * 0.7, uLowColor, smoothstep(0.,0.08,landE));
+    } else if(landE < 0.4){
+      col = mix(uLowColor, uMidColor, smoothstep(0.08,0.4,landE));
+    } else if(landE < 0.7){
+      col = mix(uMidColor, uHighColor, smoothstep(0.4,0.7,landE));
+    } else if(landE < 0.88){
+      col = mix(uHighColor, uPeakColor, smoothstep(0.7,0.88,landE));
+    } else {
+      col = mix(uPeakColor, uSnowColor, smoothstep(0.88,1.0,landE));
+    }
+    // Snow caps
+    if(uHasSnow > 0.5 && landE > 0.82){
+      float snowBlend = smoothstep(0.82,0.95,landE);
+      col = mix(col, uSnowColor, snowBlend);
+    }
+  }
+
+  // Diffuse lighting
+  float NdotL = max(dot(N, L), 0.0);
+  float ambient = 0.12;
+  float terminator = smoothstep(-0.1, 0.3, NdotL);
+  col *= (ambient + NdotL * terminator * 0.88);
+
+  // Micro shadow on slopes
+  float slope = 1.0 - abs(dot(N, vec3(0.,1.,0.)));
+  col *= (1.0 - slope * 0.15);
+
+  // Distance fog
+  float dist = length(vPos.xz);
+  float fog = 1.0 - exp(-dist * uFogDensity * 0.0008);
+  col = mix(col, uFogColor, clamp(fog, 0., 1.));
+
+  // Tone mapping
+  col = col / (col + vec3(0.5));
+  col = pow(col, vec3(0.88));
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const SKY_VERT = `
+varying vec3 vDir;
+void main(){
+  vDir = normalize((modelMatrix * vec4(position, 0.0)).xyz);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const SKY_FRAG = `
+uniform vec3  uSunDir;
+uniform vec3  uSkyZenith;
+uniform vec3  uSkyHorizon;
+uniform vec3  uSunColor;
+uniform float uSunSize;
+uniform float uAtmDensity;
+varying vec3  vDir;
+
+void main(){
+  vec3 dir = normalize(vDir);
+
+  // Rayleigh scattering
+  float cosTheta = dot(dir, normalize(uSunDir));
+  float rayleigh  = 1. + cosTheta * cosTheta;
+
+  // Sky gradient zenith→horizon
+  float upness  = max(dir.y, 0.);
+  float horizon = pow(1. - upness, 3.5);
+  vec3 sky = mix(uSkyZenith, uSkyHorizon, horizon);
+
+  // Rayleigh tint toward sun
+  sky += uSunColor * 0.08 * rayleigh * (1. - upness);
+
+  // Atmospheric haze near horizon
+  sky = mix(sky, uSkyHorizon * 1.3, pow(horizon, 6.) * uAtmDensity);
+
+  // Sun disk
+  float sunDist = length(dir - normalize(uSunDir));
+  float sun = smoothstep(uSunSize, uSunSize * 0.3, sunDist);
+  float corona = smoothstep(uSunSize * 4., uSunSize * 0.8, sunDist) * 0.12;
+  sky += uSunColor * sun * 3.;
+  sky += uSunColor * corona;
+
+  // Stars (only above horizon, dim)
+  if(dir.y > 0.02){
+    float starNoise = fract(sin(dot(dir.xz * 300., vec2(12.9898, 78.233))) * 43758.5);
+    float star = step(0.997, starNoise) * (1. - upness * 3.) * 0.6;
+    sky += vec3(star);
+  }
+
+  // Below ground
+  if(dir.y < -0.01) sky = vec3(0.01, 0.01, 0.015);
+
+  // Tone mapping
+  sky = sky / (sky + vec3(0.5));
+  sky = pow(sky, vec3(0.85));
+
+  gl_FragColor = vec4(sky, 1.0);
+}`;
+
+const CLOUD_VERT = `
+varying vec2 vUv;
+varying vec3 vPos;
+void main(){
+  vUv  = uv;
+  vPos = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const CLOUD_FRAG = `
+uniform float uTime;
+uniform vec3  uSunDir;
+uniform vec3  uCloudColor;
+uniform float uCloudCoverage;
+varying vec2  vUv;
+varying vec3  vPos;
+
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p); vec2 f=fract(p);
+  vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+}
+float fbmC(vec2 p){
+  float v=0.;float a=.5;
+  v+=a*noise(p); p*=2.1; a*=.5;
+  v+=a*noise(p); p*=2.1; a*=.5;
+  v+=a*noise(p); p*=2.1; a*=.5;
+  v+=a*noise(p);
+  return v;
+}
+
+void main(){
+  vec2 uv  = vUv * 8.0;
+  float t  = uTime * 0.025;
+  float c1 = fbmC(uv + vec2(t, t * 0.3));
+  float c2 = fbmC(uv * 1.8 - vec2(t * 0.7, t * 0.5));
+  float cloud = c1 * 0.6 + c2 * 0.4;
+
+  float thresh = 0.54 - uCloudCoverage * 0.18;
+  float alpha  = smoothstep(thresh, thresh + 0.18, cloud);
+  if(alpha < 0.01) discard;
+
+  // Lighting
+  float lit = 0.75 + max(dot(vec3(0.,1.,0.), normalize(uSunDir)), 0.) * 0.25;
+
+  // Self-shadow
+  float shadow = fbmC(uv + vec2(t + 0.03, t * 0.3));
+  float selfShadow = mix(0.8, 1.0, step(thresh, shadow));
+
+  vec3 col = uCloudColor * lit * selfShadow;
+
+  // Tone mapping
+  col = col / (col + vec3(0.3));
+  gl_FragColor = vec4(col, alpha * 0.85);
+}`;
+
+// ─── Calcular colores de bioma a partir de vals ──────
+function getSurfaceColors(v){
+  const {Ca,Fe,Si,Mg,S,H2S,H2O,Temp,O2,CO2,pH,gravity}=v;
+  const hasSulf  = H2S>2 || S>8000;
+  const isHot    = Temp>60;
+  const isCold   = Temp<-20;
+  const isVCold  = Temp<-80;
+  const hasLife  = O2>10 && Mg>15 && !hasSulf && !isHot;
+  const isIron   = Fe>60 && !hasSulf;
+  const isCalcium= Ca>50 && CO2>0.1;
+  const hasWater = H2O>20;
+  const hasSnow  = isCold || Temp<5;
+
+  let low, mid, high, peak, water, snow, fog, sky1, sky2, sunCol;
+  let sunDir   = new THREE.Vector3(0.8, 0.4, 0.3).normalize();
+  let atmDens  = Math.min(1.5, (v.pressure||1)*0.8);
+  let cloudCov = hasWater ? Math.min(0.6, H2O/100*0.8) : 0.05;
+  let waterLevel = hasWater ? 0.35 : -1.0;
+  let fogDens  = Math.min(1.0, (v.pressure||1)*0.5 + H2O*0.003);
+
+  if(hasSulf){
+    low    = [0.55, 0.45, 0.05];
+    mid    = [0.65, 0.55, 0.08];
+    high   = [0.72, 0.62, 0.12];
+    peak   = [0.82, 0.72, 0.18];
+    water  = [0.45, 0.38, 0.03];
+    snow   = [0.90, 0.85, 0.40];
+    fog    = [0.70, 0.60, 0.10];
+    sky1   = [0.55, 0.45, 0.05];
+    sky2   = [0.72, 0.58, 0.08];
+    sunCol = [1.0, 0.85, 0.30];
+    cloudCov = 0.7;
+  } else if(isVCold){
+    low    = [0.55, 0.68, 0.85];
+    mid    = [0.62, 0.75, 0.92];
+    high   = [0.80, 0.88, 0.98];
+    peak   = [0.92, 0.95, 1.00];
+    water  = [0.25, 0.45, 0.70];
+    snow   = [0.95, 0.97, 1.00];
+    fog    = [0.70, 0.80, 0.95];
+    sky1   = [0.05, 0.08, 0.15];
+    sky2   = [0.25, 0.35, 0.55];
+    sunCol = [0.85, 0.90, 1.00];
+    atmDens = 0.3;
+  } else if(isCold){
+    low    = [0.40, 0.52, 0.68];
+    mid    = [0.55, 0.65, 0.80];
+    high   = [0.72, 0.80, 0.90];
+    peak   = [0.88, 0.92, 0.98];
+    water  = [0.15, 0.30, 0.55];
+    snow   = [0.92, 0.95, 1.00];
+    fog    = [0.60, 0.72, 0.88];
+    sky1   = [0.12, 0.22, 0.48];
+    sky2   = [0.45, 0.60, 0.82];
+    sunCol = [1.00, 0.95, 0.80];
+  } else if(isHot){
+    low    = [0.22, 0.06, 0.02];
+    mid    = [0.35, 0.10, 0.03];
+    high   = [0.18, 0.05, 0.02];
+    peak   = [0.10, 0.03, 0.01];
+    water  = [0.60, 0.20, 0.02];
+    snow   = [0.90, 0.40, 0.10];
+    fog    = [0.50, 0.18, 0.05];
+    sky1   = [0.18, 0.05, 0.02];
+    sky2   = [0.55, 0.22, 0.05];
+    sunCol = [1.00, 0.70, 0.30];
+    cloudCov = 0.1;
+    waterLevel = -1.0;
+  } else if(isIron){
+    low    = [0.52, 0.20, 0.08];
+    mid    = [0.62, 0.28, 0.10];
+    high   = [0.45, 0.15, 0.06];
+    peak   = [0.72, 0.40, 0.18];
+    water  = [0.35, 0.12, 0.05];
+    snow   = [0.85, 0.65, 0.55];
+    fog    = [0.65, 0.38, 0.18];
+    sky1   = [0.25, 0.10, 0.04];
+    sky2   = [0.68, 0.38, 0.15];
+    sunCol = [1.00, 0.85, 0.65];
+  } else if(isCalcium){
+    low    = [0.80, 0.75, 0.60];
+    mid    = [0.70, 0.65, 0.50];
+    high   = [0.88, 0.82, 0.70];
+    peak   = [0.95, 0.92, 0.85];
+    water  = [0.20, 0.55, 0.75];
+    snow   = [0.98, 0.98, 0.98];
+    fog    = [0.85, 0.82, 0.75];
+    sky1   = [0.35, 0.55, 0.90];
+    sky2   = [0.70, 0.82, 0.98];
+    sunCol = [1.00, 0.98, 0.90];
+  } else if(hasLife){
+    // Earth-like green
+    low    = [0.18, 0.42, 0.15];
+    mid    = [0.28, 0.52, 0.18];
+    high   = [0.38, 0.38, 0.25];
+    peak   = [0.55, 0.50, 0.42];
+    water  = [0.05, 0.22, 0.48];
+    snow   = [0.92, 0.95, 0.98];
+    fog    = [0.55, 0.70, 0.85];
+    sky1   = [0.08, 0.28, 0.65];
+    sky2   = [0.42, 0.68, 0.92];
+    sunCol = [1.00, 0.97, 0.88];
+  } else {
+    // Generic rocky
+    low    = [0.30, 0.28, 0.22];
+    mid    = [0.40, 0.36, 0.28];
+    high   = [0.52, 0.48, 0.40];
+    peak   = [0.68, 0.62, 0.55];
+    water  = [0.10, 0.30, 0.55];
+    snow   = [0.88, 0.90, 0.95];
+    fog    = [0.50, 0.55, 0.62];
+    sky1   = [0.12, 0.18, 0.38];
+    sky2   = [0.40, 0.52, 0.72];
+    sunCol = [1.00, 0.95, 0.85];
+  }
+
+  return {
+    lowColor:   new THREE.Color(...low),
+    midColor:   new THREE.Color(...mid),
+    highColor:  new THREE.Color(...high),
+    peakColor:  new THREE.Color(...peak),
+    waterColor: new THREE.Color(...water),
+    snowColor:  new THREE.Color(...snow),
+    fogColor:   new THREE.Color(...fog),
+    skyZenith:  new THREE.Color(...sky1),
+    skyHorizon: new THREE.Color(...sky2),
+    sunColor:   new THREE.Color(...sunCol),
+    sunDir, atmDens, cloudCov, waterLevel, fogDens,
+    hasWater: hasWater ? 1.0 : 0.0,
+    hasSnow:  hasSnow  ? 1.0 : 0.0,
+  };
+}
+
+function renderSurface(el){
+  const E = lang==='en';
+  el.innerHTML=`
+    <div style="position:relative;height:100%;background:#000;">
+      <canvas id="surface-canvas" style="width:100%;height:100%;display:block;"></canvas>
+
+      <!-- HUD overlay -->
+      <div style="position:absolute;top:12px;left:14px;font-family:'JetBrains Mono',monospace;pointer-events:none;">
+        <div style="font-size:10px;color:rgba(0,212,170,0.9);line-height:2;">
+          <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:4px;">
+            🏔 ${E?'Planet Surface':'Superficie del Planeta'}
+          </div>
+          <span style="color:rgba(0,212,170,0.5);">T°    </span>${vals.Temp}°C<br>
+          <span style="color:rgba(0,212,170,0.5);">O₂    </span>${vals.O2}%<br>
+          <span style="color:rgba(0,212,170,0.5);">H₂O   </span>${vals.H2O}%<br>
+          <span style="color:rgba(0,212,170,0.5);">GRAV  </span>${vals.gravity}g<br>
+          <span style="color:rgba(0,212,170,0.5);">PRESS </span>${vals.pressure||1.0} atm
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div style="position:absolute;top:12px;right:14px;display:flex;flex-direction:column;gap:5px;">
+        <button onclick="surfaceTOD('day')" id="btn-day" class="btn" style="font-size:10px;padding:4px 10px;background:rgba(0,212,170,0.15);border-color:var(--teal);color:var(--teal);">☀ ${E?'Day':'Día'}</button>
+        <button onclick="surfaceTOD('sunset')" id="btn-sunset" class="btn" style="font-size:10px;padding:4px 10px;">🌅 ${E?'Sunset':'Atardecer'}</button>
+        <button onclick="surfaceTOD('night')" id="btn-night" class="btn" style="font-size:10px;padding:4px 10px;">🌙 ${E?'Night':'Noche'}</button>
+        <div style="border-top:0.5px solid var(--border);margin:4px 0;"></div>
+        <button onclick="surfaceWire()" id="btn-wire" class="btn" style="font-size:10px;padding:4px 10px;">⬡ ${E?'Wireframe':'Malla'}</button>
+      </div>
+
+      <!-- Info bar -->
+      <div style="position:absolute;bottom:8px;left:14px;font-size:9px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace;">
+        ${E?'Drag to rotate · Scroll to zoom · Procedural terrain (Simplex noise 6 octaves) · Rayleigh atmosphere':'Arrastra para rotar · Scroll zoom · Terreno procedural (Simplex noise 6 octavas) · Atmósfera Rayleigh'}
+      </div>
+    </div>`;
+
+  setTimeout(()=>initSurface(), 60);
+}
+
+function initSurface(){
+  const canvas = document.getElementById('surface-canvas');
+  if(!canvas || !window.THREE) return;
+  const T = window.THREE;
+  const W = canvas.parentElement.clientWidth  || 900;
+  const H = canvas.parentElement.clientHeight || 560;
+  canvas.width  = W;
+  canvas.height = H;
+
+  const scene    = new T.Scene();
+  const camera   = new T.PerspectiveCamera(65, W/H, 0.5, 8000);
+  camera.position.set(0, 80, 220);
+  camera.lookAt(0, 20, 0);
+
+  const renderer = new T.WebGLRenderer({canvas, antialias:true});
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.setClearColor(0x000000);
+
+  const colors = getSurfaceColors(vals);
+
+  // ── TERRAIN ──────────────────────────────────────────
+  const terrainGeo = new T.PlaneGeometry(3000, 3000, 256, 256);
+  terrainGeo.rotateX(-Math.PI / 2);
+
+  const terrainMat = new T.ShaderMaterial({
+    vertexShader:   TERRAIN_VERT,
+    fragmentShader: TERRAIN_FRAG,
+    uniforms: {
+      uTime:       {value: 0},
+      uScale:      {value: Math.max(0.5, (vals.gravity||1)*0.8)},
+      uLowColor:   {value: colors.lowColor},
+      uMidColor:   {value: colors.midColor},
+      uHighColor:  {value: colors.highColor},
+      uPeakColor:  {value: colors.peakColor},
+      uWaterColor: {value: colors.waterColor},
+      uSnowColor:  {value: colors.snowColor},
+      uWaterLevel: {value: colors.waterLevel},
+      uHasWater:   {value: colors.hasWater},
+      uHasSnow:    {value: colors.hasSnow},
+      uSunDir:     {value: colors.sunDir},
+      uFogDensity: {value: colors.fogDens},
+      uFogColor:   {value: colors.fogColor},
+    },
+    side: T.FrontSide,
+  });
+  const terrain = new T.Mesh(terrainGeo, terrainMat);
+  scene.add(terrain);
+
+  // ── WATER PLANE ───────────────────────────────────────
+  let waterMesh = null;
+  if(colors.hasWater > 0.5){
+    const waterGeo = new T.PlaneGeometry(3000, 3000, 1, 1);
+    waterGeo.rotateX(-Math.PI / 2);
+    const waterMat = new T.MeshPhongMaterial({
+      color: colors.waterColor,
+      transparent: true,
+      opacity: 0.75,
+      shininess: 120,
+      specular: new T.Color(1,1,1),
+    });
+    waterMesh = new T.Mesh(waterGeo, waterMat);
+    waterMesh.position.y = colors.waterLevel > 0 ? 42 : 0;
+    scene.add(waterMesh);
+  }
+
+  // ── SKY DOME ─────────────────────────────────────────
+  const skyGeo = new T.SphereGeometry(4000, 32, 32);
+  const skyMat = new T.ShaderMaterial({
+    vertexShader:   SKY_VERT,
+    fragmentShader: SKY_FRAG,
+    uniforms: {
+      uSunDir:    {value: colors.sunDir},
+      uSkyZenith: {value: colors.skyZenith},
+      uSkyHorizon:{value: colors.skyHorizon},
+      uSunColor:  {value: colors.sunColor},
+      uSunSize:   {value: 0.025},
+      uAtmDensity:{value: colors.atmDens},
+    },
+    side: T.BackSide,
+    depthWrite: false,
+  });
+  scene.add(new T.Mesh(skyGeo, skyMat));
+
+  // ── CLOUDS ───────────────────────────────────────────
+  let cloudMesh = null;
+  if(colors.cloudCov > 0.08){
+    const cloudGeo = new T.PlaneGeometry(2800, 2800, 1, 1);
+    cloudGeo.rotateX(-Math.PI / 2);
+    const cloudMat = new T.ShaderMaterial({
+      vertexShader:   CLOUD_VERT,
+      fragmentShader: CLOUD_FRAG,
+      uniforms: {
+        uTime:         {value: 0},
+        uSunDir:       {value: colors.sunDir},
+        uCloudColor:   {value: new T.Color(0.92, 0.94, 0.98)},
+        uCloudCoverage:{value: colors.cloudCov},
+      },
+      transparent: true,
+      depthWrite:  false,
+      side: T.DoubleSide,
+    });
+    cloudMesh = new T.Mesh(cloudGeo, cloudMat);
+    cloudMesh.position.y = 380;
+    scene.add(cloudMesh);
+  }
+
+  // ── LIGHTING ─────────────────────────────────────────
+  const sunLight = new T.DirectionalLight(colors.sunColor, 1.8);
+  sunLight.position.copy(colors.sunDir).multiplyScalar(1000);
+  scene.add(sunLight);
+  scene.add(new T.AmbientLight(colors.skyHorizon, 0.35));
+  const hemi = new T.HemisphereLight(colors.skyZenith, colors.lowColor, 0.4);
+  scene.add(hemi);
+
+  // ── MOUSE / TOUCH ORBIT ──────────────────────────────
+  let isDrag = false, prevMouse = {x:0,y:0};
+  let theta = 0, phi = 0.25, radius = 220;
+  let target = new T.Vector3(0, 20, 0);
+
+  function updateCamera(){
+    camera.position.x = target.x + radius * Math.sin(theta) * Math.cos(phi);
+    camera.position.y = target.y + radius * Math.sin(phi) + 80;
+    camera.position.z = target.z + radius * Math.cos(theta) * Math.cos(phi);
+    camera.lookAt(target);
+  }
+  updateCamera();
+
+  canvas.addEventListener('mousedown', e=>{isDrag=true;prevMouse={x:e.clientX,y:e.clientY};});
+  window.addEventListener('mouseup',   ()=>isDrag=false);
+  window.addEventListener('mousemove', e=>{
+    if(!isDrag)return;
+    theta -= (e.clientX - prevMouse.x) * 0.005;
+    phi    = Math.max(-0.1, Math.min(1.1, phi + (e.clientY - prevMouse.y) * 0.004));
+    prevMouse = {x:e.clientX, y:e.clientY};
+    updateCamera();
+  });
+  canvas.addEventListener('wheel', e=>{
+    radius = Math.max(30, Math.min(1000, radius + e.deltaY * 0.3));
+    updateCamera();
+    e.preventDefault();
+  },{passive:false});
+
+  // ── ANIMATION ────────────────────────────────────────
+  let animId;
+  function animate(){
+    animId = requestAnimationFrame(animate);
+    surfaceTime += 0.016;
+    terrainMat.uniforms.uTime.value = surfaceTime;
+    if(cloudMesh) cloudMesh.material.uniforms.uTime.value = surfaceTime;
+    if(waterMesh){
+      waterMesh.position.y = (colors.hasWater > 0.5 ? 42 : 0) + Math.sin(surfaceTime * 0.4) * 0.5;
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // ── STATE ─────────────────────────────────────────────
+  surfaceState = {
+    scene, renderer, camera, terrain, cloudMesh, waterMesh,
+    terrainMat, skyMat, sunLight, hemi,
+    sunDir: colors.sunDir.clone(),
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      canvas.removeEventListener('mousedown', ()=>{});
+      window.removeEventListener('mouseup', ()=>{});
+      window.removeEventListener('mousemove', ()=>{});
+      canvas.removeEventListener('wheel', ()=>{});
+      renderer.dispose();
+    }
+  };
+}
+
+// ─── Time of Day controls ────────────────────────────
+function surfaceTOD(mode){
+  const T = window.THREE;
+  if(!surfaceState.sunDir) return;
+  const {terrainMat, skyMat, sunLight, hemi, cloudMesh} = surfaceState;
+  const colors = getSurfaceColors(vals);
+
+  let sunDir, sunIntensity, ambIntensity;
+  if(mode === 'day'){
+    sunDir = new T.Vector3(0.8, 0.5, 0.3).normalize();
+    sunIntensity = 1.8; ambIntensity = 0.35;
+    skyMat.uniforms.uSkyZenith.value  = colors.skyZenith;
+    skyMat.uniforms.uSkyHorizon.value = colors.skyHorizon;
+  } else if(mode === 'sunset'){
+    sunDir = new T.Vector3(0.98, 0.04, 0.2).normalize();
+    sunIntensity = 1.4; ambIntensity = 0.2;
+    skyMat.uniforms.uSkyZenith.value  = new T.Color(0.08, 0.12, 0.28);
+    skyMat.uniforms.uSkyHorizon.value = new T.Color(0.90, 0.40, 0.10);
+    skyMat.uniforms.uSunColor.value   = new T.Color(1.0, 0.55, 0.15);
+  } else {
+    sunDir = new T.Vector3(0.2, -0.3, 0.9).normalize();
+    sunIntensity = 0.05; ambIntensity = 0.05;
+    skyMat.uniforms.uSkyZenith.value  = new T.Color(0.002, 0.004, 0.01);
+    skyMat.uniforms.uSkyHorizon.value = new T.Color(0.005, 0.008, 0.02);
+    skyMat.uniforms.uSunColor.value   = new T.Color(0.8, 0.85, 1.0);
+  }
+  terrainMat.uniforms.uSunDir.value = sunDir;
+  skyMat.uniforms.uSunDir.value     = sunDir;
+  if(cloudMesh) cloudMesh.material.uniforms.uSunDir.value = sunDir;
+  if(sunLight){ sunLight.position.copy(sunDir).multiplyScalar(1000); sunLight.intensity = sunIntensity; }
+  if(hemi) hemi.intensity = ambIntensity;
+
+  // Update button styles
+  ['day','sunset','night'].forEach(m=>{
+    const b = document.getElementById('btn-'+m);
+    if(b){ b.style.background = m===mode?'rgba(0,212,170,0.15)':'transparent'; b.style.borderColor = m===mode?'var(--teal)':'var(--border)'; b.style.color = m===mode?'var(--teal)':'var(--muted)'; }
+  });
+}
+
+let wireframeOn = false;
+function surfaceWire(){
+  if(!surfaceState.terrainMat) return;
+  wireframeOn = !wireframeOn;
+  surfaceState.terrainMat.wireframe = wireframeOn;
+  const b = document.getElementById('btn-wire');
+  if(b){ b.style.background = wireframeOn?'rgba(0,212,170,0.15)':'transparent'; b.style.borderColor = wireframeOn?'var(--teal)':'var(--border)'; b.style.color = wireframeOn?'var(--teal)':'var(--muted)'; }
 }
 
 // ═══════════════════════════════════════════════════════
