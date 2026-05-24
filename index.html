@@ -3070,24 +3070,21 @@ async function renderMyPlanets(el){
 
 // ─── VALIDACIÓN TIERRA ────────────────────────────────
 function renderValidation(el){
-  // Aplicar preset Tierra para la validación
   const earthVals = {...PRESETS["Tierra"]};
-
-  // Generar criaturas con parámetros de la Tierra
   const earthCreatures = Array.from({length:6},(_,i)=>makeCreature(earthVals, generateCreatureSeed(earthVals,i)));
-
-  // Calcular similitud de cada criatura con cada especie real
   const results = earthCreatures.map(cr=>{
     const matches = findBestEarthMatches(cr, earthVals, 3);
     return {cr, matches, bestSimilarity: matches[0]?.similarity||0};
   }).sort((a,b)=>b.bestSimilarity-a.bestSimilarity);
 
-  // Score promedio del motor
   const avgSimilarity = Math.round(results.reduce((s,r)=>s+r.bestSimilarity,0)/results.length);
-  const accuracyLabel = avgSimilarity>=70?'Alta precisión':avgSimilarity>=50?'Buena precisión':'Precisión moderada';
-  const accuracyCol   = avgSimilarity>=70?'#00D4AA':avgSimilarity>=50?'#FBBF24':'#94A3B8';
+  const accuracyLabel = avgSimilarity>=70
+    ?(lang==='en'?'High accuracy':'Alta precisión')
+    :avgSimilarity>=50
+    ?(lang==='en'?'Good accuracy':'Buena precisión')
+    :(lang==='en'?'Moderate accuracy':'Precisión moderada');
+  const accuracyCol = avgSimilarity>=70?'#00D4AA':avgSimilarity>=50?'#FBBF24':'#94A3B8';
 
-  // Análisis por especie real: ¿cuál es la más reproducible?
   const speciesAnalysis = EARTH_SPECIES_DB.map(sp=>{
     const bestCreature = earthCreatures.reduce((best,cr)=>{
       const sim = calcSpeciesSimilarity(cr, sp, earthVals);
@@ -3096,64 +3093,69 @@ function renderValidation(el){
     return {species:sp, ...bestCreature};
   }).sort((a,b)=>b.sim-a.sim);
 
+  const E = lang==='en';
+
   el.innerHTML=`
 <div style="overflow-y:auto;height:100%;padding:18px 20px;">
 
-  <!-- Header -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
     <div>
-      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">🔬 Validación Científica — Parámetros de la Tierra</div>
-      <div style="font-size:11px;color:var(--muted);">¿Puede BioPlanet recrear la vida terrestre con los minerales reales de la Tierra?</div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">
+        🔬 ${E?'Scientific Validation — Earth Parameters':'Validación Científica — Parámetros de la Tierra'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);">
+        ${E?'Can BioPlanet recreate Earth life using real mineral parameters?':'¿Puede BioPlanet recrear la vida terrestre con los minerales reales de la Tierra?'}
+      </div>
     </div>
     <button onclick="applyPreset('Tierra');switchTab('planet');" class="btn btn-teal" style="font-size:11px;flex-shrink:0;">
-      Usar parámetros Tierra →
+      ${E?'Use Earth parameters →':'Usar parámetros Tierra →'}
     </button>
   </div>
 
-  <!-- Score global del motor -->
+  <!-- Score global -->
   <div style="background:${accuracyCol}0D;border:1px solid ${accuracyCol}30;border-radius:14px;padding:18px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;align-items:center;">
     <div style="text-align:center;">
       <div style="font-size:48px;font-weight:900;color:${accuracyCol};font-family:'JetBrains Mono',monospace;line-height:1;">${avgSimilarity}%</div>
       <div style="font-size:10px;color:${accuracyCol};margin-top:4px;font-weight:600;">${accuracyLabel}</div>
-      <div style="font-size:9px;color:var(--muted);margin-top:2px;">similitud promedio</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;">${E?'average similarity':'similitud promedio'}</div>
     </div>
     <div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Parámetros usados</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Parameters used':'Parámetros usados'}</div>
       <div style="font-size:9px;color:var(--teal);font-family:'JetBrains Mono',monospace;line-height:1.9;">
         Ca: 41K ppm<br>Fe: 56K ppm<br>O₂: 20.95%<br>T°: 15°C
       </div>
     </div>
     <div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Base de datos</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Database':'Base de datos'}</div>
       <div style="font-size:9px;line-height:1.9;color:var(--text);">
-        ${EARTH_SPECIES_DB.length} especies reales<br>
-        ${earthCreatures.length} criaturas generadas<br>
-        ${EARTH_SPECIES_DB.length * earthCreatures.length} comparaciones<br>
-        Motor: bioquímico real
+        ${EARTH_SPECIES_DB.length} ${E?'real species':'especies reales'}<br>
+        ${earthCreatures.length} ${E?'generated creatures':'criaturas generadas'}<br>
+        ${EARTH_SPECIES_DB.length * earthCreatures.length} ${E?'comparisons':'comparaciones'}<br>
+        ${E?'Engine: real biochemistry':'Motor: bioquímico real'}
       </div>
     </div>
     <div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Conclusión</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Conclusion':'Conclusión'}</div>
       <div style="font-size:10px;color:var(--text);line-height:1.6;">
         ${avgSimilarity>=70
-          ?'El motor reproduce con alta fidelidad las características de la vida terrestre. Válido científicamente.'
+          ?(E?'The engine reproduces Earth life characteristics with high fidelity. Scientifically valid.':'El motor reproduce con alta fidelidad las características de la vida terrestre. Válido científicamente.')
           :avgSimilarity>=50
-          ?'El motor reproduce los rasgos generales correctamente. Las diferencias reflejan la diversidad de nichos.'
-          :'El motor captura los rasgos fundamentales. La diversidad de la Tierra requiere mayor granularidad.'}
+          ?(E?'The engine correctly reproduces general traits. Differences reflect niche diversity.':'El motor reproduce los rasgos generales correctamente. Las diferencias reflejan la diversidad de nichos.')
+          :(E?'The engine captures fundamental traits. Earth diversity requires more granularity.':'El motor captura los rasgos fundamentales. La diversidad de la Tierra requiere mayor granularidad.')}
       </div>
     </div>
   </div>
 
-  <!-- Dos columnas: criaturas vs especies reales -->
+  <!-- Dos columnas -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
 
-    <!-- Criaturas generadas -->
     <div>
-      <div class="label">Criaturas generadas con parámetros de la Tierra</div>
+      <div class="label">${E?'Creatures generated with Earth parameters':'Criaturas generadas con parámetros de la Tierra'}</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         ${results.map(({cr,matches,bestSimilarity})=>{
           const best = matches[0];
           const simCol = bestSimilarity>=70?'#00D4AA':bestSimilarity>=50?'#FBBF24':'#94A3B8';
+          const commonName = E ? (best?.common_en||best?.common_es||'') : (best?.common_es||'');
           return`
           <div style="background:var(--bg2);border:0.5px solid ${simCol}30;border-radius:10px;padding:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
@@ -3163,24 +3165,22 @@ function renderValidation(el){
               </div>
               <div style="text-align:right;">
                 <div style="font-size:18px;font-weight:800;color:${simCol};font-family:'JetBrains Mono',monospace;">${bestSimilarity}%</div>
-                <div style="font-size:8px;color:var(--muted);">similitud</div>
+                <div style="font-size:8px;color:var(--muted);">${E?'similarity':'similitud'}</div>
               </div>
             </div>
-            <!-- Rasgos rápidos -->
             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;">
               ${[cr.skeleton,cr.blood,cr.nervous,cr.thermo].map(t=>`
                 <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:rgba(255,255,255,0.05);color:var(--muted);">${t}</span>
               `).join('')}
             </div>
-            <!-- Mejor análogo -->
             ${best&&bestSimilarity>=20?`
               <div style="background:${simCol}0D;border-radius:6px;padding:6px 8px;">
-                <div style="font-size:9px;color:var(--muted);">Análogo más cercano:</div>
+                <div style="font-size:9px;color:var(--muted);">${E?'Closest analog:':'Análogo más cercano:'}</div>
                 <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
                   <span style="font-size:14px;">${best.emoji}</span>
                   <div>
                     <div style="font-size:10px;font-style:italic;color:${simCol};font-weight:600;">${best.name}</div>
-                    <div style="font-size:8px;color:var(--muted);">${best.common_es} · ${best.class}</div>
+                    <div style="font-size:8px;color:var(--muted);">${commonName} · ${best.class}</div>
                   </div>
                 </div>
               </div>`:''}
@@ -3189,13 +3189,17 @@ function renderValidation(el){
       </div>
     </div>
 
-    <!-- Especies reales: qué tan bien las reproduce el motor -->
     <div>
-      <div class="label">Especies reales — precisión del motor BioPlanet</div>
+      <div class="label">${E?'Real species — BioPlanet engine accuracy':'Especies reales — precisión del motor BioPlanet'}</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${speciesAnalysis.map(({species,cr,sim})=>{
           const simCol = sim>=70?'#00D4AA':sim>=50?'#FBBF24':sim>=30?'#94A3B8':'#3A4560';
-          const barW = Math.round(sim);
+          const commonName = E ? (species.common_en||species.common_es) : species.common_es;
+          const fidelityLabel = sim>=70
+            ?(E?'✓ High fidelity':'✓ Alta fidelidad')
+            :sim>=50?(E?'◈ Good match':'◈ Buena aproximación')
+            :sim>=30?(E?'· Convergent':'· Convergente')
+            :(E?'– Different niche':'– Nicho diferente');
           return`
           <div style="background:var(--bg2);border:0.5px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
@@ -3204,20 +3208,18 @@ function renderValidation(el){
                 <div style="display:flex;justify-content:space-between;align-items:baseline;">
                   <div>
                     <span style="font-size:10px;font-style:italic;color:var(--text);font-weight:600;">${species.name}</span>
-                    <span style="font-size:9px;color:var(--muted);margin-left:5px;">${species.common_es}</span>
+                    <span style="font-size:9px;color:var(--muted);margin-left:5px;">${commonName}</span>
                   </div>
                   <span style="font-size:11px;font-weight:800;color:${simCol};font-family:'JetBrains Mono',monospace;">${sim}%</span>
                 </div>
                 <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:4px;">
-                  <div style="height:100%;width:${barW}%;background:${simCol};border-radius:2px;transition:width .5s;${sim>=70?`box-shadow:0 0 6px ${simCol}60;`:''}"></div>
+                  <div style="height:100%;width:${sim}%;background:${simCol};border-radius:2px;transition:width .5s;${sim>=70?`box-shadow:0 0 6px ${simCol}60;`:''}"></div>
                 </div>
               </div>
             </div>
             <div style="font-size:8px;color:var(--muted);display:flex;justify-content:space-between;">
               <span>${species.kingdom} · ${species.class}</span>
-              <span style="color:${sim>=70?'#00D4AA':sim>=50?'#FBBF24':'var(--dim)'};">
-                ${sim>=70?'✓ Alta fidelidad':sim>=50?'◈ Buena aproximación':sim>=30?'· Convergente':'– Nicho diferente'}
-              </span>
+              <span style="color:${sim>=70?'#00D4AA':sim>=50?'#FBBF24':'var(--dim)'};">${fidelityLabel}</span>
             </div>
           </div>`;
         }).join('')}
@@ -3228,11 +3230,20 @@ function renderValidation(el){
   <!-- Conclusión científica -->
   <div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:16px;">
     <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:10px;">
-      🧬 Conclusión científica: ¿Puede BioPlanet recrear la vida terrestre?
+      🧬 ${E?'Scientific conclusion: Can BioPlanet recreate Earth life?':'Conclusión científica: ¿Puede BioPlanet recrear la vida terrestre?'}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:11px;color:var(--muted);line-height:1.8;">
       <div>
-        <div style="color:var(--teal);font-weight:600;margin-bottom:6px;">✓ Lo que el motor reproduce correctamente:</div>
+        <div style="color:var(--teal);font-weight:600;margin-bottom:6px;">✓ ${E?'What the engine reproduces correctly:':'Lo que el motor reproduce correctamente:'}</div>
+        ${E?`
+        <div>· Calcic endoskeleton (Ca + P + O₂) — all vertebrates</div>
+        <div>· Red hemoglobin (Fe + O₂) — mammals, birds, fish</div>
+        <div>· Centralized brain (Ca + Fe + P + O₂) — primates</div>
+        <div>· Homeothermy (high O₂ + moderate temperature)</div>
+        <div>· Photosynthesis with Mg + Mn + CO₂ — plants and algae</div>
+        <div>· H₂S chemosynthesis without O₂ — Riftia, Pyrolobus</div>
+        <div>· Blue hemocyanin with high Cu — octopuses, arthropods</div>
+        `:`
         <div>· Endoesqueleto calcico (Ca + P + O₂) — como todos los vertebrados</div>
         <div>· Hemoglobina roja (Fe + O₂) — como mamíferos, aves, peces</div>
         <div>· Cerebro centralizado (Ca + Fe + P + O₂) — como primates</div>
@@ -3240,24 +3251,36 @@ function renderValidation(el){
         <div>· Fotosíntesis con Mg + Mn + CO₂ — como plantas y algas</div>
         <div>· Quimiosíntesis H₂S sin O₂ — como Riftia y Pyrolobus</div>
         <div>· Hemocianina azul con Cu alto — como pulpos y artrópodos</div>
+        `}
       </div>
       <div>
-        <div style="color:#FBBF24;font-weight:600;margin-bottom:6px;">◈ Limitaciones actuales:</div>
+        <div style="color:#FBBF24;font-weight:600;margin-bottom:6px;">◈ ${E?'Current limitations:':'Limitaciones actuales:'}</div>
+        ${E?`
+        <div>· Earth has 8.7M species — engine generates general archetypes</div>
+        <div>· Convergent evolution creates similar organisms via different paths</div>
+        <div>· Traits like feathers, scales or fur need more parameters</div>
+        <div>· Geographic speciation (islands, mountains) not modeled</div>
+        <div>· Complex symbioses (mitochondria, chloroplasts) are endosymbiotic</div>
+        <div style="margin-top:8px;color:var(--teal);font-weight:600;">
+          → With Earth parameters, the engine generates biochemically equivalent organisms with ~${avgSimilarity}% accuracy on fundamental traits.
+        </div>
+        `:`
         <div>· La Tierra tiene 8.7M de especies — el motor genera arquetipos generales</div>
         <div>· La evolución convergente crea organismos similares por distintos caminos</div>
-        <div>· Rasgos como el plumaje, escamas o pelaje requieren más parámetros</div>
+        <div>· Rasgos como plumaje, escamas o pelaje requieren más parámetros</div>
         <div>· La especiación geográfica (islas, montañas) no está modelada</div>
         <div>· Simbiosis complejas (mitocondrias, cloroplastos) son endosimbióticas</div>
         <div style="margin-top:8px;color:var(--teal);font-weight:600;">
-          → Con los parámetros de la Tierra, el motor genera organismos 
-          bioquímicamente equivalentes a los terrestres con ~${avgSimilarity}% de precisión de rasgos fundamentales.
+          → Con los parámetros de la Tierra, el motor genera organismos bioquímicamente equivalentes con ~${avgSimilarity}% de precisión en rasgos fundamentales.
         </div>
+        `}
       </div>
     </div>
   </div>
 
 </div>`;
 }
+
 
 
 // ═══════════════════════════════════════════════════════
