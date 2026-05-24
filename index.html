@@ -1403,14 +1403,14 @@ function renderPlanet(el){
               <span class="hud-label">Cu </span>${vals.Cu} ppm   <span class="hud-label">P  </span>${vals.P}K ppm<br>
             </div>
           </div>
-          <div style="position:absolute;bottom:8px;left:10px;font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">Arrastra · Scroll zoom · Inclinación axial: 23.5°</div>
+          <div style="position:absolute;bottom:8px;left:10px;font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${t('rotate')}</div>
           <!-- Links -->
           <div style="position:absolute;bottom:8px;right:10px;">
-            <a href="nature-connections.html" target="_blank" style="font-size:9px;color:var(--teal);text-decoration:none;font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);border:0.5px solid rgba(0,212,170,0.3);padding:3px 8px;border-radius:4px;">🕸 Ver Conexiones Naturales →</a>
+            <a href="nature-connections.html" target="_blank" style="font-size:9px;color:var(--teal);text-decoration:none;font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);border:0.5px solid rgba(0,212,170,0.3);padding:3px 8px;border-radius:4px;">${t('natureLink')}</a>
           </div>
         </div>
         <div style="border-top:1px solid var(--border);padding:10px 14px;background:var(--bg2);">
-          <div class="label">Rasgos emergentes — Criatura principal</div>
+          <div class="label">${lang==='en'?'Emerging traits — Main creature':'Rasgos emergentes — Criatura principal'}</div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;">${traitHTML}</div>
         </div>
       </div>
@@ -1485,7 +1485,7 @@ function renderCreatures(el){
             <!-- Habilidades emergentes -->
             ${cr.abilities&&cr.abilities.length>0?`
             <div style="border-top:0.5px solid var(--border);padding-top:10px;margin-bottom:8px;">
-              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">✨ Habilidades emergentes</div>
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">✨ ${lang==='en'?'Emerging abilities':'Habilidades emergentes'}</div>
               <div style="display:flex;flex-direction:column;gap:6px;">
                 ${cr.abilities.map(ab=>`
                   <div style="background:${ab.col}0D;border:0.5px solid ${ab.col}35;border-radius:7px;padding:7px 10px;cursor:pointer;"
@@ -1514,7 +1514,7 @@ function renderCreatures(el){
               return`
               <div style="margin-top:8px;background:${simCol}08;border:0.5px solid ${simCol}30;border-radius:8px;padding:8px 10px;">
                 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:${simCol};margin-bottom:6px;">
-                  🌍 Análogos terrestres más cercanos
+                  🌍 ${lang==='en'?'Closest Earth analogs':'Análogos terrestres más cercanos'}
                 </div>
                 ${matches.filter(m=>m.similarity>=15).map((m,mi)=>`
                   <div style="display:flex;align-items:center;gap:6px;${mi>0?'margin-top:5px;padding-top:5px;border-top:0.5px solid rgba(255,255,255,0.05);':''}">
@@ -1537,11 +1537,11 @@ function renderCreatures(el){
                 `).join('')}
                 ${best.similarity>=80?`
                   <div style="margin-top:6px;padding-top:6px;border-top:0.5px solid ${simCol}30;font-size:9px;color:${simCol};font-weight:600;">
-                    ✦ Alta similitud con vida terrestre real — el motor evolutivo es científicamente preciso
+                    ✦ ${lang==='en'?'High similarity with real Earth life — evolutionary engine is scientifically accurate':'Alta similitud con vida terrestre real — el motor evolutivo es científicamente preciso'}
                   </div>`
                 :best.similarity>=60?`
                   <div style="margin-top:6px;padding-top:6px;border-top:0.5px solid rgba(251,191,36,0.3);font-size:9px;color:#FBBF24;">
-                    ◈ Similitud moderada — comparte linaje evolutivo convergente
+                    ◈ ${lang==='en'?'Moderate similarity — shares convergent evolutionary lineage':'Similitud moderada — comparte linaje evolutivo convergente'}
                   </div>`:``}
               </div>`;
             })()}
@@ -1731,14 +1731,14 @@ function renderEcosystem(el){
 
   el.innerHTML=`
 <div style="overflow-y:auto;height:100%;padding:18px 20px;">
-  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">Red Trófica y Teoría de Depredación</div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Basado en Lotka-Volterra · Principio de Gause · Teoría de Nicho Ecológico</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">${lang==='en'?'Food Web & Predation Theory':'Red Trófica y Teoría de Depredación'}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${lang==='en'?'Based on Lotka-Volterra · Gause principle · Ecological Niche Theory':'Basado en Lotka-Volterra · Principio de Gause · Teoría de Nicho Ecológico'}</div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
 
     <!-- Jerarquía de depredación -->
     <div class="card">
-      <div class="label">Jerarquía de depredación — Score Trófico</div>
+      <div class="label">${lang==='en'?'Predation hierarchy — Trophic Score':'Jerarquía de depredación — Score Trófico'}</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         ${sorted.map((c,i)=>{
           const barW = Math.round((c.predScore/Math.max(maxScore,1))*100);
@@ -1767,7 +1767,7 @@ function renderEcosystem(el){
               <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.loco}</span>
               ${c.cr.abilities?.slice(0,1).map(ab=>`<span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${ab.col}15;color:${ab.col};">✨ ${ab.name.split(' ').slice(0,2).join(' ')}</span>`).join('')||''}
             </div>
-            ${isApex?`<div style="margin-top:6px;font-size:8px;color:${c.col};font-weight:600;letter-spacing:.06em;">▲ DEPREDADOR ÁPEX</div>`:''}
+            ${isApex?`<div style="margin-top:6px;font-size:8px;color:${c.col};font-weight:600;letter-spacing:.06em;">▲ ${lang==='en'?'APEX PREDATOR':'DEPREDADOR ÁPEX'}</div>`:''}
           </div>`;
         }).join('')}
       </div>
@@ -1778,7 +1778,7 @@ function renderEcosystem(el){
 
       <!-- Pirámide de biomasa -->
       <div class="card">
-        <div class="label">Pirámide de biomasa (Eltonian)</div>
+        <div class="label">${lang==='en'?'Biomass pyramid (Eltonian)':'Pirámide de biomasa (Eltonian)'}</div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;">
           ${[
             {label:`Ápex (${apex} ind)`,     w:15,  col:"#F87171", icon:"👑"},
@@ -1792,20 +1792,21 @@ function renderEcosystem(el){
             </div>`).join('')}
         </div>
         <div style="font-size:9px;color:var(--dim);margin-top:6px;line-height:1.6;">
-          Regla del 10%: solo el 10% de energía pasa de un nivel al siguiente.
-          Productores: ${producers*10} unidades energéticas → Ápex: ${Math.round(producers*0.01)} unidades.
+          ${lang==='en'
+            ?`10% rule: only 10% of energy passes between levels. Producers: ${producers*10} energy units → Apex: ${Math.round(producers*0.01)} units.`
+            :`Regla del 10%: solo el 10% de energía pasa de un nivel al siguiente. Productores: ${producers*10} unidades energéticas → Ápex: ${Math.round(producers*0.01)} unidades.`}
         </div>
       </div>
 
       <!-- Estado del ecosistema -->
       <div class="card">
-        <div class="label">Estado del ecosistema</div>
+        <div class="label">${lang==='en'?'Ecosystem status':'Estado del ecosistema'}</div>
         ${[
-          {l:"Score habitabilidad",v:`${Math.round(score*100)}%`,c:scoreCol},
-          {l:"Temperatura",v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
-          {l:"Ciclos minerales",v:[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.Mg>=10&&'Mg',vals.H2S>0.1&&'S'].filter(Boolean).join(', ')||'ninguno',c:'#4ADE80'},
-          {l:"Depredadores ápex",v:`${apexCreatures.length}`,c:apexCreatures.length>=2?'#F87171':apexCreatures.length===1?'#FBBF24':'#94A3B8'},
-          {l:"Estabilidad trófica",v:score>=0.7?'Alta':score>=0.4?'Media':'Frágil',c:score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171'},
+          {l:lang==='en'?'Habitability score':'Score habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
+          {l:lang==='en'?'Temperature':'Temperatura',v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+          {l:lang==='en'?'Mineral cycles':'Ciclos minerales',v:[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.Mg>=10&&'Mg',vals.H2S>0.1&&'S'].filter(Boolean).join(', ')||(lang==='en'?'none':'ninguno'),c:'#4ADE80'},
+          {l:lang==='en'?'Apex predators':'Depredadores ápex',v:`${apexCreatures.length}`,c:apexCreatures.length>=2?'#F87171':apexCreatures.length===1?'#FBBF24':'#94A3B8'},
+          {l:lang==='en'?'Trophic stability':'Estabilidad trófica',v:score>=0.7?(lang==='en'?'High':'Alta'):score>=0.4?(lang==='en'?'Medium':'Media'):(lang==='en'?'Fragile':'Frágil'),c:score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171'},
         ].map(({l,v,c})=>`
           <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
             <span style="font-size:10px;color:var(--muted);">${l}</span>
@@ -1821,8 +1822,8 @@ function renderEcosystem(el){
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
       <span style="font-size:24px;">⚔️</span>
       <div>
-        <div style="font-size:14px;font-weight:700;color:#F87171;">Dos Depredadores Ápex Detectados</div>
-        <div style="font-size:10px;color:var(--muted);">Principio de Exclusión Competitiva — Gause (1934)</div>
+        <div style="font-size:14px;font-weight:700;color:#F87171;">${lang==='en'?'Two Apex Predators Detected':'Dos Depredadores Ápex Detectados'}</div>
+        <div style="font-size:10px;color:var(--muted);">${lang==='en'?'Competitive Exclusion Principle — Gause (1934)':'Principio de Exclusión Competitiva — Gause (1934)'}</div>
       </div>
       <div style="margin-left:auto;text-align:right;">
         <div style="font-size:11px;font-weight:700;color:#F87171;">${dualApexResult.outcome}</div>
@@ -1855,19 +1856,19 @@ function renderEcosystem(el){
     <!-- Escenario y resultado -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div style="background:var(--bg3);border-radius:8px;padding:12px;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Escenario científico</div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Scientific scenario':'Escenario científico'}</div>
         <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:8px;">${dualApexResult.scenario}</div>
         <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.details}</div>
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:12px;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Efecto evolutivo a largo plazo</div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Long-term evolutionary effect':'Efecto evolutivo a largo plazo'}</div>
         <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.evolutionEffect}</div>
         <div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);">
-          <div style="font-size:9px;color:var(--muted);">Hábitats:</div>
+          <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Habitats:':'Hábitats:'}</div>
           <div style="font-size:10px;color:#60A5FA;">
             ${dualApexResult.differentHabitat
-              ?`✓ Distintos — ${dualApexResult.hab1} vs ${dualApexResult.hab2}`
-              :`✗ Idénticos — ${dualApexResult.hab1} compartido`}
+              ?`✓ ${lang==='en'?'Different':'Distintos'} — ${dualApexResult.hab1} vs ${dualApexResult.hab2}`
+              :`✗ ${lang==='en'?'Identical':'Idénticos'} — ${dualApexResult.hab1} ${lang==='en'?'shared':'compartido'}`}
           </div>
         </div>
       </div>
@@ -1875,14 +1876,14 @@ function renderEcosystem(el){
 
     <!-- Escala de tiempo evolutivo -->
     <div style="background:var(--bg3);border-radius:8px;padding:12px;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Línea de tiempo evolutiva</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">${lang==='en'?'Evolutionary timeline':'Línea de tiempo evolutiva'}</div>
       <div style="display:flex;gap:0;position:relative;">
         <div style="position:absolute;top:10px;left:0;right:0;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;"></div>
         ${[
-          {t:"0",label:"Estado actual",desc:"Dos ápex compiten"},
-          {t:"100–500 gen",label:"Tensión máxima",desc:"Recursos se dividen"},
-          {t:"500–2K gen",label:"Punto de inflexión",desc:"Escenario se determina"},
-          {t:"10K+ gen",label:"Equilibrio nuevo",desc:"Ecosistema estabilizado"},
+          {t:"0",           label:lang==='en'?'Current state':'Estado actual',    desc:lang==='en'?'Two apex compete':'Dos ápex compiten'},
+          {t:"100–500 gen", label:lang==='en'?'Peak tension':'Tensión máxima',    desc:lang==='en'?'Resources split':'Recursos se dividen'},
+          {t:"500–2K gen",  label:lang==='en'?'Tipping point':'Punto de inflexión',desc:lang==='en'?'Scenario determined':'Escenario se determina'},
+          {t:"10K+ gen",    label:lang==='en'?'New equilibrium':'Equilibrio nuevo', desc:lang==='en'?'Ecosystem stabilized':'Ecosistema estabilizado'},
         ].map((pt,i,arr)=>`
           <div style="flex:1;position:relative;padding-top:22px;text-align:center;">
             <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#F87171;box-shadow:0 0 8px rgba(248,113,113,0.6);z-index:1;"></div>
@@ -1898,7 +1899,7 @@ function renderEcosystem(el){
     <div style="display:flex;align-items:center;gap:10px;">
       <span style="font-size:20px;">👑</span>
       <div>
-        <div style="font-size:13px;font-weight:700;color:#FBBF24;">Un depredador ápex — Ecosistema estable</div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;">${lang==='en'?'One apex predator — Stable ecosystem':'Un depredador ápex — Ecosistema estable'}</div>
         <div style="font-size:10px;color:var(--muted);margin-top:3px;">
           <i>${apexCreatures[0].cr.latinName}</i> (score ${apexCreatures[0].predScore}) domina la cadena trófica.
           Ninguna otra especie compite por su posición. Análogo a los grandes felinos en sabanas aisladas.
@@ -1908,13 +1909,13 @@ function renderEcosystem(el){
   </div>
   ` : `
   <div style="background:rgba(148,163,184,0.06);border:0.5px solid rgba(148,163,184,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
-    <div style="font-size:12px;color:var(--muted);">Sin depredadores ápex claros — ecosistema de productores/descomponedores. Añade más criaturas o mejora la habitabilidad.</div>
+    <div style="font-size:12px;color:var(--muted);">${lang==='en'?'No clear apex predators — producer/decomposer ecosystem. Add more creatures or improve habitability.':'Sin depredadores ápex claros — ecosistema de productores/descomponedores. Añade más criaturas o mejora la habitabilidad.'}</div>
   </div>
   `}
 
   <!-- Red de interacciones -->
   <div class="card">
-    <div class="label">Red de interacciones tróficas</div>
+    <div class="label">${lang==='en'?'Trophic interaction network':'Red de interacciones tróficas'}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
       ${sorted.map(c=>`
         <div style="background:${c.col}08;border:0.5px solid ${c.col}25;border-radius:8px;padding:10px;">
@@ -1927,11 +1928,11 @@ function renderEcosystem(el){
           </div>
           ${sorted.filter(other=>other.cr.latinName!==c.cr.latinName&&other.predScore<c.predScore).slice(0,2).map(prey=>`
             <div style="font-size:8px;color:var(--muted);display:flex;align-items:center;gap:3px;">
-              <span style="color:${c.col};">→</span> caza a <i style="color:${prey.col};">${prey.cr.latinName.split(' ')[0]}</i>
+              <span style="color:${c.col};">→</span> ${lang==='en'?'hunts':'caza a'} <i style="color:${prey.col};">${prey.cr.latinName.split(' ')[0]}</i>
             </div>`).join('')}
           ${sorted.filter(other=>other.predScore>c.predScore).slice(0,1).map(pred=>`
             <div style="font-size:8px;color:#F87171;display:flex;align-items:center;gap:3px;margin-top:2px;">
-              <span>←</span> cazado por <i>${pred.cr.latinName.split(' ')[0]}</i>
+              <span>←</span> ${lang==='en'?'hunted by':'cazado por'} <i>${pred.cr.latinName.split(' ')[0]}</i>
             </div>`).join('')}
         </div>`).join('')}
     </div>
@@ -2829,7 +2830,7 @@ function renderMinerals(el){
 
     <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;">
       <div style="font-size:9px;color:var(--dim);line-height:1.6;">
-        <div style="color:var(--muted);margin-bottom:4px;font-size:8px;text-transform:uppercase;letter-spacing:.08em;">Fuente de datos</div>
+        <div style="color:var(--muted);margin-bottom:4px;font-size:8px;text-transform:uppercase;letter-spacing:.08em;">${lang==='en'?'Data source':'Fuente de datos'}</div>
         <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;font-size:10px;">mindat.org</a><br>
         <span style="font-size:8px;">IMA-CNMNC · CC BY-NC-SA 4.0</span><br>
         <span style="font-size:8px;color:var(--dim);">6,210 especies aprobadas</span>
