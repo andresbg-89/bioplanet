@@ -243,22 +243,8 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
     <!-- Ciclos biogeoquímicos rápidos -->
     <div style="flex:1;border-left:0.5px solid var(--border);padding:8px 12px;overflow:hidden;">
       <div class="panel-title" style="margin-bottom:6px;">Ciclos biogeoquímicos</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-        ${[
-          {n:"C",full:"Carbono",v:"8.2 Gt/año",c:"#4ADE80",active:true},
-          {n:"N",full:"Nitrógeno",v:"140 Mt/año",c:"#60A5FA",active:true},
-          {n:"P",full:"Fósforo",v:"9 Mt/año",c:"#FFB800",active:true},
-          {n:"Fe",full:"Hierro",v:"1400 Mt",c:"#F87171",active:true},
-          {n:"S",full:"Azufre",v:"200 Mt/año",c:"#A78BFA",active:true},
-          {n:"Ca",full:"Calcio",v:"400 Mt/año",c:"#FBBF24",active:true},
-          {n:"H₂O",full:"Agua",v:"496K km³/año",c:"#60A5FA",active:true},
-          {n:"O",full:"Oxígeno",v:"≈ 300 Gt",c:"#00D4FF",active:true},
-        ].map(c=>`
-          <div style="display:flex;align-items:center;gap:5px;padding:3px 5px;background:rgba(0,255,136,0.03);border:0.5px solid rgba(0,255,136,0.08);">
-            <div style="width:5px;height:5px;border-radius:50%;background:${c.c};box-shadow:0 0 4px ${c.c};flex-shrink:0;animation:pulse 1.5s ease infinite;"></div>
-            <span style="font-size:8px;color:${c.c};font-family:var(--font-mono);width:20px;">${c.n}</span>
-            <span style="font-size:8px;color:var(--muted);">${c.v}</span>
-          </div>`).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;" id="cycles-grid">
+        <!-- generado por JS -->
       </div>
     </div>
 
@@ -280,6 +266,38 @@ body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(r
 </div>
 
 <script>
+// ── Ciclos biogeoquímicos ────────────────────────────
+(function(){
+  const cycles = [
+    {n:"C",   full:"Carbon",    v:"8.2 Gt/yr",      c:"#4ADE80"},
+    {n:"N",   full:"Nitrogen",  v:"140 Mt/yr",      c:"#60A5FA"},
+    {n:"P",   full:"Phosphorus",v:"9 Mt/yr",        c:"#FFB800"},
+    {n:"Fe",  full:"Iron",      v:"1,400 Mt",       c:"#F87171"},
+    {n:"S",   full:"Sulfur",    v:"200 Mt/yr",      c:"#A78BFA"},
+    {n:"Ca",  full:"Calcium",   v:"400 Mt/yr",      c:"#FBBF24"},
+    {n:"H₂O", full:"Water",     v:"496K km³/yr",    c:"#38BDF8"},
+    {n:"O",   full:"Oxygen",    v:"≈ 300 Gt",       c:"#00D4FF"},
+  ];
+  const grid = document.getElementById('cycles-grid');
+  if(grid){
+    grid.innerHTML = cycles.map(c=>`
+      <div style="display:flex;align-items:center;gap:5px;padding:4px 6px;
+        background:${c.c}08;border:0.5px solid ${c.c}25;border-radius:4px;">
+        <div style="width:6px;height:6px;border-radius:50%;background:${c.c};
+          box-shadow:0 0 5px ${c.c};flex-shrink:0;animation:pulse 1.5s ease infinite;"></div>
+        <span style="font-size:8px;font-weight:700;color:${c.c};
+          font-family:monospace;width:22px;flex-shrink:0;">${c.n}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:8px;color:rgba(255,255,255,0.5);
+            line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${c.full}
+          </div>
+          <div style="font-size:8px;color:${c.c};font-family:monospace;">${c.v}</div>
+        </div>
+      </div>`).join('');
+  }
+})();
+
 // ═══════════════════════════════════════════════════════
 // DATOS DE CONEXIONES
 // ═══════════════════════════════════════════════════════
