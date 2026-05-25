@@ -527,7 +527,41 @@ void main(){
   </div>
 </div>
 
-<!-- CLERK SIGN-IN MODAL -->
+<!-- MODAL CRIATURA 3D -->
+<div id="creature-3d-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(6px);">
+  <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.25);border-radius:16px;width:min(820px,95vw);max-height:92vh;overflow:hidden;animation:fadeIn .3s ease;display:flex;flex-direction:column;">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:0.5px solid var(--border);">
+      <div>
+        <div id="c3d-name" style="font-size:14px;font-style:italic;font-weight:700;color:var(--teal);"></div>
+        <div id="c3d-desc" style="font-size:10px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+      <button onclick="close3D()" style="background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;">✕</button>
+    </div>
+    <!-- Content -->
+    <div style="display:flex;flex:1;min-height:0;">
+      <!-- Canvas 3D -->
+      <div style="flex:1;position:relative;min-height:360px;">
+        <canvas id="c3d-canvas" style="width:100%;height:100%;display:block;cursor:grab;"></canvas>
+        <!-- HUD -->
+        <div style="position:absolute;bottom:10px;left:12px;font-size:9px;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace;pointer-events:none;">
+          Drag to rotate · Scroll to zoom
+        </div>
+        <!-- Controls top -->
+        <div style="position:absolute;top:10px;left:12px;display:flex;gap:5px;">
+          <button onclick="c3dToggleAnim()" id="c3d-anim-btn" class="btn btn-teal" style="font-size:9px;padding:3px 8px;">⏸ Pause</button>
+          <button onclick="c3dToggleWire()" id="c3d-wire-btn" class="btn" style="font-size:9px;padding:3px 8px;">⬡ Wire</button>
+          <button onclick="c3dExplode()" class="btn" style="font-size:9px;padding:3px 8px;">💥 Explode</button>
+          <button onclick="c3dXRay()" id="c3d-xray-btn" class="btn" style="font-size:9px;padding:3px 8px;border-color:#00D4FF;color:#00D4FF;">🩻 X-Ray</button>
+        </div>
+      </div>
+      <!-- Info panel -->
+      <div id="c3d-info" style="width:220px;border-left:0.5px solid var(--border);padding:14px 12px;overflow-y:auto;flex-shrink:0;"></div>
+    </div>
+  </div>
+</div>
+
+
 <div id="clerk-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
   <div style="background:var(--bg2);border:1px solid rgba(0,212,170,0.3);border-radius:16px;padding:28px;max-width:380px;width:90%;animation:fadeIn .3s ease;box-shadow:0 0 60px rgba(0,212,170,0.15);">
     <div style="text-align:center;margin-bottom:20px;">
@@ -1481,9 +1515,14 @@ function renderCreatures(el){
               <div><div style="font-size:12px;font-weight:700;color:${cr.orgCol};margin-bottom:2px;font-style:italic;">${cr.latinName}</div><div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${code} · #${i+1}</div></div>
               <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
             </div>
-            <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:10px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-              <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 Generar imagen IA</button>
+            <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:6px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+              <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate AI image':'Generar imagen IA'}</button>
             </div>
+            <!-- Botón 3D -->
+            <button onclick="show3DCreature(${i})" style="width:100%;margin-bottom:10px;padding:6px;border-radius:7px;border:0.5px solid ${cr.orgCol}50;background:${cr.orgCol}10;color:${cr.orgCol};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;"
+              onmouseover="this.style.background='${cr.orgCol}22'" onmouseout="this.style.background='${cr.orgCol}10'">
+              🔬 ${lang==='en'?'View in 3D':'Ver en 3D'} <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${cr.orgCol}30;margin-left:4px;">${lang==='en'?'PRO':'PRO'}</span>
+            </button>
             <!-- Rasgos base -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
               ${[{l:"Esqueleto",v:cr.skeleton,c:cr.skCol},{l:"Sangre",v:cr.blood,c:cr.bCol},{l:"Nervioso",v:cr.nervous,c:cr.nCol},{l:"Termoreg.",v:cr.thermo,c:cr.tCol},{l:"Locomoción",v:cr.loco,c:"#60A5FA"},{l:"Tamaño",v:cr.size,c:"#94A3B8"}].map(({l,v,c})=>`<div style="background:${c}10;border:0.5px solid ${c}30;border-radius:5px;padding:5px 7px;"><div style="font-size:8px;color:var(--muted);margin-bottom:1px;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;">${v}</div></div>`).join('')}
@@ -4587,9 +4626,954 @@ function surfSnap(){
   link.click();
 }
 
+
+
 // ═══════════════════════════════════════════════════════
-// INIT
+// X-RAY VISION — Órganos internos procedurales
+// Shader Fresnel + anatomía basada en rasgos evolutivos
 // ═══════════════════════════════════════════════════════
+
+// ─── Shader de cuerpo X-ray (fresnel rim glow) ───────
+const XRAY_VERT = `
+varying vec3 vNormal;
+varying vec3 vViewDir;
+void main(){
+  vNormal  = normalize(normalMatrix * normal);
+  vec4 mv  = modelViewMatrix * vec4(position, 1.0);
+  vViewDir = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const XRAY_FRAG = `
+uniform vec3  uColor;
+uniform float uRimPow;
+uniform float uAlpha;
+varying vec3  vNormal;
+varying vec3  vViewDir;
+void main(){
+  float rim   = 1.0 - abs(dot(normalize(vNormal), normalize(vViewDir)));
+  float alpha = pow(rim, uRimPow) * uAlpha;
+  // Scanlines effect
+  float scan  = sin(gl_FragCoord.y * 3.5) * 0.04 + 0.96;
+  gl_FragColor = vec4(uColor * scan, clamp(alpha, 0.0, 0.9));
+}`;
+
+// ─── Constructor de órganos internos ─────────────────
+function buildInternalOrgans(cr, T){
+  const group = new T.Group();
+  group.visible = false;
+  group.name = 'organs';
+
+  // Colores por función
+  const BONE_COL   = new T.Color(0.95, 0.92, 0.82);
+  const BRAIN_COL  = new T.Color(0.72, 0.35, 0.85);
+  const HEART_COL  = new T.Color(0.92, 0.12, 0.18);
+  const LUNG_COL   = new T.Color(0.20, 0.55, 0.88);
+  const STOMACH_COL= new T.Color(0.85, 0.68, 0.12);
+  const LIVER_COL  = new T.Color(0.62, 0.18, 0.08);
+  const NERVE_COL  = new T.Color(0.88, 0.88, 0.12);
+  const MUSCLE_COL = new T.Color(0.85, 0.32, 0.22);
+  const CHLORO_COL = new T.Color(0.18, 0.78, 0.28);
+
+  const mkMat = (col, opa=0.88, shine=60) => new T.MeshPhongMaterial({
+    color:col, emissive:col.clone().multiplyScalar(0.25),
+    transparent:true, opacity:opa, shininess:shine,
+    specular:new T.Color(1,1,1), depthWrite:false,
+  });
+  const mkWire = (col) => new T.MeshBasicMaterial({
+    color:col, wireframe:true, transparent:true, opacity:0.35
+  });
+
+  // ── 1. ESQUELETO ────────────────────────────────────
+  const hasBone = cr.skeleton?.includes('calcic')||cr.skeleton?.includes('Calcic')||
+                  cr.skeleton?.includes('endos')||cr.skeleton?.includes('Endos');
+  const hasSilica= cr.skeleton?.includes('silíce')||cr.skeleton?.includes('Silic');
+  const hasHydro = cr.skeleton?.includes('Hidro')||cr.skeleton?.includes('Hydro')||
+                   cr.skeleton?.includes('Quitin')||cr.skeleton?.includes('Chitin');
+
+  if(hasBone){
+    // Columna vertebral
+    for(let i=0;i<10;i++){
+      const vert=new T.Mesh(new T.SphereGeometry(0.055,10,8),mkMat(BONE_COL,0.95,120));
+      vert.position.set(0.55-i*0.12, 0.08+Math.sin(i*0.3)*0.02, 0);
+      vert.name='spine_'+i; group.add(vert);
+      // Disco intervertebral
+      if(i<9){
+        const disc=new T.Mesh(new T.CylinderGeometry(0.04,0.04,0.06,10),mkMat(new T.Color(0.70,0.70,0.65),0.7));
+        disc.rotation.z=Math.PI/2;
+        disc.position.set(0.49-i*0.12, 0.08, 0); group.add(disc);
+      }
+    }
+    // Cráneo
+    const skull=new T.Mesh(new T.SphereGeometry(0.22,16,14),mkMat(BONE_COL,0.90,130));
+    skull.position.set(0.88,0.14,0); skull.name='skull'; group.add(skull);
+    const jawGeo=new T.SphereGeometry(0.14,12,10);
+    const jaw=new T.Mesh(jawGeo,mkMat(BONE_COL,0.85,120));
+    jaw.position.set(0.90,-0.06,0); jaw.scale.set(0.9,0.55,0.85); group.add(jaw);
+    // Costillas
+    for(let i=0;i<6;i++){
+      [-0.18,0.18].forEach(z=>{
+        const rib=new T.Mesh(new T.TorusGeometry(0.22-i*0.01,0.018,6,16,Math.PI*1.15),mkMat(BONE_COL,0.82,100));
+        rib.position.set(0.35-i*0.10,0.05,z>0?0.02:-0.02);
+        rib.rotation.set(z>0?0.35:-0.35, 0, Math.PI/2+i*0.05);
+        group.add(rib);
+      });
+    }
+    // Pelvis
+    const pelvis=new T.Mesh(new T.TorusGeometry(0.18,0.04,8,18),mkMat(BONE_COL,0.88,110));
+    pelvis.position.set(-0.35,0.0,0); pelvis.rotation.x=Math.PI/2; group.add(pelvis);
+    // Huesos de patas (fémures)
+    [[0.38,-0.18,0.28],[-0.38,-0.18,0.28],[0.38,-0.18,-0.28],[-0.38,-0.18,-0.28]].forEach(([x,y,z])=>{
+      const femur=new T.Mesh(new T.CylinderGeometry(0.04,0.035,0.32,8),mkMat(BONE_COL,0.88,120));
+      femur.position.set(x,y,z); femur.rotation.z=x>0?0.22:-0.22; group.add(femur);
+      const tibia=new T.Mesh(new T.CylinderGeometry(0.032,0.025,0.28,8),mkMat(BONE_COL,0.85,120));
+      tibia.position.set(x,y-0.32,z); tibia.rotation.z=x>0?-0.15:0.15; group.add(tibia);
+    });
+  } else if(hasSilica){
+    // Exoesqueleto silíceo — capas cristalinas
+    for(let i=0;i<3;i++){
+      const shell=new T.Mesh(new T.SphereGeometry(0.5+i*0.06,20,16),mkWire(new T.Color(0.6,0.8,0.9)));
+      shell.scale.set(1.6,0.92,1.10); group.add(shell);
+    }
+  } else if(hasHydro){
+    // Hidrostático — cámaras de fluido
+    for(let i=0;i<4;i++){
+      const cham=new T.Mesh(new T.SphereGeometry(0.22-i*0.02,14,12),mkMat(new T.Color(0.2,0.7,0.9),0.35));
+      cham.position.set(0.3-i*0.22,0,0); group.add(cham);
+    }
+  }
+
+  // ── 2. SISTEMA NERVIOSO ─────────────────────────────
+  const hasBrain  = cr.nervous?.includes('Cerebro')||cr.nervous?.includes('brain')||cr.nervous?.includes('Brain');
+  const hasGanglia= cr.nervous?.includes('ganglia')||cr.nervous?.includes('Ganglio');
+
+  if(hasBrain){
+    // Cerebro: hemisferios + cerebelo
+    const brainMat=mkMat(BRAIN_COL,0.92,80);
+    const bl=new T.Mesh(new T.SphereGeometry(0.14,16,14),brainMat);
+    bl.position.set(0.88,0.22,-0.06); bl.scale.set(1.0,0.88,0.82); bl.name='brain_L'; group.add(bl);
+    const br=new T.Mesh(new T.SphereGeometry(0.14,16,14),brainMat);
+    br.position.set(0.88,0.22,0.06); br.scale.set(1.0,0.88,0.82); br.name='brain_R'; group.add(br);
+    // Cerebelo
+    const cer=new T.Mesh(new T.SphereGeometry(0.08,12,10),mkMat(BRAIN_COL.clone().multiplyScalar(0.8),0.88));
+    cer.position.set(0.72,0.10,0); cer.scale.set(0.9,0.7,1.1); group.add(cer);
+    // Médula espinal
+    const spinal=new T.Mesh(new T.CylinderGeometry(0.022,0.018,1.0,8),mkMat(NERVE_COL,0.75,40));
+    spinal.rotation.z=Math.PI/2; spinal.position.set(0.15,0.08,0); group.add(spinal);
+    // Nervios principales
+    [0.28,-0.28].forEach(z=>{
+      const nerve=new T.Mesh(new T.CylinderGeometry(0.010,0.008,0.6,6),mkMat(NERVE_COL,0.55,20));
+      nerve.rotation.z=Math.PI/2; nerve.position.set(0.15,0.0,z); group.add(nerve);
+    });
+  } else if(hasGanglia){
+    // Ganglios distribuidos
+    for(let i=0;i<5;i++){
+      const gan=new T.Mesh(new T.SphereGeometry(0.06,10,8),mkMat(NERVE_COL,0.80,60));
+      gan.position.set(0.55-i*0.22,0.05+Math.sin(i)*0.05,0); group.add(gan);
+      if(i<4){
+        const con=new T.Mesh(new T.CylinderGeometry(0.010,0.010,0.22,6),mkMat(NERVE_COL,0.55));
+        con.rotation.z=Math.PI/2; con.position.set(0.44-i*0.22,0.05,0); group.add(con);
+      }
+    }
+  } else {
+    // Red difusa — puntos distribuidos
+    for(let i=0;i<12;i++){
+      const nd=new T.Mesh(new T.SphereGeometry(0.025,6,6),mkMat(NERVE_COL,0.65));
+      nd.position.set((Math.random()-0.5)*1.2,(Math.random()-0.5)*0.7,(Math.random()-0.5)*0.8);
+      group.add(nd);
+    }
+  }
+
+  // ── 3. SISTEMA CARDIOVASCULAR ───────────────────────
+  const isHemo    = cr.blood?.includes('Hemoglobin')||cr.blood?.includes('Hemoglobina');
+  const isHemoCy  = cr.blood?.includes('Hemocyanin')||cr.blood?.includes('Hemocianina');
+  const isVanadin = cr.blood?.includes('Vanadin')||cr.blood?.includes('Vanadina');
+  const numHearts = isHemoCy?3:isVanadin?2:1;
+  const heartCol  = isHemoCy?new T.Color(0.18,0.42,0.88):isVanadin?new T.Color(0.20,0.80,0.35):HEART_COL;
+
+  const heartMat=mkMat(heartCol,0.95,80);
+  if(numHearts===1){
+    // Corazón de 4 cámaras
+    const h1=new T.Mesh(new T.SphereGeometry(0.10,14,12),heartMat);
+    h1.position.set(0.15,0.10,-0.06); h1.name='heart_L'; group.add(h1);
+    const h2=new T.Mesh(new T.SphereGeometry(0.09,14,12),heartMat);
+    h2.position.set(0.15,0.10,0.06); h2.name='heart_R'; group.add(h2);
+    const aorta=new T.Mesh(new T.CylinderGeometry(0.025,0.022,0.20,8),heartMat);
+    aorta.position.set(0.15,0.21,0); group.add(aorta);
+  } else if(numHearts===3){
+    // 3 corazones (como pulpo)
+    [[0.20,0.08,0],[0.0,0.05,-0.18],[0.0,0.05,0.18]].forEach(([x,y,z],i)=>{
+      const h=new T.Mesh(new T.SphereGeometry(0.08,12,10),heartMat);
+      h.position.set(x,y,z); h.name='heart_'+i; group.add(h);
+    });
+  } else {
+    // 2 corazones (vanadina)
+    [[-0.08,0],[0.08,0]].forEach(([z,_],i)=>{
+      const h=new T.Mesh(new T.SphereGeometry(0.09,12,10),heartMat);
+      h.position.set(0.18,0.08,z); h.name='heart_'+i; group.add(h);
+    });
+  }
+
+  // Vasos sanguíneos principales
+  const vesselMat=mkMat(heartCol.clone().multiplyScalar(0.8),0.50,20);
+  [[1.0,0],[0.0,0],[-0.5,0]].forEach(([x],i)=>{
+    const v=new T.Mesh(new T.CylinderGeometry(0.012,0.010,0.35,6),vesselMat);
+    v.rotation.set(0,0,Math.PI/2); v.position.set(x||0.5-i*0.5,0.06,0); group.add(v);
+  });
+
+  // ── 4. SISTEMA RESPIRATORIO ─────────────────────────
+  const isAerobic  = cr.meta?.includes('Aerób')||cr.meta?.includes('Aerob');
+  const isPhoto    = cr.meta?.includes('Fotos')||cr.meta?.includes('Photo');
+  const isChemo    = cr.meta?.includes('Quimio')||cr.meta?.includes('Chemo');
+
+  if(isAerobic){
+    // Pulmones
+    [-0.14,0.14].forEach(z=>{
+      const lung=new T.Mesh(new T.SphereGeometry(0.18,16,14),mkMat(LUNG_COL,0.62,40));
+      lung.position.set(0.08,0.06,z); lung.scale.set(1.1,1.4,0.75); lung.name=z>0?'lung_R':'lung_L'; group.add(lung);
+      // Bronquios
+      const bron=new T.Mesh(new T.CylinderGeometry(0.025,0.018,0.18,8),mkMat(LUNG_COL,0.70,30));
+      bron.position.set(0.08,0.18,z*0.5); group.add(bron);
+    });
+    // Tráquea
+    const trachea=new T.Mesh(new T.CylinderGeometry(0.028,0.028,0.35,8),mkMat(LUNG_COL,0.72,30));
+    trachea.position.set(0.08,0.28,0); group.add(trachea);
+  } else if(isPhoto){
+    // Cloroplastos distribuidos en la piel
+    for(let i=0;i<16;i++){
+      const cp=new T.Mesh(new T.SphereGeometry(0.04,8,6),mkMat(CHLORO_COL,0.85,60));
+      const th=Math.random()*Math.PI*2; const ph=Math.random()*Math.PI;
+      const r=0.45+Math.random()*0.08;
+      cp.position.set(Math.sin(ph)*Math.cos(th)*r, Math.sin(ph)*Math.sin(th)*r, Math.cos(ph)*r);
+      cp.name='chloroplast_'+i; group.add(cp);
+    }
+  } else if(isChemo){
+    // Quimiosintético — cámaras bacterianas
+    for(let i=0;i<5;i++){
+      const ch2=new T.Mesh(new T.SphereGeometry(0.08,10,8),mkMat(new T.Color(0.78,0.72,0.10),0.75));
+      ch2.position.set(0.2-i*0.15,0.0,Math.sin(i)*0.15); group.add(ch2);
+    }
+  }
+
+  // ── 5. SISTEMA DIGESTIVO ────────────────────────────
+  // Estómago
+  const stomach=new T.Mesh(new T.SphereGeometry(0.13,14,12),mkMat(STOMACH_COL,0.72,30));
+  stomach.position.set(-0.15,0.0,0.05); stomach.scale.set(1.2,0.9,1.0); stomach.name='stomach'; group.add(stomach);
+  // Intestinos (tubos enrollados)
+  const intPoints=[];
+  for(let i=0;i<60;i++){
+    const t2=i/59;
+    intPoints.push(new T.Vector3(
+      -0.10+Math.cos(t2*Math.PI*6)*0.14*(1-t2*0.3),
+      -0.08+Math.sin(t2*Math.PI*4)*0.08,
+      Math.sin(t2*Math.PI*5)*0.10
+    ));
+  }
+  const intCurve=new T.CatmullRomCurve3(intPoints);
+  const intGeo=new T.TubeGeometry(intCurve,40,0.025,6,false);
+  const intestines=new T.Mesh(intGeo,mkMat(STOMACH_COL.clone().multiplyScalar(0.7),0.65));
+  intestines.name='intestines'; group.add(intestines);
+  // Hígado
+  const liver=new T.Mesh(new T.SphereGeometry(0.11,12,10),mkMat(LIVER_COL,0.80,50));
+  liver.position.set(-0.05,0.04,-0.12); liver.scale.set(1.2,0.7,0.9); liver.name='liver'; group.add(liver);
+  // Riñones
+  [-0.12,0.12].forEach(z=>{
+    const kidney=new T.Mesh(new T.SphereGeometry(0.07,10,8),mkMat(LIVER_COL.clone().multiplyScalar(1.2),0.78,40));
+    kidney.position.set(-0.35,0.05,z); kidney.scale.set(0.7,1.0,0.65); group.add(kidney);
+  });
+
+  // ── 6. MÚSCULOS (semitransparentes) ─────────────────
+  const muscMat=mkMat(MUSCLE_COL,0.22,20);
+  // Músculos del torso
+  [[0.4,0.0],[0.1,0.0],[-0.2,0.0],[-0.4,0.0]].forEach(([x,y])=>{
+    [-0.15,0.15].forEach(z=>{
+      const m=new T.Mesh(new T.SphereGeometry(0.12,10,8),muscMat);
+      m.position.set(x,y,z); m.scale.set(1.5,0.5,0.6); group.add(m);
+    });
+  });
+
+  // ── 7. ÓRGANOS ESPECIALES por habilidades ───────────
+  const abilities = cr.abilities||[];
+  // Glándula eléctrica
+  const hasElec=abilities.some(a=>a.name.toLowerCase().includes('electr'));
+  if(hasElec){
+    const elMat=mkMat(new T.Color(1.0,0.90,0.10),0.85,100);
+    for(let i=0;i<8;i++){
+      const el=new T.Mesh(new T.BoxGeometry(0.10,0.025,0.18),elMat);
+      el.position.set(-0.35+i*0.10,0.12,0); group.add(el);
+    }
+  }
+  // Magnetita (navegación magnética)
+  const hasMag=abilities.some(a=>a.name.toLowerCase().includes('magnet'));
+  if(hasMag){
+    const magMat=mkMat(new T.Color(0.2,0.2,0.95),0.90,200);
+    const magCrystal=new T.Mesh(new T.OctahedronGeometry(0.06),magMat);
+    magCrystal.position.set(0.88,0.06,0); magCrystal.name='magnetite'; group.add(magCrystal);
+  }
+  // Vesícula gaseosa (vuelo)
+  const hasFloat=cr.loco?.includes('Flota')||cr.loco?.includes('Float')||cr.loco?.includes('vuelo')||cr.loco?.includes('fly');
+  if(hasFloat){
+    const gasBlad=new T.Mesh(new T.SphereGeometry(0.22,16,12),mkMat(new T.Color(0.7,0.9,1.0),0.35,30));
+    gasBlad.position.set(0.0,0.08,0); gasBlad.name='gasBladder'; group.add(gasBlad);
+  }
+
+  return group;
+}
+
+// ─── Leyenda de órganos ──────────────────────────────
+function getOrganLegend(cr){
+  const E=lang==='en';
+  const hasBone=cr.skeleton?.includes('calcic')||cr.skeleton?.includes('Calcic')||cr.skeleton?.includes('endos')||cr.skeleton?.includes('Endos');
+  const hasBrain=cr.nervous?.includes('Cerebro')||cr.nervous?.includes('brain')||cr.nervous?.includes('Brain');
+  const isHemoCy=cr.blood?.includes('Hemocyanin')||cr.blood?.includes('Hemocianina');
+  const isPhoto=cr.meta?.includes('Fotos')||cr.meta?.includes('Photo');
+  const isChemo=cr.meta?.includes('Quimio')||cr.meta?.includes('Chemo');
+  const isAerobic=cr.meta?.includes('Aerób')||cr.meta?.includes('Aerob');
+  const hasElec=(cr.abilities||[]).some(a=>a.name.toLowerCase().includes('electr'));
+  const hasMag=(cr.abilities||[]).some(a=>a.name.toLowerCase().includes('magnet'));
+
+  const items=[];
+  if(hasBone)    items.push({col:'#F4EBCF',n:E?'Endoskeleton (Ca₁₀(PO₄)₆(OH)₂)':'Endoesqueleto (hidroxiapatita)',d:E?'Vertebral column · Ribs · Skull · Limbs':'Columna · Costillas · Cráneo · Extremidades'});
+  if(hasBrain)   items.push({col:'#B85FD8',n:E?'Centralized brain':'Cerebro centralizado',d:E?'Cerebral hemispheres · Cerebellum · Spinal cord':'Hemisferios cerebrales · Cerebelo · Médula espinal'});
+  items.push({col:'#DDDD10',n:E?'Nervous system':'Sistema nervioso',d:E?cr.nervous:'Sistema: '+cr.nervous});
+  if(isHemoCy)   items.push({col:'#2E6EDE',n:E?'3 hearts (hemocyanin)':'3 corazones (hemocianina)',d:E?'Copper-based oxygen transport — blue blood':'Transporte de O₂ basado en Cu — sangre azul'});
+  else           items.push({col:'#E81C2E',n:E?'Heart':'Corazón',d:E?`${cr.blood} — pumps through entire body`:cr.blood+' — bombea por todo el cuerpo'});
+  if(isAerobic)  items.push({col:'#2288EE',n:E?'Lungs / Bronchi':'Pulmones / Bronquios',d:E?'O₂ / CO₂ gas exchange':'Intercambio gaseoso O₂ / CO₂'});
+  if(isPhoto)    items.push({col:'#20C847',n:E?'Dermal chloroplasts':'Cloroplastos dérmicos',d:E?'Photosynthesis in skin — solar energy':'Fotosíntesis en piel — energía solar'});
+  if(isChemo)    items.push({col:'#C8C010',n:E?'Chemosynthetic chambers':'Cámaras quimiosintéticas',d:E?'Symbiotic bacteria oxidize H₂S':'Bacterias simbióticas oxidan H₂S'});
+  items.push({col:'#D8AE20',n:E?'Stomach / Intestines':'Estómago / Intestinos',d:E?'Nutrient processing and absorption':'Procesamiento y absorción de nutrientes'});
+  items.push({col:'#9E2E10',n:E?'Liver / Kidneys':'Hígado / Riñones',d:E?'Metabolic filtering — toxin removal':'Filtrado metabólico — eliminación de toxinas'});
+  items.push({col:'#DA5238',n:E?'Musculature':'Musculatura',d:E?'Striated muscles for locomotion':'Músculos estriados para locomoción'});
+  if(hasElec)    items.push({col:'#FFE010',n:E?'Electric organ':'Órgano eléctrico',d:E?'Stacked electrocyte discs — 500–600V':'Discos de electrocitos apilados — 500–600V'});
+  if(hasMag)     items.push({col:'#3030F0',n:E?'Magnetite crystal':'Cristal de magnetita',d:E?'Fe₃O₄ nanocrystals for geomagnetic navigation':'Nanocristales Fe₃O₄ para navegación geomagnética'});
+  return items;
+}
+
+
+// Cada rasgo evolutivo → geometría Three.js
+// ═══════════════════════════════════════════════════════
+let c3dState = {};
+let c3dAnimating = true;
+let c3dWireframe = false;
+let c3dExploded  = false;
+
+// ─── Color por sangre ────────────────────────────────
+function getBloodColor3D(blood){
+  const map = {
+    'Hemoglobina (roja)'  :[0.85,0.22,0.18],
+    'Hemoglobin (red)'    :[0.85,0.22,0.18],
+    'Hemocianina (azul)'  :[0.18,0.42,0.88],
+    'Hemocyanin (blue)'   :[0.18,0.42,0.88],
+    'Vanadina (verde)'    :[0.20,0.75,0.32],
+    'Vanadin (green)'     :[0.20,0.75,0.32],
+    'Hb-H₂S gigante'     :[0.78,0.72,0.10],
+    'Giant Hb H₂S/O₂'    :[0.78,0.72,0.10],
+    'Hemeritrina (violeta)':[0.62,0.22,0.82],
+    'Hemerythrin (violet)':[0.62,0.22,0.82],
+    'Difusión directa'    :[0.50,0.52,0.55],
+    'Direct diffusion'    :[0.50,0.52,0.55],
+  };
+  return map[blood]||[0.5,0.5,0.5];
+}
+
+// ─── Materiales orgánicos ────────────────────────────
+function makeOrgMat(T, rgb, shininess=35, opacity=1.0){
+  return new T.MeshPhongMaterial({
+    color:    new T.Color(...rgb),
+    emissive: new T.Color(rgb[0]*0.08, rgb[1]*0.08, rgb[2]*0.08),
+    shininess,
+    specular: new T.Color(0.6,0.6,0.6),
+    transparent: opacity<1,
+    opacity,
+  });
+}
+
+// ─── Constructor de geometría por tipo ───────────────
+function buildCreatureMesh(cr, T){
+  const group = new T.Group();
+  const rgb   = getBloodColor3D(cr.blood);
+  const dark  = [rgb[0]*0.28, rgb[1]*0.28, rgb[2]*0.28];
+  const mid   = [rgb[0]*0.55, rgb[1]*0.55, rgb[2]*0.55];
+  const mat   = makeOrgMat(T, rgb, 35);
+  const matD  = makeOrgMat(T, dark, 20);
+  const matM  = makeOrgMat(T, mid,  25);
+
+  // Armored skeleton → more specular
+  if(cr.skeleton.includes('silíce')||cr.skeleton.includes('Silic')||
+     cr.skeleton.includes('sulfúr')||cr.skeleton.includes('Sulfur')||
+     cr.skeleton.includes('calcár')||cr.skeleton.includes('Calcar')){
+    mat.shininess=110; mat.specular=new T.Color(1,1,1);
+  }
+
+  const loco = cr.loco||'';
+  if(loco.includes('Cuadr')||loco.includes('Quad'))      buildQuadruped(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Nata')||loco.includes('Swim'))  buildSwimmer(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Flota')||loco.includes('Float')||loco.includes('vuelo')||loco.includes('fly')) buildFlyer(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Rast')||loco.includes('Crawl')) buildCrawler(group,mat,matD,matM,cr,T);
+  else                                                    buildUndulator(group,mat,matD,matM,cr,T);
+
+  // Bioluminescence spots
+  const hasBioLum = cr.abilities?.some(a=>a.name.toLowerCase().includes('biolum')||a.name.toLowerCase().includes('luminesc'));
+  if(hasBioLum){
+    const spotMat = new T.MeshBasicMaterial({color:new T.Color(...rgb),transparent:true,opacity:0.95});
+    for(let i=0;i<10;i++){
+      const sg = new T.SphereGeometry(0.03+Math.random()*0.03,8,8);
+      const s  = new T.Mesh(sg,spotMat);
+      const th = Math.random()*Math.PI*2;
+      const ph = Math.random()*Math.PI;
+      s.position.set(Math.sin(ph)*Math.cos(th)*0.52,Math.sin(ph)*Math.sin(th)*0.52,Math.cos(ph)*0.52);
+      group.add(s);
+    }
+    const pl = new T.PointLight(new T.Color(...rgb),1.8,2.5);
+    group.add(pl);
+  }
+
+  // Camuflaje → pattern bands
+  const hasCamo = cr.abilities?.some(a=>a.name.toLowerCase().includes('camufl')||a.name.toLowerCase().includes('camou'));
+  if(hasCamo){
+    for(let i=0;i<3;i++){
+      const bandGeo = new T.TorusGeometry(0.38+i*0.04,0.04,8,24);
+      const bandMat = new T.MeshPhongMaterial({color:new T.Color(...dark),transparent:true,opacity:0.6});
+      const band = new T.Mesh(bandGeo,bandMat);
+      band.rotation.x = i*0.7;
+      band.rotation.z = i*0.4;
+      group.add(band);
+    }
+  }
+
+  return group;
+}
+
+// ── Cuadrúpedo ───────────────────────────────────────
+function buildQuadruped(g,mat,matD,matM,cr,T){
+  // Body
+  const body=new T.Mesh(new T.SphereGeometry(0.5,32,32),mat);
+  body.scale.set(1.65,0.92,1.10); body.name='body'; g.add(body);
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.30,24,24),mat);
+  head.position.set(0.88,0.14,0); head.name='head'; g.add(head);
+  // Neck
+  const neck=new T.Mesh(new T.CylinderGeometry(0.11,0.17,0.28,12),matM);
+  neck.rotation.z=-1.18; neck.position.set(0.64,0.13,0); g.add(neck);
+  // Tail
+  const tail=new T.Mesh(new T.CylinderGeometry(0.035,0.11,0.52,10),mat);
+  tail.position.set(-0.96,0.06,0); tail.rotation.z=Math.PI/2.15; g.add(tail);
+  // Legs
+  [[0.38,-0.38,0.32],[-0.38,-0.38,0.32],[0.38,-0.38,-0.32],[-0.38,-0.38,-0.32]].forEach(([x,y,z])=>{
+    // Thigh
+    const thigh=new T.Mesh(new T.CylinderGeometry(0.09,0.07,0.34,10),mat);
+    thigh.position.set(x,y,z); thigh.rotation.z=x>0?0.22:-0.22; g.add(thigh);
+    // Shin
+    const shin=new T.Mesh(new T.CylinderGeometry(0.065,0.045,0.30,10),matD);
+    shin.position.set(x,y-0.32,z); shin.rotation.z=x>0?-0.15:0.15; g.add(shin);
+    // Foot
+    const foot=new T.Mesh(new T.SphereGeometry(0.065,10,8),matD);
+    foot.position.set(x+(x>0?0.04:-0.04),y-0.48,z); g.add(foot);
+  });
+  // Eyes
+  const eyeMat=new T.MeshPhongMaterial({color:0x080808,shininess:300,specular:new T.Color(1,1,1)});
+  const hlMat =new T.MeshBasicMaterial({color:0xffffff});
+  [-0.13,0.13].forEach(ez=>{
+    const eye=new T.Mesh(new T.SphereGeometry(0.07,14,14),eyeMat);
+    eye.position.set(1.13,0.20,ez); g.add(eye);
+    const hl=new T.Mesh(new T.SphereGeometry(0.025,8,8),hlMat);
+    hl.position.set(1.18,0.25,ez+0.045); g.add(hl);
+  });
+  // Horns if armored
+  if(cr.skeleton.includes('silíce')||cr.skeleton.includes('Silic')){
+    [[-0.1,0.1],[-0.1,-0.1]].forEach(([hy,hz])=>{
+      const horn=new T.Mesh(new T.ConeGeometry(0.04,0.22,8),matD);
+      horn.position.set(0.88,0.45,hz); horn.rotation.z=hy; g.add(horn);
+    });
+  }
+}
+
+// ── Nadador ──────────────────────────────────────────
+function buildSwimmer(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.5,32,28),mat);
+  body.scale.set(2.3,0.78,0.92); body.name='body'; g.add(body);
+  // Tail fin
+  const tail=new T.Mesh(new T.SphereGeometry(0.28,16,12),matM);
+  tail.position.set(-1.12,0,0); tail.scale.set(0.55,0.14,0.85); g.add(tail);
+  // Dorsal fin
+  const dors=new T.Mesh(new T.ConeGeometry(0.20,0.38,12),matD);
+  dors.position.set(-0.08,0.46,0); dors.rotation.z=-0.12; g.add(dors);
+  // Pectoral fins
+  [-0.58,0.58].forEach(z=>{
+    const fin=new T.Mesh(new T.SphereGeometry(0.26,16,10),mat);
+    fin.position.set(0.32,-0.09,z); fin.scale.set(1.0,0.11,0.72); g.add(fin);
+  });
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.30,22,22),mat);
+  head.position.set(1.08,0.02,0); head.scale.set(0.82,0.88,0.88); head.name='head'; g.add(head);
+  // Eyes
+  const em=new T.MeshPhongMaterial({color:0x060606,shininess:280,specular:new T.Color(1,1,1)});
+  [-0.22,0.22].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.075,14,14),em);
+    e.position.set(1.12,0.12,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.025,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(1.17,0.17,z+0.04); g.add(hl);
+  });
+  // Lateral line
+  const ll=new T.Mesh(new T.CylinderGeometry(0.018,0.018,1.9,8),new T.MeshBasicMaterial({color:new T.Color(...getBloodColor3D(cr.blood)).multiplyScalar(1.6)}));
+  ll.rotation.z=Math.PI/2; ll.position.set(0,0.02,0.44); g.add(ll);
+}
+
+// ── Volador ──────────────────────────────────────────
+function buildFlyer(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.40,26,26),mat);
+  body.scale.set(1.25,1.0,0.88); body.name='body'; g.add(body);
+  const head=new T.Mesh(new T.SphereGeometry(0.24,20,20),mat);
+  head.position.set(0.56,0.15,0); head.name='head'; g.add(head);
+  // Wings using ShapeGeometry
+  const T3=window.THREE;
+  [-1,1].forEach(side=>{
+    const ws=new T3.Shape();
+    ws.moveTo(0,0);
+    ws.bezierCurveTo(0.35,side*0.25,0.85,side*0.85,0.48,side*1.28);
+    ws.bezierCurveTo(0.18,side*0.95,-0.28,side*0.78,-0.48,side*1.08);
+    ws.bezierCurveTo(-0.58,side*0.45,-0.28,side*0.18,0,0);
+    const wg=new T3.ShapeGeometry(ws);
+    const wm=new T3.MeshPhongMaterial({
+      color:mat.color, emissive:mat.emissive,
+      side:T3.DoubleSide, transparent:true, opacity:0.80, shininess:55,
+    });
+    const wing=new T3.Mesh(wg,wm);
+    wing.position.set(-0.08,0.12,0); wing.rotation.x=side*0.28; wing.name='wing'+side;
+    g.add(wing);
+    // Wing bone/spar
+    const spar=new T3.Mesh(new T3.CylinderGeometry(0.025,0.015,1.0,8),matD);
+    spar.position.set(0.18,0.12,side*0.35); spar.rotation.x=side*0.3; spar.rotation.z=-0.5;
+    g.add(spar);
+  });
+  // Small legs
+  [-0.15,0.15].forEach(z=>{
+    const leg=new T.Mesh(new T.CylinderGeometry(0.04,0.03,0.28,8),matD);
+    leg.position.set(0.1,-0.44,z); leg.rotation.z=0.2; g.add(leg);
+    const claw=new T.Mesh(new T.SphereGeometry(0.05,8,6),matD);
+    claw.position.set(0.14,-0.60,z); g.add(claw);
+  });
+  // Big eyes for flyers
+  const em=new T.MeshPhongMaterial({color:0x040414,shininess:300,specular:new T.Color(1,1,1)});
+  [-0.13,0.13].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.10,16,16),em);
+    e.position.set(0.75,0.22,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.03,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(0.82,0.28,z+0.07); g.add(hl);
+  });
+}
+
+// ── Rastreador ───────────────────────────────────────
+function buildCrawler(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.5,28,22),mat);
+  body.scale.set(1.55,0.42,1.22); body.name='body'; g.add(body);
+  // Armored segments on back
+  for(let i=0;i<5;i++){
+    const seg=new T.Mesh(new T.SphereGeometry(0.22-i*0.02,16,10),matD);
+    seg.position.set(0.52-i*0.28,0.24,0); seg.scale.set(0.78,0.32,1.12); g.add(seg);
+  }
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.27,22,18),mat);
+  head.position.set(0.80,0.0,0); head.scale.set(0.9,0.72,1.0); head.name='head'; g.add(head);
+  // 6 legs
+  for(let i=0;i<3;i++){
+    [-0.48,0.48].forEach(z=>{
+      const leg=new T.Mesh(new T.CylinderGeometry(0.04,0.03,0.38,8),matD);
+      const xp=0.32-i*0.38;
+      leg.position.set(xp,-0.30,z>0?0.58:-0.58); leg.rotation.z=z>0?0.52:-0.52; g.add(leg);
+      const foot=new T.Mesh(new T.SphereGeometry(0.05,8,6),matD);
+      foot.position.set(xp+(z>0?0.14:-0.14),-0.50,z>0?0.66:-0.66); g.add(foot);
+    });
+  }
+  // Antennae
+  [-0.11,0.11].forEach(z=>{
+    const ant=new T.Mesh(new T.CylinderGeometry(0.014,0.008,0.52,6),mat);
+    ant.position.set(0.98,0.22,z); ant.rotation.z=z>0?-0.5:0.5; ant.rotation.x=0.3; g.add(ant);
+    const tip=new T.Mesh(new T.SphereGeometry(0.03,8,8),matD);
+    tip.position.set(0.98+Math.sin(z<0?-0.5:0.5)*0.28,0.44,z+Math.cos(0.3)*0.22); g.add(tip);
+  });
+  // Compound eyes
+  const em=new T.MeshPhongMaterial({color:0x050505,shininess:250,specular:new T.Color(1,1,1)});
+  [-0.14,0.14].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.09,14,14),em);
+    e.position.set(1.02,0.09,z); g.add(e);
+    // Facets
+    for(let f=0;f<5;f++){
+      const fa=new T.Mesh(new T.SphereGeometry(0.025,6,6),new T.MeshBasicMaterial({color:0x444466}));
+      const fa_angle=f/5*Math.PI*2;
+      fa.position.set(1.07+Math.cos(fa_angle)*0.06,0.09+Math.sin(fa_angle)*0.06,z); g.add(fa);
+    }
+  });
+}
+
+// ── Ondulatorio ──────────────────────────────────────
+function buildUndulator(g,mat,matD,matM,cr,T){
+  const segs=8;
+  for(let i=0;i<segs;i++){
+    const t2=i/(segs-1);
+    const r=0.30*(1-t2*0.52)*(i===0?1.18:1.0);
+    const sm=i%2===0?mat:matD;
+    const seg=new T.Mesh(new T.SphereGeometry(r,22,18),sm);
+    seg.position.set(0.88-i*0.27,Math.sin(i*0.65)*0.09,0);
+    seg.name=i===0?'head':'body'; g.add(seg);
+  }
+  // Eyes
+  const em=new T.MeshPhongMaterial({color:0x060606,shininess:220,specular:new T.Color(1,1,1)});
+  [-0.14,0.14].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.065,12,12),em);
+    e.position.set(1.06,0.11,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.02,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(1.11,0.15,z+0.04); g.add(hl);
+  });
+  // Cilia along body
+  for(let i=1;i<segs-1;i++){
+    [0.8,-0.8,2.2,-2.2].forEach((angle,ai)=>{
+      if(ai>1&&i%2!==0)return;
+      const cil=new T.Mesh(new T.CylinderGeometry(0.016,0.008,0.22,6),matD);
+      const xp=0.88-i*0.27;
+      const yBase=Math.sin(i*0.65)*0.09;
+      const radius=0.30*(1-(i/(segs-1))*0.52);
+      cil.position.set(xp,yBase+Math.sin(angle)*radius*0.85,Math.cos(angle)*radius*0.85);
+      cil.rotation.z=Math.sin(angle)*0.75; cil.rotation.x=Math.cos(angle)*0.5; g.add(cil);
+    });
+  }
+}
+
+// ─── Mostrar criatura 3D ─────────────────────────────
+function show3DCreature(index){
+  const cr = makeCreatureI18n(vals, generateCreatureSeed(vals, index));
+  const modal = document.getElementById('creature-3d-modal');
+  if(!modal)return;
+
+  // Info
+  document.getElementById('c3d-name').textContent = cr.latinName;
+  document.getElementById('c3d-desc').textContent =
+    `${cr.complexity} · ${cr.meta} · ${cr.skeleton}`;
+
+  // Info panel
+  const rgb = getBloodColor3D(cr.blood);
+  const col = `rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
+  const E   = lang==='en';
+  document.getElementById('c3d-info').innerHTML=`
+    <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">
+      ${E?'Morphology':'Morfología'}
+    </div>
+    ${[
+      {l:E?'Skeleton':'Esqueleto',   v:cr.skeleton,  c:'#FBBF24'},
+      {l:E?'Blood':'Sangre',         v:cr.blood,     c:col},
+      {l:E?'Metabolism':'Metabolismo',v:cr.meta,     c:'#00D4AA'},
+      {l:E?'Nervous':'Nervioso',     v:cr.nervous,   c:'#A78BFA'},
+      {l:E?'Thermoreg.':'Termoreg.', v:cr.thermo,    c:'#F87171'},
+      {l:E?'Locomotion':'Locomoción',v:cr.loco,      c:'#60A5FA'},
+      {l:E?'Size':'Tamaño',          v:cr.size,      c:'#94A3B8'},
+    ].map(({l,v,c})=>`
+      <div style="margin-bottom:8px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:7px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${l}</div>
+        <div style="font-size:10px;color:${c};font-weight:600;">${v}</div>
+      </div>`).join('')}
+    <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:8px;margin-top:4px;">
+      ✨ ${E?'Abilities':'Habilidades'}
+    </div>
+    ${(cr.abilities||[]).slice(0,6).map(ab=>`
+      <div style="display:flex;align-items:flex-start;gap:5px;margin-bottom:5px;">
+        <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
+        <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
+      </div>`).join('')||`<div style="font-size:9px;color:var(--dim);">${E?'None detected':'Ninguna detectada'}</div>`}
+    <div style="margin-top:12px;padding:8px;background:rgba(0,212,170,0.06);border-radius:6px;border:0.5px solid rgba(0,212,170,0.2);">
+      <div style="font-size:8px;color:var(--teal);font-weight:600;margin-bottom:3px;">
+        🔬 ${E?'3D Generation method':'Método de generación 3D'}
+      </div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.6;">
+        ${E
+          ?'Procedural geometry based on evolutionary traits. Locomotion → body plan. Blood → color. Abilities → special features.'
+          :'Geometría procedural basada en rasgos evolutivos. Locomoción → plan corporal. Sangre → color. Habilidades → características especiales.'}
+      </div>
+    </div>`;
+
+  modal.style.display='flex';
+  setTimeout(()=>init3DCreature(cr), 60);
+}
+
+function init3DCreature(cr){
+  const canvas = document.getElementById('c3d-canvas');
+  if(!canvas||!window.THREE){ return; }
+  const T  = window.THREE;
+  const W  = canvas.parentElement.clientWidth  || 560;
+  const H  = canvas.parentElement.clientHeight || 400;
+  canvas.width=W; canvas.height=H;
+
+  // Cleanup anterior
+  if(c3dState.cleanup) c3dState.cleanup();
+  c3dAnimating=true; c3dWireframe=false; c3dExploded=false;
+  const btnAnim=document.getElementById('c3d-anim-btn');
+  if(btnAnim) btnAnim.textContent='⏸ Pause';
+
+  const scene    = new T.Scene();
+  scene.background = new T.Color(0x04080F);
+  const camera   = new T.PerspectiveCamera(50,W/H,0.05,200);
+  camera.position.set(0,0.4,3.2);
+  camera.lookAt(0,0,0);
+
+  const renderer = new T.WebGLRenderer({canvas,antialias:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  // Stars
+  const starPts = new Float32Array(600*3);
+  for(let i=0;i<starPts.length;i++) starPts[i]=(Math.random()-0.5)*80;
+  const starGeo=new T.BufferGeometry();
+  starGeo.setAttribute('position',new T.Float32BufferAttribute(starPts,3));
+  scene.add(new T.Points(starGeo,new T.PointsMaterial({color:0xffffff,size:0.12,transparent:true,opacity:0.7})));
+
+  // Lighting
+  const rgb=getBloodColor3D(cr.blood);
+  const creatureColor=new T.Color(...rgb);
+  const keyLight  = new T.DirectionalLight(0xFFF8F0,1.8);
+  keyLight.position.set(3,4,3);
+  scene.add(keyLight);
+  const fillLight = new T.DirectionalLight(0x8090B0,0.6);
+  fillLight.position.set(-3,1,-2);
+  scene.add(fillLight);
+  const rimLight  = new T.DirectionalLight(creatureColor,0.9);
+  rimLight.position.set(0,-2,-3);
+  scene.add(rimLight);
+  scene.add(new T.AmbientLight(0x0A1020,0.8));
+
+  // Ground glow disc
+  const discGeo=new T.CircleGeometry(1.2,48);
+  const discMat=new T.MeshBasicMaterial({color:creatureColor,transparent:true,opacity:0.04,side:T.DoubleSide});
+  const disc=new T.Mesh(discGeo,discMat);
+  disc.rotation.x=-Math.PI/2; disc.position.y=-0.65;
+  scene.add(disc);
+
+  // Criatura
+  const creature = buildCreatureMesh(cr,T);
+  // Scale by size
+  const sizeScale = cr.size?.includes('Mega')?1.6:cr.size?.includes('Grand')||cr.size?.includes('Large')?1.3:
+                    cr.size?.includes('Micro')?0.55:1.0;
+  creature.scale.setScalar(sizeScale);
+  scene.add(creature);
+  c3dState.creature=creature;
+
+  // Órganos internos (ocultos por defecto)
+  const organs = buildInternalOrgans(cr,T);
+  organs.scale.setScalar(sizeScale);
+  scene.add(organs);
+  c3dState.organs=organs;
+  c3dState.currentCr=cr;
+
+  // Orbit
+  let isDrag=false,prev={x:0,y:0};
+  let rotY=0,rotX=0.12,dist=3.2;
+  function updateCam(){
+    camera.position.x=dist*Math.sin(rotY)*Math.cos(rotX);
+    camera.position.y=dist*Math.sin(rotX)+0.1;
+    camera.position.z=dist*Math.cos(rotY)*Math.cos(rotX);
+    camera.lookAt(0,0,0);
+  }
+  const onMD=e=>{isDrag=true;prev={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';};
+  const onMU=()=>{isDrag=false;canvas.style.cursor='grab';};
+  const onMM=e=>{if(!isDrag)return;rotY-=(e.clientX-prev.x)*0.006;rotX=Math.max(-0.8,Math.min(1.0,rotX+(e.clientY-prev.y)*0.004));prev={x:e.clientX,y:e.clientY};updateCam();};
+  const onWH=e=>{dist=Math.max(1.0,Math.min(8,dist+e.deltaY*0.005));updateCam();e.preventDefault();};
+  const onTD=e=>{isDrag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const onTM=e=>{if(!isDrag)return;rotY-=(e.touches[0].clientX-prev.x)*0.006;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();};
+  canvas.addEventListener('mousedown',onMD);
+  window.addEventListener('mouseup',onMU);
+  window.addEventListener('mousemove',onMM);
+  canvas.addEventListener('wheel',onWH,{passive:false});
+  canvas.addEventListener('touchstart',onTD,{passive:true});
+  canvas.addEventListener('touchmove',onTM,{passive:true});
+  window.addEventListener('touchend',onMU);
+  updateCam();
+
+  // Animate
+  let animId,time=0;
+  function animate(){
+    animId=requestAnimationFrame(animate);
+    time+=0.016;
+    if(c3dAnimating) creature.rotation.y+=0.008;
+    // Breathing
+    const breath=1.0+Math.sin(time*1.2)*0.012;
+    creature.scale.setScalar(sizeScale*breath);
+    // Wing flap for flyers
+    if(cr.loco?.includes('Flota')||cr.loco?.includes('Float')||cr.loco?.includes('vuelo')||cr.loco?.includes('fly')){
+      creature.children.forEach(ch=>{
+        if(ch.name==='wing1')  ch.rotation.x= 0.28+Math.sin(time*3)*0.18;
+        if(ch.name==='wing-1') ch.rotation.x=-0.28-Math.sin(time*3)*0.18;
+      });
+    }
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  c3dState={scene,renderer,camera,creature,
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      canvas.removeEventListener('mousedown',onMD);
+      window.removeEventListener('mouseup',onMU);
+      window.removeEventListener('mousemove',onMM);
+      canvas.removeEventListener('wheel',onWH);
+      canvas.removeEventListener('touchstart',onTD);
+      canvas.removeEventListener('touchmove',onTM);
+      window.removeEventListener('touchend',onMU);
+      renderer.dispose();
+    }
+  };
+}
+
+function close3D(){
+  document.getElementById('creature-3d-modal').style.display='none';
+  if(c3dState.cleanup){c3dState.cleanup();c3dState={};}
+  c3dXRayMode=false; c3dWireframe=false; c3dExploded=false;
+}
+
+let c3dXRayMode = false;
+
+function c3dXRay(){
+  if(!c3dState.creature||!c3dState.organs) return;
+  const T=window.THREE;
+  c3dXRayMode=!c3dXRayMode;
+
+  const btn=document.getElementById('c3d-xray-btn');
+  if(btn){
+    btn.style.background=c3dXRayMode?'rgba(0,212,255,0.15)':'';
+    btn.style.borderColor=c3dXRayMode?'#00D4FF':'#00D4FF';
+    btn.textContent=c3dXRayMode?'🩻 X-Ray ON':'🩻 X-Ray';
+  }
+
+  if(c3dXRayMode){
+    // Guardar materiales originales y aplicar X-ray shader
+    c3dState.creature.traverse(ch=>{
+      if(!ch.isMesh) return;
+      ch.userData.origMat = Array.isArray(ch.material)
+        ? ch.material.map(m=>m.clone()) : ch.material.clone();
+      const xMat=new T.ShaderMaterial({
+        vertexShader: XRAY_VERT,
+        fragmentShader: XRAY_FRAG,
+        uniforms:{
+          uColor:{value: ch.userData.origMat.color||new T.Color(0.3,0.8,1.0)},
+          uRimPow:{value:1.8},
+          uAlpha:{value:0.75},
+        },
+        transparent:true, depthWrite:false, side:T.DoubleSide,
+        blending:T.AdditiveBlending,
+      });
+      // Color = original del material
+      const origColor = Array.isArray(ch.userData.origMat)
+        ? ch.userData.origMat[0]?.color : ch.userData.origMat?.color;
+      if(origColor) xMat.uniforms.uColor.value=origColor.clone().multiplyScalar(0.7).add(new T.Color(0,0.2,0.3));
+      ch.material=xMat;
+    });
+    // Mostrar órganos
+    c3dState.organs.visible=true;
+
+    // Cambiar fondo a negro médico con grid
+    c3dState.scene.background=new T.Color(0x000810);
+
+    // Actualizar panel info con leyenda de órganos
+    const legend=getOrganLegend(c3dState.currentCr);
+    const infoEl=document.getElementById('c3d-info');
+    if(infoEl){
+      const E=lang==='en';
+      infoEl.innerHTML=`
+        <div style="font-size:10px;font-weight:700;color:#00D4FF;margin-bottom:10px;">
+          🩻 ${E?'X-Ray Vision — Internal Anatomy':'Visión X-Ray — Anatomía Interna'}
+        </div>
+        <div style="font-size:9px;color:rgba(0,212,255,0.5);margin-bottom:10px;line-height:1.6;">
+          ${E?'Procedural internal organs based on evolutionary traits':'Órganos internos procedurales basados en rasgos evolutivos'}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${legend.map(item=>`
+            <div style="background:${item.col}10;border:0.5px solid ${item.col}40;border-radius:6px;padding:7px 8px;">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:${item.col};flex-shrink:0;box-shadow:0 0 5px ${item.col};"></div>
+                <div style="font-size:9px;font-weight:700;color:${item.col};">${item.n}</div>
+              </div>
+              <div style="font-size:8px;color:rgba(255,255,255,0.45);line-height:1.5;padding-left:15px;">${item.d}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:10px;padding:7px;background:rgba(0,212,255,0.06);border-radius:6px;border:0.5px solid rgba(0,212,255,0.2);">
+          <div style="font-size:8px;color:#00D4FF;font-weight:600;margin-bottom:3px;">
+            🔬 ${E?'Scientific basis':'Base científica'}
+          </div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.45);line-height:1.6;">
+            ${E
+              ?'Organs generated from evolutionary traits: skeleton → bone structure, blood → heart type, metabolism → respiratory system, nervous → brain complexity.'
+              :'Órganos generados desde rasgos evolutivos: esqueleto → estructura ósea, sangre → tipo de corazón, metabolismo → sistema respiratorio, nervioso → complejidad cerebral.'}
+          </div>
+        </div>`;
+    }
+  } else {
+    // Restaurar materiales originales
+    c3dState.creature.traverse(ch=>{
+      if(!ch.isMesh||!ch.userData.origMat) return;
+      ch.material=ch.userData.origMat;
+    });
+    c3dState.organs.visible=false;
+    c3dState.scene.background=new T.Color(0x04080F);
+    // Restaurar panel info (re-llamar show3DCreature reconstruiría todo — solo reconstruimos info)
+    const cr=c3dState.currentCr;
+    if(cr){
+      const rgb=getBloodColor3D(cr.blood);
+      const col=`rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
+      const E=lang==='en';
+      document.getElementById('c3d-info').innerHTML=`
+        <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">${E?'Morphology':'Morfología'}</div>
+        ${[
+          {l:E?'Skeleton':'Esqueleto',v:cr.skeleton,c:'#FBBF24'},
+          {l:E?'Blood':'Sangre',v:cr.blood,c:col},
+          {l:E?'Metabolism':'Metabolismo',v:cr.meta,c:'#00D4AA'},
+          {l:E?'Nervous':'Nervioso',v:cr.nervous,c:'#A78BFA'},
+          {l:E?'Thermoreg.':'Termoreg.',v:cr.thermo,c:'#F87171'},
+          {l:E?'Locomotion':'Locomoción',v:cr.loco,c:'#60A5FA'},
+          {l:E?'Size':'Tamaño',v:cr.size,c:'#94A3B8'},
+        ].map(({l,v,c})=>`
+          <div style="margin-bottom:8px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:7px;">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${l}</div>
+            <div style="font-size:10px;color:${c};font-weight:600;">${v}</div>
+          </div>`).join('')}
+        <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:8px;margin-top:4px;">✨ ${E?'Abilities':'Habilidades'}</div>
+        ${(cr.abilities||[]).slice(0,6).map(ab=>`
+          <div style="display:flex;align-items:flex-start;gap:5px;margin-bottom:5px;">
+            <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
+            <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
+          </div>`).join('')}`;
+    }
+  }
+}
+
+function c3dToggleAnim(){
+  c3dAnimating=!c3dAnimating;
+  const b=document.getElementById('c3d-anim-btn');
+  if(b) b.textContent=c3dAnimating?(lang==='en'?'⏸ Pause':'⏸ Pausar'):(lang==='en'?'▶ Resume':'▶ Reanudar');
+}
+
+function c3dToggleWire(){
+  if(!c3dState.creature)return;
+  c3dWireframe=!c3dWireframe;
+  c3dState.creature.traverse(ch=>{
+    if(ch.isMesh&&ch.material){
+      if(Array.isArray(ch.material)) ch.material.forEach(m=>m.wireframe=c3dWireframe);
+      else ch.material.wireframe=c3dWireframe;
+    }
+  });
+  const b=document.getElementById('c3d-wire-btn');
+  if(b){b.style.background=c3dWireframe?'rgba(0,212,170,0.15)':'';b.style.borderColor=c3dWireframe?'var(--teal)':'var(--border)';}
+}
+
+function c3dExplode(){
+  if(!c3dState.creature)return;
+  c3dExploded=!c3dExploded;
+  const factor=c3dExploded?1.8:1.0;
+  c3dState.creature.children.forEach((ch,i)=>{
+    const orig=ch.userData.origPos||(ch.userData.origPos=ch.position.clone());
+    ch.position.copy(orig).multiplyScalar(factor);
+  });
+}
+
+
 buildTabBtns();
 renderMain();
 </script>
