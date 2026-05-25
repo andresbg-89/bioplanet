@@ -1089,11 +1089,26 @@ function planetImgPrompt(v){
   const ft=[];if(H2O>30)ft.push(sulf?"acid seas":"alien oceans");if(cold)ft.push("ice caps");if(H2S>3)ft.push("volcanic geysers");if(O2>20)ft.push("alien vegetation");
   return`Photorealistic alien planet from orbit, ${surf}, ${atm}${ft.length?", "+ft.join(", "):""}, dramatic star lighting, NASA style photography, 8k ultra detailed`;
 }
-function makeAIImg(prompt,w,h,containerId){
+// ─── Caché global de imágenes IA ─────────────────────
+// key = cacheKey (ej: seed de criatura), value = URL generada
+const imgCache = {};
+
+function makeAIImg(prompt, w, h, containerId, cacheKey){
   const el=document.getElementById(containerId);if(!el)return;
   const seed=Math.floor(Math.random()*99999);
   const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
-  el.innerHTML=`<div id="${containerId}-loader" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3);border-radius:inherit;"><div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid #00D4AA;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:9px;color:var(--dim);">Generando imagen IA…</div></div><img src="${url}" style="width:100%;height:100%;object-fit:cover;display:none;border-radius:inherit;" onload="this.style.display='block';document.getElementById('${containerId}-loader').style.display='none';" onerror="document.getElementById('${containerId}-loader').innerHTML='<div style=\\'font-size:10px;color:var(--dim);text-align:center;padding:16px;\\'>Conecta internet para imágenes IA</div>';"/>`;
+
+  // Guardar en caché si se proporcionó key
+  if(cacheKey !== undefined) imgCache[cacheKey] = {url, w, h};
+
+  el.innerHTML=`
+    <div id="${containerId}-loader" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3);border-radius:inherit;">
+      <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid #00D4AA;border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <div style="font-size:9px;color:var(--dim);">${lang==='en'?'Generating AI image…':'Generando imagen IA…'}</div>
+    </div>
+    <img src="${url}" style="width:100%;height:100%;object-fit:cover;display:none;border-radius:inherit;"
+      onload="this.style.display='block';const l=document.getElementById('${containerId}-loader');if(l)l.style.display='none';"
+      onerror="const l=document.getElementById('${containerId}-loader');if(l)l.innerHTML='<div style=\\'font-size:10px;color:var(--dim);text-align:center;padding:16px;\\'>${lang==='en'?'Connect to internet for AI images':'Conecta internet para imágenes IA'}</div>';"/>`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1508,7 +1523,13 @@ function renderCreatures(el){
         <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">Criaturas:</span>${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
-        ${creatures.map((cr,i)=>{const imgId=`cr-img-${i}`;return`
+        ${creatures.map((cr,i)=>{const imgId=`cr-img-${i}`;
+          // Comprobar si ya hay imagen generada en caché
+          const cached=imgCache[cr.seed];
+          const imgContent=cached
+            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" loading="lazy"/>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}',${cr.seed})" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate AI image':'Generar imagen IA'}</button>`;
+          return`
           <div class="card" style="animation:fadeIn .4s ease both;animation-delay:${i*.08}s;position:relative;overflow:hidden;">
             <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${cr.orgCol},transparent);"></div>
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
@@ -1516,12 +1537,12 @@ function renderCreatures(el){
               <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
             </div>
             <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:6px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-              <button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate AI image':'Generar imagen IA'}</button>
+              ${imgContent}
             </div>
             <!-- Botón 3D -->
             <button onclick="show3DCreature(${i})" style="width:100%;margin-bottom:10px;padding:6px;border-radius:7px;border:0.5px solid ${cr.orgCol}50;background:${cr.orgCol}10;color:${cr.orgCol};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;"
               onmouseover="this.style.background='${cr.orgCol}22'" onmouseout="this.style.background='${cr.orgCol}10'">
-              🔬 ${lang==='en'?'View in 3D':'Ver en 3D'} <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${cr.orgCol}30;margin-left:4px;">${lang==='en'?'PRO':'PRO'}</span>
+              🔬 ${lang==='en'?'View in 3D':'Ver en 3D'} <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${cr.orgCol}30;margin-left:4px;">PRO</span>
             </button>
             <!-- Rasgos base -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
@@ -1997,11 +2018,15 @@ function renderGallery(el){
 // ═══════════════════════════════════════════════════════
 function setVal(sym,v){
   vals[sym]=v;
+  // Limpiar caché de imágenes de criaturas al cambiar parámetros
+  Object.keys(imgCache).forEach(k=>{ if(!isNaN(k)) delete imgCache[k]; });
   const vl=document.getElementById('vl-'+sym);
   if(vl){const m=SLIDERS.find(s=>s.sym===sym);const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
   if(threeState.update)threeState.update(vals);
 }
 function applyPreset(name){
+  // Limpiar caché de criaturas al cambiar preset
+  Object.keys(imgCache).forEach(k=>{ if(!isNaN(k)) delete imgCache[k]; });
   const p=PRESETS[name];
   Object.entries(p).forEach(([sym,v])=>{
     vals[sym]=v;
