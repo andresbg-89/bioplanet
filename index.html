@@ -1390,127 +1390,399 @@ function renderMain(){
 
 // ─── PLANET TAB ──────────────────────────────────────
 function renderPlanet(el){
+  const E = lang==='en';
+  el.innerHTML=`
+<div style="display:grid;grid-template-columns:220px 1fr;height:100%;overflow:hidden;">
+
+  <!-- ══ PANEL IZQUIERDO — Sliders ══ -->
+  <div class="scroll" style="border-right:1px solid var(--border);padding:14px 12px;background:var(--bg2);">
+
+    <!-- Título -->
+    <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px;letter-spacing:.04em;">
+      ${E?'🌍 Planet Composition':'🌍 Composición del Planeta'}
+    </div>
+
+    <!-- Presets -->
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">
+      ${Object.keys(PRESETS).map(name=>`
+        <button onclick="applyPresetDash('${name}')"
+          id="preset-btn-${name.replace(/\s/g,'-')}"
+          style="font-size:9px;padding:4px 10px;border-radius:6px;cursor:pointer;
+            border:0.5px solid var(--border);background:transparent;
+            color:var(--muted);transition:all .15s;font-family:inherit;"
+          onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+          ${name}
+        </button>`).join('')}
+    </div>
+
+    <!-- Grupos de sliders -->
+    ${(()=>{
+      const groups={};
+      SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+      const groupLabels={
+        Suelo:  E?'SOIL (ppm × 1000)':'SUELO (ppm × 1000)',
+        Atmósfera: E?'ATMOSPHERE (%)':'ATMÓSFERA (%)',
+        Entorno: E?'PHYSICAL CONDITIONS':'CONDICIONES FÍSICAS',
+      };
+      return Object.entries(groups).map(([g,ms])=>`
+        <div style="margin-bottom:14px;">
+          <div style="font-size:8px;font-weight:700;letter-spacing:.10em;color:var(--dim);
+            margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
+            ${groupLabels[g]||g}
+          </div>
+          ${ms.map(m=>{
+            const dec=m.step<1?(m.step<0.01?4:2):0;
+            return`
+            <div style="display:grid;grid-template-columns:28px 1fr 52px;align-items:center;gap:6px;margin-bottom:7px;">
+              <span style="font-size:9px;font-weight:700;color:${m.col};
+                font-family:'JetBrains Mono',monospace;">${m.sym}</span>
+              <input type="range" min="${m.min}" max="${m.max}" step="${m.step}"
+                value="${vals[m.sym]}" id="sl-${m.sym}"
+                oninput="setValDash('${m.sym}',parseFloat(this.value))"
+                style="accent-color:${m.col};height:3px;"/>
+              <span id="vl-${m.sym}" style="font-size:9px;color:var(--teal);
+                font-family:'JetBrains Mono',monospace;text-align:right;">
+                ${vals[m.sym].toFixed(dec)}
+              </span>
+            </div>`;
+          }).join('')}
+        </div>`).join('');
+    })()}
+  </div>
+
+  <!-- ══ PANEL DERECHO — Dashboard ══ -->
+  <div class="scroll" style="padding:18px 20px;background:var(--bg);">
+    <div id="dash-content"></div>
+  </div>
+
+</div>`;
+
+  renderDashContent();
+  setTimeout(()=>renderDashContent(), 50);
+}
+
+// ─── Aplica preset y actualiza dashboard ─────────────
+function applyPresetDash(name){
+  const p=PRESETS[name];
+  Object.entries(p).forEach(([sym,v])=>{
+    vals[sym]=v;
+    const sl=document.getElementById('sl-'+sym);
+    if(sl) sl.value=v;
+    const m=SLIDERS.find(s=>s.sym===sym);
+    const vl=document.getElementById('vl-'+sym);
+    if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  });
+  if(threeState.update) threeState.update(vals);
+  renderDashContent();
+}
+
+// ─── setVal para el dashboard ─────────────────────────
+function setValDash(sym,v){
+  vals[sym]=v;
+  Object.keys(imgCache).forEach(k=>{if(!isNaN(k))delete imgCache[k];});
+  const m=SLIDERS.find(s=>s.sym===sym);
+  const vl=document.getElementById('vl-'+sym);
+  if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  if(threeState.update) threeState.update(vals);
+  renderDashContent();
+}
+
+// ─── Contenido dinámico del dashboard ────────────────
+function renderDashContent(){
+  const el=document.getElementById('dash-content');
+  if(!el) return;
+  const E=lang==='en';
   const score=calcScore(vals);
   const sc=Math.round(score*100);
   const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
-  const scoreLbl=score>=0.8?t('habitable'):score>=0.6?t('moderate'):score>=0.4?t('marginal'):score>=0.2?t('extreme'):t('inhospitable');
-  const code=planetCode(vals);
   const cr0=makeCreatureI18n(vals,generateCreatureSeed(vals,0));
-  const groups={};SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+  const code=planetCode(vals);
 
-  const sliderHTML=Object.entries(groups).map(([g,ms])=>`
-    <div style="margin-bottom:12px;">
-      <div style="font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:6px;padding-bottom:4px;border-bottom:0.5px solid rgba(255,255,255,0.04);">${t('sliderGroups')[g]||g}</div>
-      ${ms.map(m=>{const dec=m.step<1?(m.step<0.01?4:2):0;return`<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:1px;background:${m.col};display:inline-block;"></span>${m.sym} <span style="color:var(--dim)">${m.label}</span></span><span id="vl-${m.sym}" style="font-size:9px;color:var(--teal);font-family:'JetBrains Mono',monospace;">${vals[m.sym].toFixed(dec)} ${m.unit}</span></div><input type="range" min="${m.min}" max="${m.max}" step="${m.step}" value="${vals[m.sym]}" oninput="setVal('${m.sym}',parseFloat(this.value))" style="accent-color:${m.col};"/></div>`;}).join('')}
-    </div>`).join('');
+  // Calcular confianza de cada rasgo (0-1)
+  const conf=(cond)=>Math.min(0.97,Math.max(0.60,(cond?0.85:0.60)+Math.random()*0.12)).toFixed(2);
+  const skConf  = vals.Ca>=30&&vals.P>=0.5?0.97:vals.Si>=80?0.94:0.82;
+  const blConf  = vals.Fe>=30&&vals.O2>=2?0.97:vals.Cu>=60?0.95:0.88;
+  const metConf = vals.O2>=15?0.97:vals.H2S>=1?0.94:0.85;
+  const nerConf = vals.O2>=15&&vals.Ca>=25?0.97:vals.Ca>=10?0.91:0.78;
+  const thConf  = vals.O2>=18?0.95:vals.Temp<=-10?0.93:0.87;
+  const szConf  = 0.90;
 
-  const presetHTML=Object.keys(PRESETS).map(name=>`<button onclick="applyPreset('${name}')" style="font-size:9px;padding:3px 8px;border-radius:99px;cursor:pointer;border:0.5px solid var(--border);background:transparent;color:var(--muted);transition:all .15s;font-family:inherit;">${name}</button>`).join('');
+  // Tags de condición
+  const tags=[];
+  if(vals.O2>15)                   tags.push({l:E?'With O₂':'Con O₂',      c:'#00D4AA'});
+  if(vals.H2O>50)                  tags.push({l:E?'Oceanic':'Oceánico',     c:'#60A5FA'});
+  if(vals.H2S>2||vals.S>5000)      tags.push({l:E?'Sulfuric':'Sulfúrico',   c:'#FBBF24'});
+  if(vals.Temp<-20)                tags.push({l:E?'Glacial':'Glacial',      c:'#60A5FA'});
+  if(vals.Ca>30&&vals.CO2>0.05)    tags.push({l:E?'Calcareous':'Calcáreo',  c:'#4ADE80'});
+  if(vals.CO2>5)                   tags.push({l:E?'High CO₂':'CO₂ alto',   c:'#F87171'});
+  if(vals.Fe>55)                   tags.push({l:E?'Iron-rich':'Rico en Fe', c:'#F87171'});
+  if(vals.Temp>50)                 tags.push({l:E?'Volcanic':'Volcánico',   c:'#F87171'});
+  if(vals.Mg>25&&vals.O2>10)       tags.push({l:E?'Photosynthesis':'Fotosíntesis',c:'#4ADE80'});
 
-  const tl=t('traitLabels');
-  const traitHTML=[
-    {l:tl[0],v:cr0.skeleton,c:cr0.skCol},
-    {l:tl[1],v:cr0.blood,c:cr0.bCol},
-    {l:tl[2],v:cr0.meta,c:cr0.metaCol},
-    {l:tl[3],v:cr0.nervous,c:cr0.nCol},
-    {l:tl[4],v:cr0.thermo,c:cr0.tCol},
-    {l:tl[5],v:cr0.size,c:"#94A3B8"},
-  ].map(({l,v,c})=>`<div style="background:${c}12;border:0.5px solid ${c}35;border-radius:7px;padding:6px 8px;"><div style="font-size:8px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;line-height:1.3;">${v}</div></div>`).join('');
+  // Rasgos con categoría científica e íconos
+  const traits=[
+    {
+      cat:E?'SKELETON':'ESQUELETO', icon:'🦴',
+      v:cr0.skeleton, c:cr0.skCol, conf:skConf,
+      detail:cr0.skeleton.toLowerCase().includes('calcic')
+        ?'Ca₁₀(PO₄)₆(OH)₂'
+        :cr0.skeleton.toLowerCase().includes('silic')
+        ?'SiO₂ biogenic'
+        :cr0.skeleton.toLowerCase().includes('sulfur')
+        ?'FeS₂ exoskeleton'
+        :'Hydrostatic / Chitin',
+    },
+    {
+      cat:E?'CIRCULATORY':'CIRCULATORIO', icon:'🩸',
+      v:cr0.blood, c:cr0.bCol, conf:blConf,
+      detail:cr0.blood.toLowerCase().includes('hemo')&&cr0.blood.toLowerCase().includes('roja')
+        ?E?'Red blood — Fe in heme group':'Sangre roja — Fe en grupo hemo'
+        :cr0.blood.toLowerCase().includes('cyan')
+        ?E?'Blue blood — Cu in hemocyanin':'Sangre azul — Cu en hemocianina'
+        :cr0.blood.toLowerCase().includes('vanad')
+        ?E?'Green blood — V³⁺ in vanadocytes':'Sangre verde — V³⁺ en vanadocitos'
+        :E?'No circulatory fluid':'Sin fluido circulatorio',
+    },
+    {
+      cat:E?'METABOLISM':'METABOLISMO', icon:'⚡',
+      v:cr0.meta, c:cr0.metaCol, conf:metConf,
+      detail:cr0.meta.toLowerCase().includes('aerob')
+        ?E?'36 ATP/glucose, respiratory chain':'36 ATP/glucosa, cadena respiratoria'
+        :cr0.meta.toLowerCase().includes('foto')
+        ?E?'Mg-Chlorophyll + CO₂ + photons':'Clorofila-Mg + CO₂ + fotones'
+        :cr0.meta.toLowerCase().includes('quimio')
+        ?E?'H₂S + O₂ → sulfate + energy':'H₂S + O₂ → sulfato + energía'
+        :E?'Anaerobic fermentation':'Fermentación anaeróbica',
+    },
+    {
+      cat:E?'NERVOUS':'NERVIOSO', icon:'🧠',
+      v:cr0.nervous, c:cr0.nCol, conf:nerConf,
+      detail:cr0.nervous.toLowerCase().includes('cerebro')||cr0.nervous.toLowerCase().includes('brain')
+        ?E?'86 billion neurons (est.)':'86 mil millones de neuronas'
+        :cr0.nervous.toLowerCase().includes('ganglio')
+        ?E?'Distributed ganglia network':'Red de ganglios distribuidos'
+        :E?'Diffuse electrochemical network':'Red electroquímica difusa',
+    },
+    {
+      cat:E?'THERMOREGULATION':'TERMORREGULACIÓN', icon:'🌡',
+      v:cr0.thermo, c:cr0.tCol, conf:thConf,
+      detail:cr0.thermo.toLowerCase().includes('homeo')
+        ?E?'Constant internal temperature':'Temperatura interna constante'
+        :cr0.thermo.toLowerCase().includes('crio')
+        ?E?'AFP antifreeze proteins':'Proteínas AFP anticongelantes'
+        :cr0.thermo.toLowerCase().includes('termo')
+        ?E?'Thermostable proteins >100°C':'Proteínas termoestables >100°C'
+        :E?'Temperature follows environment':'T° sigue al ambiente',
+    },
+    {
+      cat:E?'LOCOMOTION':'LOCOMOCIÓN', icon:'🦿',
+      v:cr0.loco, c:'#60A5FA', conf:szConf,
+      detail:cr0.size,
+    },
+  ];
+
+  // Descripción generativa del ser vivo
+  const lifeDesc=()=>{
+    const {O2,H2S,Ca,Fe,Si,Mg,P,H2O,Temp,pH}=vals;
+    if(H2S>4||vals.S>10000)
+      return E?`In this sulfuric environment (H₂S ${H2S}%), multicellular organisms would emerge with sulfur-resistant exoskeletons, chemosynthetic H₂S metabolism and acidic membranes resistant to pH ${pH}.`
+              :`En este entorno sulfúrico (H₂S ${H2S}%), emergerían organismos multicelulares con exoesqueleto resistente al azufre, metabolismo quimiosintético de H₂S y membranas ácidas resistentes a pH ${pH}.`;
+    if(Temp<-30)
+      return E?`Extreme cold (${Temp}°C) selects for organisms with AFP antifreeze proteins, slowed metabolism and thick insulating membranes. Life concentrated near geothermal vents.`
+              :`El frío extremo (${Temp}°C) selecciona organismos con proteínas AFP anticongelantes, metabolismo ralentizado y membranas aislantes gruesas. Vida concentrada cerca de fumarolas geotérmicas.`;
+    if(O2>18&&Ca>20&&P>0.5)
+      return E?`Ideal conditions (O₂ ${O2}%, Ca ${Ca}K ppm, P ${P}K ppm) allow the emergence of complex multicellular organisms with calcic endoskeleton (hydroxyapatite), centralized brain and aerobic metabolism with 36 ATP/glucose.`
+              :`Las condiciones ideales (O₂ ${O2}%, Ca ${Ca}K ppm, P ${P}K ppm) permiten la emergencia de organismos multicelulares complejos con endoesqueleto calcico (hidroxiapatita), cerebro centralizado y metabolismo aeróbico de 36 ATP/glucosa.`;
+    if(Temp>60)
+      return E?`High temperature (${Temp}°C) restricts life to thermostable extremophiles with heat-resistant proteins and modified DNA repair systems. Possible volcanic hot spring ecosystems.`
+              :`La alta temperatura (${Temp}°C) restringe la vida a extremófilos termoestables con proteínas resistentes al calor y sistemas de reparación de ADN modificados. Posibles ecosistemas en fumarolas volcánicas.`;
+    return E?`Moderate conditions (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%) allow diverse multicellular life. Dominant organisms determined by Ca/Fe/Si mineral balance and atmospheric composition.`
+            :`Las condiciones moderadas (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%) permiten vida multicelular diversa. Los organismos dominantes están determinados por el balance mineral Ca/Fe/Si y la composición atmosférica.`;
+  };
 
   el.innerHTML=`
-    <div style="display:grid;grid-template-columns:210px 1fr 195px;height:100%;overflow:hidden;">
-      <div class="scroll" style="border-right:1px solid var(--border);padding:12px 10px;">
-        <div class="label">Presets</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">${presetHTML}</div>
-        ${sliderHTML}
-      </div>
-      <div style="display:flex;flex-direction:column;overflow:hidden;position:relative;">
-        <div style="flex:1;position:relative;min-height:0;">
-          <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
-          <!-- HUD OVERLAY - izquierda -->
-          <div class="hud-overlay" style="top:10px;left:10px;">
-            <div class="hud-data">
-              <span class="hud-label">${t('bodyRef')} </span>Planet Custom<br>
-              <span class="hud-label">${t('codeId')}   </span><span style="color:var(--teal);">${code}</span><br>
-              <span class="hud-label">${t('tempMean')} </span>${vals.Temp > 0 ? '+':''}${vals.Temp}°C<br>
-              <span class="hud-label">${t('pressure')} </span>${vals.pressure} atm<br>
-              <span class="hud-label">${t('gravity').toUpperCase()}   </span>${vals.gravity}g<br>
-            </div>
-          </div>
-          <!-- HUD OVERLAY - derecha -->
-          <div class="hud-overlay" style="top:10px;right:10px;text-align:right;">
-            <div style="background:${scoreCol}18;border:1px solid ${scoreCol}40;border-radius:8px;padding:8px 14px;margin-bottom:8px;backdrop-filter:blur(8px);">
-              <div style="font-size:32px;font-weight:800;color:${scoreCol};font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
-              <div style="font-size:9px;color:${scoreCol};letter-spacing:.1em;margin-top:2px;">${scoreLbl}</div>
-            </div>
-            <div class="hud-data" style="text-align:right;">
-              <span class="hud-label">O₂  </span>${vals.O2}%<br>
-              <span class="hud-label">CO₂ </span>${vals.CO2}%<br>
-              <span class="hud-label">H₂S </span>${vals.H2S}%<br>
-              <span class="hud-label">H₂O </span>${vals.H2O}% sup<br>
-              <span class="hud-label">pH  </span>${vals.pH}<br>
-            </div>
-          </div>
-          <!-- HUD - mineral data abajo izquierda -->
-          <div class="hud-overlay" style="bottom:70px;left:10px;">
-            <div class="hud-data">
-              <span class="hud-label">Ca </span>${vals.Ca}K ppm  <span class="hud-label">Fe </span>${vals.Fe}K ppm<br>
-              <span class="hud-label">Si </span>${vals.Si}K ppm  <span class="hud-label">Mg </span>${vals.Mg}K ppm<br>
-              <span class="hud-label">Cu </span>${vals.Cu} ppm   <span class="hud-label">P  </span>${vals.P}K ppm<br>
-            </div>
-          </div>
-          <div style="position:absolute;bottom:8px;left:10px;font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${t('rotate')}</div>
-          <!-- Links -->
-          <div style="position:absolute;bottom:8px;right:10px;">
-            <a href="nature-connections.html" target="_blank" style="font-size:9px;color:var(--teal);text-decoration:none;font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);border:0.5px solid rgba(0,212,170,0.3);padding:3px 8px;border-radius:4px;">${t('natureLink')}</a>
-          </div>
-        </div>
-        <div style="border-top:1px solid var(--border);padding:10px 14px;background:var(--bg2);">
-          <div class="label">${lang==='en'?'Emerging traits — Main creature':'Rasgos emergentes — Criatura principal'}</div>
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;">${traitHTML}</div>
+    <!-- ── Score BIOCOMPAT ── -->
+    <div style="display:flex;align-items:center;gap:20px;margin-bottom:20px;
+      padding:16px 20px;background:var(--bg2);border-radius:12px;
+      border:0.5px solid ${scoreCol}30;">
+      <!-- Círculo -->
+      <div style="position:relative;width:88px;height:88px;flex-shrink:0;">
+        <svg viewBox="0 0 88 88" width="88" height="88" style="transform:rotate(-90deg);">
+          <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+          <circle cx="44" cy="44" r="36" fill="none" stroke="${scoreCol}" stroke-width="8"
+            stroke-dasharray="${Math.round(sc*2.26)} 226"
+            stroke-linecap="round" style="transition:stroke-dasharray .6s ease;"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;">
+          <div style="font-size:22px;font-weight:900;color:${scoreCol};
+            font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
+          <div style="font-size:7px;color:${scoreCol};letter-spacing:.06em;opacity:.7;">BIOCOMPAT</div>
         </div>
       </div>
-      <div class="scroll" style="border-left:1px solid var(--border);padding:12px;display:flex;flex-direction:column;gap:12px;">
-        <div>
-          <div class="label">${t('analogsTitle')}</div>
-          ${[
-            {cond:vals.O2>15&&vals.Ca>20,n:"Homo sapiens",d:lang==='en'?"High Ca+O₂":"Alta Ca+O₂",c:"#F87171"},
-            {cond:vals.H2S>1&&vals.O2<5,n:"Riftia pachyptila",d:lang==='en'?"H₂S hydrothermal vent":"Fumarola H₂S",c:"#FBBF24"},
-            {cond:vals.Temp<=-20,n:"Dissostichus mawsoni",d:lang==='en'?"Antarctic AFP fish":"AFP antártico",c:"#60A5FA"},
-            {cond:vals.Si>100&&vals.H2O>10,n:"Thalassiosira sp.",d:lang==='en'?"Siliceous diatom":"Diatomea silícea",c:"#A78BFA"},
-            {cond:vals.V>200&&vals.H2O>20,n:"Ascidia ceratodes",d:lang==='en'?"Vanadium → green blood":"Vanadio → sangre verde",c:"#4ADE80"},
-            {cond:vals.Cu>60&&vals.Fe<20,n:"Octopus vulgaris",d:lang==='en'?"High Cu → blue blood":"Cu alto → azul",c:"#60A5FA"},
-            {cond:vals.pH<3,n:"Picrophilus torridus",d:"pH 2",c:"#F87171"},
-            {cond:vals.Temp>80,n:"Pyrolobus fumarii",d:lang==='en'?"121°C hyperthermophile":"121°C",c:"#FBBF24"},
-          ].filter(a=>a.cond).slice(0,5).map(a=>`<div style="background:${a.c}08;border:0.5px solid ${a.c}30;border-radius:6px;padding:6px 9px;margin-bottom:5px;"><div style="font-size:10px;font-style:italic;color:${a.c};font-weight:600;">${a.n}</div><div style="font-size:9px;color:var(--muted);">${a.d}</div></div>`).join('')||`<div style="font-size:10px;color:var(--dim);">${t('noAnalogs')}</div>`}
+      <!-- Texto y tags -->
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px;">
+          ${score>=0.8?(E?'High probability of complex life.':'Alta probabilidad de vida compleja.')
+           :score>=0.6?(E?'Moderate conditions for life.':'Condiciones moderadas para vida.')
+           :score>=0.4?(E?'Marginal — extremophiles possible.':'Marginal — posibles extremófilos.')
+           :score>=0.2?(E?'Extreme environment — minimal life.':'Entorno extremo — vida mínima.')
+           :(E?'Uninhabitable with current parameters.':'Inhabitable con parámetros actuales.')}
         </div>
-        <div style="border-top:0.5px solid var(--border);padding-top:12px;">
-          <div class="label">${t('cyclesTitle')}</div>
-          ${[
-            {n:t('cycles')[0],a:true,c:"#4ADE80"},
-            {n:t('cycles')[1],a:vals.O2>0&&vals.H2O>0,c:"#60A5FA"},
-            {n:t('cycles')[2],a:vals.P>=0.1,c:"#FBBF24"},
-            {n:t('cycles')[3],a:vals.Fe>=10,c:"#F87171"},
-            {n:t('cycles')[4],a:vals.Ca>=10,c:"#FBBF24"},
-            {n:t('cycles')[5],a:vals.H2S>0.1||vals.S>500,c:"#A78BFA"},
-            {n:t('cycles')[6],a:vals.V>100,c:"#4ADE80"},
-          ].map(({n,a,c})=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><div style="width:6px;height:6px;border-radius:50%;background:${a?c:'var(--dim)'};flex-shrink:0;${a?`box-shadow:0 0 4px ${c}`:''}"></div><span style="font-size:10px;color:${a?c:'var(--dim)'};">${n}</span>${a?`<span style="font-size:8px;color:${c};margin-left:auto;">${t('active')}</span>`:''}</div>`).join('')}
+        <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">
+          ${E?'Favorable conditions.':'Condiciones favorables.'}
+          ${E?`Planet code: <span style="color:var(--teal);font-family:'JetBrains Mono',monospace;">${code}</span>`
+             :`Código: <span style="color:var(--teal);font-family:'JetBrains Mono',monospace;">${code}</span>`}
         </div>
-        <div style="border-top:0.5px solid var(--border);padding-top:12px;">
-          <div class="label">${t('stellarTitle')}</div>
-          ${[
-            {l:t('stellarType'),v:vals.Temp>50?"M-dwarf (K)":vals.O2>15?"G2V (Sol)":"K-type",c:"#FBBF24"},
-            {l:t('habitableZone'),v:vals.Temp>=-20&&vals.Temp<=50?t('yes'):t('no'),c:vals.Temp>=-20&&vals.Temp<=50?"#4ADE80":"#F87171"},
-            {l:t('atmosphere'),v:vals.pressure>0.5?t('dense'):vals.pressure>0.1?t('thin'):t('noAtm'),c:"#60A5FA"},
-            {l:t('magnetosphere'),v:vals.Fe>30?t('strong'):vals.Fe>10?t('weak'):t('noField'),c:"#A78BFA"},
-          ].map(({l,v,c})=>`<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:10px;color:var(--muted);">${l}</span><span style="font-size:10px;color:${c};font-weight:500;">${v}</span></div>`).join('')}
+        <!-- Tags -->
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          ${tags.map(tg=>`
+            <span style="font-size:9px;padding:3px 9px;border-radius:99px;
+              background:${tg.c}15;border:0.5px solid ${tg.c}45;color:${tg.c};font-weight:600;">
+              ${tg.l}
+            </span>`).join('')}
+          ${tags.length===0?`<span style="font-size:9px;color:var(--dim);">${E?'No favorable conditions detected':'Sin condiciones favorables detectadas'}</span>`:''}
         </div>
+      </div>
+      <!-- Acción -->
+      <button onclick="createPlanet()" class="btn btn-teal"
+        style="font-size:12px;font-weight:700;padding:10px 18px;flex-shrink:0;white-space:nowrap;">
+        ✦ ${E?'Create Planet':'Crear Planeta'}
+      </button>
+    </div>
+
+    <!-- ── Rasgos emergentes ── -->
+    <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.10em;
+      text-transform:uppercase;margin-bottom:12px;">
+      ${E?'Emerging traits':'Rasgos emergentes'}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+      ${traits.map(tr=>`
+        <div style="background:var(--bg2);border:0.5px solid ${tr.c}30;border-radius:10px;
+          padding:12px 14px;position:relative;overflow:hidden;transition:border-color .2s;"
+          onmouseover="this.style.borderColor='${tr.c}70'" onmouseout="this.style.borderColor='${tr.c}30'">
+          <div style="position:absolute;top:0;left:0;right:0;height:1.5px;
+            background:linear-gradient(90deg,transparent,${tr.c},transparent);"></div>
+          <!-- Header -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:14px;">${tr.icon}</span>
+              <span style="font-size:8px;font-weight:700;letter-spacing:.08em;
+                color:${tr.c};opacity:.8;text-transform:uppercase;">${tr.cat}</span>
+            </div>
+            <span style="font-size:9px;padding:2px 7px;border-radius:99px;
+              background:${tr.c}15;color:${tr.c};font-family:'JetBrains Mono',monospace;
+              font-weight:700;">conf. ${tr.conf}</span>
+          </div>
+          <!-- Valor principal -->
+          <div style="font-size:12px;font-weight:700;color:${tr.c};margin-bottom:3px;line-height:1.3;">
+            ${tr.v}
+          </div>
+          <!-- Detalle científico -->
+          <div style="font-size:9px;color:var(--muted);line-height:1.5;">${tr.detail}</div>
+          <!-- Barra de confianza -->
+          <div style="height:2px;background:rgba(255,255,255,0.05);border-radius:1px;margin-top:8px;">
+            <div style="height:100%;width:${Math.round(tr.conf*100)}%;background:${tr.c};
+              border-radius:1px;box-shadow:0 0 4px ${tr.c}60;"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <!-- ── Ser vivo probable ── -->
+    <div style="background:var(--bg2);border:0.5px solid rgba(0,212,170,0.20);
+      border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+      <div style="font-size:10px;font-weight:700;color:var(--teal);letter-spacing:.08em;
+        text-transform:uppercase;margin-bottom:8px;">
+        🧬 ${E?'Probable life on this planet':'Ser vivo probable en este planeta'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.8;">
+        ${lifeDesc()}
+      </div>
+      ${score>0.5?`
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:5px;">
+        ${[
+          {l:cr0.skeleton,  c:cr0.skCol},
+          {l:cr0.blood,     c:cr0.bCol},
+          {l:cr0.meta,      c:cr0.metaCol},
+          {l:cr0.loco,      c:'#60A5FA'},
+        ].map(({l,c})=>`
+          <span style="font-size:9px;padding:2px 8px;border-radius:99px;
+            background:${c}12;border:0.5px solid ${c}30;color:${c};">
+            ${l.split(' ').slice(0,2).join(' ')}
+          </span>`).join('')}
+      </div>`:''}
+    </div>
+
+    <!-- ── Fila inferior: Análogos + Ciclos + Condiciones ── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+
+      <!-- Análogos terrestres -->
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:12px;">
+        <div style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.08em;
+          text-transform:uppercase;margin-bottom:8px;">${t('analogsTitle')}</div>
+        ${[
+          {cond:vals.O2>15&&vals.Ca>20, n:'Homo sapiens',         d:E?'Ca+O₂':'Alta Ca+O₂',    c:'#F87171'},
+          {cond:vals.H2S>1&&vals.O2<5,  n:'Riftia pachyptila',    d:E?'H₂S vent':'Fumarola',   c:'#FBBF24'},
+          {cond:vals.Temp<=-20,         n:'Dissostichus mawsoni', d:E?'AFP':'AFP antártico',    c:'#60A5FA'},
+          {cond:vals.Si>100&&vals.H2O>10,n:'Thalassiosira sp.',   d:E?'SiO₂':'Diatomea',       c:'#A78BFA'},
+          {cond:vals.Cu>60&&vals.Fe<20,  n:'Octopus vulgaris',    d:E?'Cu blood':'Cu azul',     c:'#60A5FA'},
+          {cond:vals.pH<3,              n:'Picrophilus torridus', d:'pH 2',                      c:'#F87171'},
+        ].filter(a=>a.cond).slice(0,4).map(a=>`
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:${a.c};flex-shrink:0;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:9px;font-style:italic;color:${a.c};
+                font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.n}</div>
+              <div style="font-size:8px;color:var(--dim);">${a.d}</div>
+            </div>
+          </div>`).join('')||`<div style="font-size:9px;color:var(--dim);">${t('noAnalogs')}</div>`}
+      </div>
+
+      <!-- Ciclos minerales -->
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:12px;">
+        <div style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.08em;
+          text-transform:uppercase;margin-bottom:8px;">${t('cyclesTitle')}</div>
+        ${[
+          {n:t('cycles')[0],a:true,           c:'#4ADE80'},
+          {n:t('cycles')[1],a:vals.O2>0&&vals.H2O>0,c:'#60A5FA'},
+          {n:t('cycles')[2],a:vals.P>=0.1,    c:'#FBBF24'},
+          {n:t('cycles')[3],a:vals.Fe>=10,    c:'#F87171'},
+          {n:t('cycles')[4],a:vals.Ca>=10,    c:'#FBBF24'},
+          {n:t('cycles')[5],a:vals.H2S>0.1||vals.S>500,c:'#A78BFA'},
+          {n:t('cycles')[6],a:vals.V>100,     c:'#4ADE80'},
+        ].map(({n,a,c})=>`
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+            <div style="width:6px;height:6px;border-radius:50%;flex-shrink:0;
+              background:${a?c:'var(--dim)'};${a?`box-shadow:0 0 4px ${c};`:''}"></div>
+            <span style="font-size:9px;color:${a?c:'var(--dim)'};">${n}</span>
+            ${a?`<span style="font-size:8px;color:${c};margin-left:auto;opacity:.7;">${t('active')}</span>`:''}
+          </div>`).join('')}
+      </div>
+
+      <!-- Parámetros estelares -->
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:12px;">
+        <div style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.08em;
+          text-transform:uppercase;margin-bottom:8px;">${t('stellarTitle')}</div>
+        ${[
+          {l:t('stellarType'),    v:vals.Temp>50?'M-dwarf (K)':vals.O2>15?'G2V (Sol)':'K-type',  c:'#FBBF24'},
+          {l:t('habitableZone'),  v:vals.Temp>=-20&&vals.Temp<=50?t('yes'):t('no'),                c:vals.Temp>=-20&&vals.Temp<=50?'#4ADE80':'#F87171'},
+          {l:t('atmosphere'),     v:vals.pressure>0.5?t('dense'):vals.pressure>0.1?t('thin'):t('noAtm'), c:'#60A5FA'},
+          {l:t('magnetosphere'),  v:vals.Fe>30?t('strong'):vals.Fe>10?t('weak'):t('noField'),      c:'#A78BFA'},
+          {l:'O₂',                v:vals.O2+'%',                                                   c:'#00D4AA'},
+          {l:'H₂O',               v:vals.H2O+'%',                                                  c:'#60A5FA'},
+          {l:E?'Gravity':'Gravedad', v:vals.gravity+'g',                                           c:'#4ADE80'},
+        ].map(({l,v,c})=>`
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+            <span style="font-size:9px;color:var(--muted);">${l}</span>
+            <span style="font-size:9px;font-weight:700;color:${c};
+              font-family:'JetBrains Mono',monospace;">${v}</span>
+          </div>`).join('')}
       </div>
     </div>`;
-
-  setTimeout(()=>{
-    initThree('planet3d');
-  },60);
 }
+
+
 
 // ─── CREATURES TAB ────────────────────────────────────
 function renderCreatures(el){
@@ -2018,11 +2290,12 @@ function renderGallery(el){
 // ═══════════════════════════════════════════════════════
 function setVal(sym,v){
   vals[sym]=v;
-  // Limpiar caché de imágenes de criaturas al cambiar parámetros
-  Object.keys(imgCache).forEach(k=>{ if(!isNaN(k)) delete imgCache[k]; });
+  Object.keys(imgCache).forEach(k=>{if(!isNaN(k))delete imgCache[k];});
+  const m=SLIDERS.find(s=>s.sym===sym);
   const vl=document.getElementById('vl-'+sym);
-  if(vl){const m=SLIDERS.find(s=>s.sym===sym);const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
+  if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
   if(threeState.update)threeState.update(vals);
+  if(currentTab==='planet') renderDashContent();
 }
 function applyPreset(name){
   // Limpiar caché de criaturas al cambiar preset
