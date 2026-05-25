@@ -1395,23 +1395,25 @@ function renderPlanet(el){
 <div style="display:grid;grid-template-columns:220px 1fr;height:100%;overflow:hidden;">
 
   <!-- ══ PANEL IZQUIERDO — Sliders ══ -->
-  <div class="scroll" style="border-right:1px solid var(--border);padding:14px 12px;background:var(--bg2);">
+  <div class="scroll" style="border-right:1px solid rgba(255,255,255,0.06);
+    padding:14px 12px;background:#070C14;">
 
     <!-- Título -->
-    <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px;letter-spacing:.04em;">
-      ${E?'🌍 Planet Composition':'🌍 Composición del Planeta'}
+    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.55);
+      margin-bottom:12px;letter-spacing:.12em;text-transform:uppercase;">
+      ${E?'Planet Composition':'Composición del Planeta'}
     </div>
 
     <!-- Presets -->
-    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">
+    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:16px;">
       ${Object.keys(PRESETS).map(name=>`
         <button onclick="applyPresetDash('${name}')"
-          id="preset-btn-${name.replace(/\s/g,'-')}"
-          style="font-size:9px;padding:4px 10px;border-radius:6px;cursor:pointer;
-            border:0.5px solid var(--border);background:transparent;
-            color:var(--muted);transition:all .15s;font-family:inherit;"
-          onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)'"
-          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+          style="font-size:8px;padding:3px 9px;border-radius:3px;cursor:pointer;
+            border:0.5px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);
+            color:rgba(255,255,255,0.45);transition:all .15s;font-family:inherit;
+            letter-spacing:.04em;"
+          onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.85)';this.style.borderColor='rgba(255,255,255,0.25)'"
+          onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='rgba(255,255,255,0.45)';this.style.borderColor='rgba(255,255,255,0.10)'">
           ${name}
         </button>`).join('')}
     </div>
@@ -1421,45 +1423,137 @@ function renderPlanet(el){
       const groups={};
       SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
       const groupLabels={
-        Suelo:  E?'SOIL (ppm × 1000)':'SUELO (ppm × 1000)',
+        Suelo:     E?'SOIL (ppm × 1000)':'SUELO (ppm × 1000)',
         Atmósfera: E?'ATMOSPHERE (%)':'ATMÓSFERA (%)',
-        Entorno: E?'PHYSICAL CONDITIONS':'CONDICIONES FÍSICAS',
+        Entorno:   E?'PHYSICAL CONDITIONS':'CONDICIONES FÍSICAS',
+      };
+      const groupUnits={
+        Suelo:'ppm',Atmósfera:'%',Entorno:'',
       };
       return Object.entries(groups).map(([g,ms])=>`
-        <div style="margin-bottom:14px;">
-          <div style="font-size:8px;font-weight:700;letter-spacing:.10em;color:var(--dim);
-            margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
-            ${groupLabels[g]||g}
+        <div style="margin-bottom:18px;">
+          <!-- Group header con línea -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="font-size:7.5px;font-weight:700;letter-spacing:.14em;
+              color:rgba(255,255,255,0.28);white-space:nowrap;">
+              ${groupLabels[g]||g}
+            </div>
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.06);"></div>
           </div>
+
+          <!-- Sliders del grupo -->
           ${ms.map(m=>{
             const dec=m.step<1?(m.step<0.01?4:2):0;
+            const pct=Math.round((vals[m.sym]-m.min)/(m.max-m.min)*100);
             return`
-            <div style="display:grid;grid-template-columns:28px 1fr 52px;align-items:center;gap:6px;margin-bottom:7px;">
-              <span style="font-size:9px;font-weight:700;color:${m.col};
-                font-family:'JetBrains Mono',monospace;">${m.sym}</span>
-              <input type="range" min="${m.min}" max="${m.max}" step="${m.step}"
-                value="${vals[m.sym]}" id="sl-${m.sym}"
-                oninput="setValDash('${m.sym}',parseFloat(this.value))"
-                style="accent-color:${m.col};height:3px;"/>
-              <span id="vl-${m.sym}" style="font-size:9px;color:var(--teal);
-                font-family:'JetBrains Mono',monospace;text-align:right;">
-                ${vals[m.sym].toFixed(dec)}
-              </span>
+            <div style="margin-bottom:9px;">
+              <!-- Label row -->
+              <div style="display:flex;justify-content:space-between;
+                align-items:baseline;margin-bottom:4px;">
+                <div style="display:flex;align-items:baseline;gap:5px;">
+                  <span style="font-size:9px;font-weight:600;
+                    color:rgba(255,255,255,0.70);
+                    font-family:'JetBrains Mono',monospace;
+                    letter-spacing:.04em;">${m.sym}</span>
+                  <span style="font-size:8px;color:rgba(255,255,255,0.25);
+                    font-family:inherit;">${m.label}</span>
+                </div>
+                <span id="vl-${m.sym}" style="font-size:9px;
+                  color:rgba(255,255,255,0.65);
+                  font-family:'JetBrains Mono',monospace;font-weight:500;">
+                  ${vals[m.sym].toFixed(dec)}
+                </span>
+              </div>
+              <!-- Track custom -->
+              <div style="position:relative;">
+                <input type="range" min="${m.min}" max="${m.max}" step="${m.step}"
+                  value="${vals[m.sym]}" id="sl-${m.sym}"
+                  oninput="setValDash('${m.sym}',parseFloat(this.value))"
+                  style="width:100%;height:3px;cursor:pointer;
+                    background:linear-gradient(to right,
+                      rgba(255,255,255,0.55) 0%,
+                      rgba(255,255,255,0.55) ${pct}%,
+                      rgba(255,255,255,0.08) ${pct}%,
+                      rgba(255,255,255,0.08) 100%);
+                    border-radius:2px;outline:none;-webkit-appearance:none;appearance:none;"/>
+              </div>
             </div>`;
           }).join('')}
         </div>`).join('');
     })()}
+
+    <!-- Estilo del thumb blanco -->
+    <style>
+      input[type=range]::-webkit-slider-thumb{
+        -webkit-appearance:none;width:11px;height:11px;
+        border-radius:50%;background:#fff;cursor:pointer;
+        box-shadow:0 0 0 2px rgba(255,255,255,0.12);
+        transition:box-shadow .15s;
+      }
+      input[type=range]::-webkit-slider-thumb:hover{
+        box-shadow:0 0 0 4px rgba(255,255,255,0.18);
+      }
+      input[type=range]::-moz-range-thumb{
+        width:11px;height:11px;border-radius:50%;
+        background:#fff;border:none;cursor:pointer;
+      }
+    </style>
   </div>
 
-  <!-- ══ PANEL DERECHO — Dashboard ══ -->
-  <div class="scroll" style="padding:18px 20px;background:var(--bg);">
-    <div id="dash-content"></div>
+  <!-- ══ PANEL DERECHO — Planeta 3D + Dashboard ══ -->
+  <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg);">
+
+    <!-- Planeta 3D -->
+    <div style="flex:0 0 340px;position:relative;background:#000;border-bottom:1px solid var(--border);">
+      <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
+
+      <!-- HUD izquierda -->
+      <div class="hud-overlay" style="top:10px;left:10px;">
+        <div class="hud-data">
+          <span class="hud-label">${t('bodyRef')} </span>Custom<br>
+          <span class="hud-label">${t('codeId')}   </span><span style="color:var(--teal);font-size:9px;">${planetCode(vals)}</span><br>
+          <span class="hud-label">${t('tempMean')} </span>${vals.Temp>0?'+':''}${vals.Temp}°C<br>
+          <span class="hud-label">${t('pressure')} </span>${vals.pressure||1} atm<br>
+        </div>
+      </div>
+
+      <!-- HUD derecha: gases -->
+      <div class="hud-overlay" style="top:10px;right:10px;text-align:right;">
+        <div class="hud-data">
+          <span class="hud-label">O₂  </span>${vals.O2}%<br>
+          <span class="hud-label">CO₂ </span>${vals.CO2}%<br>
+          <span class="hud-label">H₂S </span>${vals.H2S}%<br>
+          <span class="hud-label">H₂O </span>${vals.H2O}%<br>
+        </div>
+      </div>
+
+      <!-- Link Conexiones -->
+      <div style="position:absolute;bottom:8px;right:10px;">
+        <a href="nature-connections.html" target="_blank"
+          style="font-size:9px;color:var(--teal);text-decoration:none;
+          font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);
+          border:0.5px solid rgba(0,212,170,0.3);padding:3px 8px;border-radius:4px;">
+          ${t('natureLink')}
+        </a>
+      </div>
+      <div style="position:absolute;bottom:8px;left:10px;font-size:9px;
+        color:var(--dim);font-family:'JetBrains Mono',monospace;">${t('rotate')}</div>
+    </div>
+
+    <!-- Dashboard scrolleable -->
+    <div class="scroll" style="flex:1;padding:16px 18px;">
+      <div id="dash-content"></div>
+    </div>
+
   </div>
 
 </div>`;
 
   renderDashContent();
-  setTimeout(()=>renderDashContent(), 50);
+  setTimeout(()=>{
+    initThree('planet3d');
+    renderDashContent();
+  }, 60);
 }
 
 // ─── Aplica preset y actualiza dashboard ─────────────
@@ -1484,6 +1578,12 @@ function setValDash(sym,v){
   const m=SLIDERS.find(s=>s.sym===sym);
   const vl=document.getElementById('vl-'+sym);
   if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  // Actualizar gradiente del track en tiempo real
+  const sl=document.getElementById('sl-'+sym);
+  if(sl&&m){
+    const pct=Math.round((v-m.min)/(m.max-m.min)*100);
+    sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) 0%,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%,rgba(255,255,255,0.08) 100%)`;
+  }
   if(threeState.update) threeState.update(vals);
   renderDashContent();
 }
