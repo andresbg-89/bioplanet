@@ -48,15 +48,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 <script id="planet-vert" type="x-shader/x-vertex">
 varying vec3 vNormal;
 varying vec3 vPosition;
+varying vec3 vLocalPos;
 varying vec2 vUv;
 varying vec3 vSunDir;
 uniform vec3 sunDirection;
 
 void main() {
-  vNormal = normalize(normalMatrix * normal);
+  vNormal   = normalize(normalMatrix * normal);
   vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-  vUv = uv;
-  vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
+  vLocalPos = normalize(position); // unit sphere position — máxima precisión para noise
+  vUv       = uv;
+  vSunDir   = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 </script>
@@ -78,6 +80,7 @@ uniform float planetTemp;
 
 varying vec3 vNormal;
 varying vec3 vPosition;
+varying vec3 vLocalPos;
 varying vec2 vUv;
 varying vec3 vSunDir;
 
@@ -137,12 +140,13 @@ float fbm(vec3 p, int oct){
 }
 
 void main(){
-  vec3 spherePos = normalize(vPosition);
-  
-  // Elevation from noise
-  float elevation = fbm(spherePos * 2.8, 6) * 0.5 + 0.5;
-  float fineTex   = fbm(spherePos * 8.0, 4) * 0.5 + 0.5;
-  float microTex  = fbm(spherePos * 22.0, 3) * 0.5 + 0.5;
+  // vLocalPos = posición en esfera unitaria (máxima precisión, sin distorsión de escala)
+  vec3 spherePos = vLocalPos;
+
+  // Elevation — escala optimizada para máximo detalle
+  float elevation = fbm(spherePos * 3.2, 6) * 0.5 + 0.5;
+  float fineTex   = fbm(spherePos * 9.5, 4) * 0.5 + 0.5;
+  float microTex  = fbm(spherePos * 26.0, 3) * 0.5 + 0.5;
   
   // Latitude
   float lat = asin(clamp(spherePos.y, -1.0, 1.0)) / 1.5708;
@@ -1098,10 +1102,10 @@ function initThree(canvasId){
 
   const renderer=new T.WebGLRenderer({canvas:c,antialias:true,alpha:false});
   renderer.setSize(W,H);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,3));
   renderer.setClearColor(0x000000,1);
   renderer.toneMapping=T.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=1.1;
+  renderer.toneMappingExposure=1.2;
 
   // ── STARS (enhanced) ──
   const starCount=3000;
@@ -1183,7 +1187,7 @@ function initThree(canvasId){
     }
   });
 
-  const planet=new T.Mesh(new T.SphereGeometry(1,96,96),planetMat);
+  const planet=new T.Mesh(new T.SphereGeometry(1,192,192),planetMat);
   grp.add(planet);
 
   // ── CLOUDS ──
@@ -1201,7 +1205,7 @@ function initThree(canvasId){
     depthWrite:false,
     side:T.FrontSide,
   });
-  const clouds=new T.Mesh(new T.SphereGeometry(1.018,64,64),cloudMat);
+  const clouds=new T.Mesh(new T.SphereGeometry(1.018,128,128),cloudMat);
   if(vals.H2O>5||vals.CO2>5)grp.add(clouds);
 
   // ── ATMOSPHERE ──
@@ -3819,19 +3823,13 @@ float fbm8(vec3 p){
   for(int i=0;i<8;i++){v+=a*snoise3(p);p*=2.07;a*=.48;}
   return v;
 }
-// Domain-warped FBM (más orgánico, como SpaceEngine)
-float fbmWarp(vec3 p){
-  vec3 q=vec3(fbm6(p+vec3(0.0,0.0,0.0)),
-              fbm6(p+vec3(5.2,1.3,8.1)),
-              fbm6(p+vec3(2.8,4.1,2.3)));
-  return fbm6(p + 1.8*q);
-}`;
+// Nota: fbmWarp eliminado — usa demasiada GPU en vertex shader
+`;
 
-// ── TERRAIN VERTEX SHADER (v2 — normales analíticas) ─
+// ── TERRAIN VERTEX SHADER (optimizado — sin domain warp) ─
 const TERRAIN_VERT2 = GLSL_NOISE + `
 uniform float uTime;
 uniform float uScale;
-uniform float uWaterLevel;
 varying vec3  vWorldPos;
 varying vec3  vNormal;
 varying vec2  vUv;
@@ -3839,14 +3837,15 @@ varying float vElev;
 varying float vSlope;
 varying float vAO;
 
+// Height function simplificada — 4 octavas máximo en vertex
 float getHeight(vec3 p){
-  float h1 = fbmWarp(p * 0.0022) * 0.5 + 0.5;
-  float h2 = fbm6(p * 0.008 + vec3(3.1,7.2,1.8)) * 0.5 + 0.5;
-  float h3 = snoise3(p * 0.025 + vec3(1.4,2.9,5.1)) * 0.5 + 0.5;
-  // Ridge function for mountain ridges
-  float ridge = 1.0 - abs(snoise3(p * 0.012));
-  ridge = ridge * ridge;
-  return h1 * 0.60 + h2 * 0.25 + h3 * 0.08 + ridge * 0.07;
+  float h1 = fbm6(p * 0.0025) * 0.5 + 0.5;          // forma general
+  float h2 = snoise3(p * 0.009 + vec3(3.1,7.2,1.8)) * 0.5 + 0.5; // detalle medio
+  float h3 = snoise3(p * 0.022 + vec3(1.4,2.9,5.1)) * 0.5 + 0.5; // micro
+  // Ridge mountains
+  float ridge = 1.0 - abs(snoise3(p * 0.011));
+  ridge = ridge * ridge * ridge;
+  return h1 * 0.60 + h2 * 0.22 + h3 * 0.08 + ridge * 0.10;
 }
 
 void main(){
@@ -3854,36 +3853,30 @@ void main(){
   vec3 pos = position;
   float sc = uScale;
 
-  // Sample height
   float h = getHeight(pos * sc);
 
-  // Analytical normal via central differences (much more accurate)
-  float eps = 1.8;
+  // Normales analíticas — 4 samples
+  float eps = 2.2;
   float hL = getHeight((pos + vec3(-eps,0,0)) * sc);
   float hR = getHeight((pos + vec3( eps,0,0)) * sc);
   float hD = getHeight((pos + vec3(0,0,-eps)) * sc);
   float hU = getHeight((pos + vec3(0,0, eps)) * sc);
-  vec3 n = normalize(vec3(hL - hR, eps * 0.018, hD - hU));
-  vNormal = n;
+  vNormal = normalize(vec3(hL-hR, eps*0.016, hD-hU));
 
-  // Slope (0=flat, 1=vertical cliff)
-  vSlope = 1.0 - abs(dot(n, vec3(0,1,0)));
-
-  // Approximate AO — sample nearby lower heights
+  // Slope y AO
+  vSlope = 1.0 - abs(dot(vNormal, vec3(0,1,0)));
   float ao = 0.0;
-  float aoR = 3.5;
-  ao += step(h, getHeight((pos + vec3( aoR,0, aoR)) * sc)) * 0.25;
-  ao += step(h, getHeight((pos + vec3(-aoR,0, aoR)) * sc)) * 0.25;
-  ao += step(h, getHeight((pos + vec3( aoR,0,-aoR)) * sc)) * 0.25;
-  ao += step(h, getHeight((pos + vec3(-aoR,0,-aoR)) * sc)) * 0.25;
-  vAO = 1.0 - ao * 0.55;
+  float aoR = 4.0;
+  ao += step(h, getHeight((pos+vec3( aoR,0, aoR))*sc)) * 0.25;
+  ao += step(h, getHeight((pos+vec3(-aoR,0, aoR))*sc)) * 0.25;
+  ao += step(h, getHeight((pos+vec3( aoR,0,-aoR))*sc)) * 0.25;
+  ao += step(h, getHeight((pos+vec3(-aoR,0,-aoR))*sc)) * 0.25;
+  vAO = 1.0 - ao * 0.50;
 
-  // Displace
-  float elevation = h * 140.0 + (h*h) * 80.0;
+  float elevation = h * 135.0 + h*h * 75.0;
   pos.y += elevation;
-  vElev     = h;
+  vElev = h;
   vWorldPos = pos;
-
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }`;
 
@@ -4288,6 +4281,13 @@ function renderSurface(el){
     <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
     <button onclick="surfWire()"        id="sbtn-wire"   class="btn"          style="font-size:10px;padding:5px 12px;">⬡ Wire</button>
     <button onclick="surfSnap()"                         class="btn"          style="font-size:10px;padding:5px 12px;">📷 ${E?'Screenshot':'Captura'}</button>
+    <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
+    <div style="font-size:8px;color:var(--muted);text-align:center;padding:2px;">
+      ${E?'Quality:':'Calidad:'}
+    </div>
+    <button onclick="surfQuality('low')"  id="sbtn-low"  class="btn" style="font-size:9px;padding:3px 8px;">🔵 ${E?'Low':'Baja'}</button>
+    <button onclick="surfQuality('mid')"  id="sbtn-mid"  class="btn btn-teal" style="font-size:9px;padding:3px 8px;">🟡 ${E?'Medium':'Media'}</button>
+    <button onclick="surfQuality('high')" id="sbtn-high" class="btn" style="font-size:9px;padding:3px 8px;">🔴 ${E?'High':'Alta'}</button>
   </div>
 
   <!-- Barra inferior -->
@@ -4346,8 +4346,10 @@ function initSurface2(){
   const col=getSurfaceColors(vals);
 
   // ── TERRAIN ──────────────────────────────────────
-  // 512×512 para máximo detalle
-  const tGeo=new T.PlaneGeometry(3200,3200,384,384);
+  // Resolución adaptativa — empieza en Media (segura en todos los equipos)
+  // El usuario puede subir a Alta con el botón si su GPU lo permite
+  const segments = 128;
+  const tGeo=new T.PlaneGeometry(3200,3200,segments,segments);
   tGeo.rotateX(-Math.PI/2);
   const tMat=new T.ShaderMaterial({
     vertexShader:TERRAIN_VERT2,
@@ -4544,6 +4546,28 @@ function surfTOD(mode){
     if(!b)return;
     b.className=m===mode?'btn btn-teal':'btn';
   });
+}
+
+let surfQualityLevel = 'mid'; // default medium
+
+function surfQuality(q){
+  surfQualityLevel = q;
+  // Actualizar botones
+  ['low','mid','high'].forEach(m=>{
+    const b=document.getElementById('sbtn-'+m);
+    if(b){b.className=m===q?'btn btn-teal':'btn';}
+  });
+  // Recrear terreno con nueva resolución
+  if(!surfaceState.scene)return;
+  const T=window.THREE;
+  const segs = q==='low'?64:q==='mid'?128:256;
+  const {scene,tMat,terrain}=surfaceState;
+  if(terrain){scene.remove(terrain);terrain.geometry.dispose();}
+  const newGeo=new T.PlaneGeometry(3200,3200,segs,segs);
+  newGeo.rotateX(-Math.PI/2);
+  const newTerrain=new T.Mesh(newGeo,tMat);
+  scene.add(newTerrain);
+  surfaceState.terrain=newTerrain;
 }
 
 function surfWire(){
