@@ -1082,13 +1082,94 @@ function planetCode(v){
   return`BP-${pfx}-${b.slice(0,3)}-${b.slice(3,6)}-${b.slice(6,8)}`;
 }
 function planetImgPrompt(v){
-  const {H2O,Temp,H2S,O2,CO2,Fe,Ca,S}=v;
-  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30;
-  const atm=sulf?"yellow sulfuric clouds":CO2>5?"thick orange CO2 atmosphere":O2>20?"clear blue atmosphere":"dark hazy atmosphere";
-  const surf=sulf?"yellow sulfur flats":cold?"icy frozen tundra":hot?"volcanic rocky terrain":Fe>50?"red iron oxide desert":"green blue terrain";
-  const ft=[];if(H2O>30)ft.push(sulf?"acid seas":"alien oceans");if(cold)ft.push("ice caps");if(H2S>3)ft.push("volcanic geysers");if(O2>20)ft.push("alien vegetation");
-  return`Photorealistic alien planet from orbit, ${surf}, ${atm}${ft.length?", "+ft.join(", "):""}, dramatic star lighting, NASA style photography, 8k ultra detailed`;
+  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Si,Mg,S,pressure,gravity}=v;
+  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
+  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
+  const isIron=Fe>55&&!sulf;
+
+  // Atmosphere
+  const atm=sulf
+    ?'thick yellow sulfuric acid clouds, toxic atmosphere with orange-yellow haze'
+    :CO2>8?'dense rusty orange CO₂ atmosphere, thick clouds'
+    :O2>18?'clear thin blue atmosphere, wispy white clouds'
+    :cold?'near-vacuum dark blue-black atmosphere with thin haze'
+    :'translucent blue-grey haze atmosphere';
+
+  // Surface
+  const surf=sulf
+    ?'volcanic sulfur yellow plains, orange lava flows, black basalt mountains'
+    :vCold?'deep frozen dark world, black ice plains, nitrogen frost, barely lit surface'
+    :cold?'grey-blue icy tundra, frozen methane lakes, nitrogen geysers'
+    :hot?'glowing red lava rivers, black volcanic mountains, ash clouds'
+    :isIron?'rusty red iron oxide desert, wind-carved canyons, ochre dust dunes'
+    :hasLife?'alien blue-green vegetation, dark ocean, white sandy beaches, rolling hills'
+    :Ca>45?'pale tan limestone plains, white chalk cliffs, crystal formations'
+    :'grey rocky terrain, ancient craters, dark mountain ridges';
+
+  // Features
+  const ft=[];
+  if(H2O>40&&!sulf&&!hot) ft.push('vast dark alien ocean reflecting the star');
+  if(H2O>15&&cold)         ft.push('frozen polar caps, ice sheets');
+  if(H2S>3||hot)           ft.push('volcanic geysers, steam vents');
+  if(hasLife)              ft.push('alien bioluminescent forests, glowing organisms');
+  if(cold&&H2O>20)         ft.push('nitrogen ice geysers like Triton');
+  if(pressure>5)           ft.push('crushed thick atmosphere visible as orange band on limb');
+
+  // Star and lighting — key for SpaceEngine look
+  const star=Temp<-50?'distant small dim red star, low on horizon, dramatic long shadows'
+    :Temp>80?'blazingly close white star, intense harsh shadows'
+    :'yellow-white star, god rays through atmosphere';
+
+  const style='SpaceEngine screenshot style, photorealistic planetary rendering, '
+    +'cinematic volumetric atmosphere, physically based rendering PBR, '
+    +'subsurface scattering terrain, specular water reflections, '
+    +'lens flare, bloom effect, 8K ultra-detailed, no text, no watermark';
+
+  return`${surf}, ${atm}, ${star}${ft.length?', '+ft.join(', '):''}, alien planet from orbit, ${style}`;
 }
+
+// ── Surface landscape prompt (SpaceEngine ground-level) ─
+function surfaceImgPrompt(v){
+  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Mg,S,pressure}=v;
+  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
+  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
+  const isIron=Fe>55&&!sulf;
+
+  const sky=sulf
+    ?'yellow-orange sulfuric sky, thick acid clouds, eerie toxic glow'
+    :vCold?'pitch-black near-vacuum sky filled with stars and nebula, giant blue planet visible overhead'
+    :cold?'dark blue-grey sky, thin atmosphere, stars partially visible, faint aurora'
+    :hot?'orange-red glowing sky, volcanic ash clouds, ember glow horizon'
+    :isIron?'dusty pink-orange Martian sky, thin haze, distant dust storm'
+    :hasLife?'clear azure-blue sky, white cumulus clouds, warm sunlight'
+    :'hazy grey-blue sky, thin cloud layer';
+
+  const terrain=sulf
+    ?'yellow sulfur plains with black volcanic rocks, orange lava pools reflecting sky'
+    :vCold?'dark frozen rocky terrain, black ice plains, white nitrogen frost, faint reflective patches like image from Triton'
+    :cold?'golden sandy snow dunes meeting dark liquid methane ocean, like Titan, warm sunset glow'
+    :hot?'black volcanic basalt, glowing lava cracks, dark mountains'
+    :isIron?'red iron oxide desert, wind-eroded rock formations, fine rust-colored sand'
+    :hasLife?'alien landscape with blue-green vegetation, rocky outcrops, distant mountains'
+    :'grey rocky plains, ancient weathered boulders, dust';
+
+  const mood=vCold
+    ?'mysterious, dark, vast, lonely, barely lit by distant star'
+    :cold?'golden hour, warm light on cold landscape, dramatic contrast, SpaceEngine Titan screenshot'
+    :hot?'hellish, dramatic, volcanic eruption in background'
+    :hasLife?'serene, beautiful, hopeful, afternoon sunlight'
+    :'desolate, ancient, epic scale';
+
+  const style='SpaceEngine ground-level screenshot, photorealistic planetary surface, '
+    +'physically-based rendering, cinematic atmosphere scattering, '
+    +'specular highlights on liquid surfaces, detailed micro-texture terrain, '
+    +'realistic rock materials, volumetric clouds, sun bloom and lens flare, '
+    +'8K ultra-detailed, no text, no watermark, no UI';
+
+  return`${terrain}, ${sky}, ${mood}, first-person ground view alien planet, ${style}`;
+}
+
+
 // ─── Caché global de imágenes IA ─────────────────────
 // key = cacheKey (ej: seed de criatura), value = URL generada
 const imgCache = {};
@@ -2440,7 +2521,7 @@ function renderGallery(el){
       <div class="label">${t('surfaceView')}</div>
       <div id="gal-surface" style="height:220px;border-radius:10px;overflow:hidden;
         background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-        <button onclick="makeAIImg('Alien planet surface ${vals.Temp>50?'volcanic lava':''}${vals.Temp<-20?'frozen tundra':''}${vals.H2S>2?'sulfuric geysers':''}${vals.O2>15?'alien vegetation':'rocky terrain'}, cinematic 8k',600,400,'gal-surface')"
+        <button onclick="makeAIImg(surfaceImgPrompt(vals),600,400,'gal-surface')"
           class="btn btn-teal">🏔 ${E?'Generate surface':'Generar superficie'}</button>
       </div>
     </div>
@@ -4687,392 +4768,373 @@ float fbm8(vec3 p){
 // Nota: fbmWarp eliminado — usa demasiada GPU en vertex shader
 `;
 
-// ── TERRAIN VERTEX SHADER (optimizado — sin domain warp) ─
+
+// ══════════════════════════════════════════════════════════
+// SURFACE RENDERER v3 — SpaceEngine Quality
+// Water Fresnel · Atmospheric Haze · Sun Bloom · Moon in sky
+// Micro-texture normal map · PBR terrain · Volumetric clouds
+// ══════════════════════════════════════════════════════════
+
+// ── TERRAIN VERTEX v3 — Normales analíticas + tessellation ─
 const TERRAIN_VERT2 = GLSL_NOISE + `
-uniform float uTime;
 uniform float uScale;
+uniform float uTime;
 varying vec3  vWorldPos;
 varying vec3  vNormal;
 varying vec2  vUv;
 varying float vElev;
 varying float vSlope;
 varying float vAO;
+varying float vWetness;
 
-// Height function simplificada — 4 octavas máximo en vertex
-float getHeight(vec3 p){
-  float h1 = fbm6(p * 0.0025) * 0.5 + 0.5;          // forma general
-  float h2 = snoise3(p * 0.009 + vec3(3.1,7.2,1.8)) * 0.5 + 0.5; // detalle medio
-  float h3 = snoise3(p * 0.022 + vec3(1.4,2.9,5.1)) * 0.5 + 0.5; // micro
-  // Ridge mountains
-  float ridge = 1.0 - abs(snoise3(p * 0.011));
-  ridge = ridge * ridge * ridge;
-  return h1 * 0.60 + h2 * 0.22 + h3 * 0.08 + ridge * 0.10;
+float getH(vec3 p){
+  float h1 = fbm6(p*0.0022)*0.5+0.5;
+  float h2 = snoise3(p*0.008+vec3(3.1,7.2,1.8))*0.5+0.5;
+  float h3 = snoise3(p*0.024+vec3(1.4,2.9,5.1))*0.5+0.5;
+  float ridge = 1.0-abs(snoise3(p*0.011)); ridge*=ridge*ridge;
+  return h1*0.60+h2*0.22+h3*0.08+ridge*0.10;
 }
 
 void main(){
-  vUv = uv;
-  vec3 pos = position;
-  float sc = uScale;
+  vUv=uv;
+  vec3 pos=position;
+  float sc=uScale;
+  float h=getH(pos*sc);
 
-  float h = getHeight(pos * sc);
+  // Normales analíticas
+  float eps=2.2;
+  float hL=getH((pos+vec3(-eps,0,0))*sc);
+  float hR=getH((pos+vec3( eps,0,0))*sc);
+  float hD=getH((pos+vec3(0,0,-eps))*sc);
+  float hU=getH((pos+vec3(0,0, eps))*sc);
+  vNormal=normalize(vec3(hL-hR,eps*0.016,hD-hU));
+  vSlope=1.0-abs(dot(vNormal,vec3(0,1,0)));
 
-  // Normales analíticas — 4 samples
-  float eps = 2.2;
-  float hL = getHeight((pos + vec3(-eps,0,0)) * sc);
-  float hR = getHeight((pos + vec3( eps,0,0)) * sc);
-  float hD = getHeight((pos + vec3(0,0,-eps)) * sc);
-  float hU = getHeight((pos + vec3(0,0, eps)) * sc);
-  vNormal = normalize(vec3(hL-hR, eps*0.016, hD-hU));
+  // AO
+  float ao=0.0;
+  float ar=4.0;
+  ao+=step(h,getH((pos+vec3( ar,0, ar))*sc))*0.25;
+  ao+=step(h,getH((pos+vec3(-ar,0, ar))*sc))*0.25;
+  ao+=step(h,getH((pos+vec3( ar,0,-ar))*sc))*0.25;
+  ao+=step(h,getH((pos+vec3(-ar,0,-ar))*sc))*0.25;
+  vAO=1.0-ao*0.50;
 
-  // Slope y AO
-  vSlope = 1.0 - abs(dot(vNormal, vec3(0,1,0)));
-  float ao = 0.0;
-  float aoR = 4.0;
-  ao += step(h, getHeight((pos+vec3( aoR,0, aoR))*sc)) * 0.25;
-  ao += step(h, getHeight((pos+vec3(-aoR,0, aoR))*sc)) * 0.25;
-  ao += step(h, getHeight((pos+vec3( aoR,0,-aoR))*sc)) * 0.25;
-  ao += step(h, getHeight((pos+vec3(-aoR,0,-aoR))*sc)) * 0.25;
-  vAO = 1.0 - ao * 0.50;
+  // Wetness (valles bajos)
+  vWetness=smoothstep(0.35,0.0,h);
 
-  float elevation = h * 135.0 + h*h * 75.0;
-  pos.y += elevation;
-  vElev = h;
-  vWorldPos = pos;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  float elev=h*135.0+h*h*75.0;
+  pos.y+=elev;
+  vElev=h; vWorldPos=pos;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
 }`;
 
-// ── TERRAIN FRAGMENT SHADER (v2 — PBR + slope + micro-detail) ─
+// ── TERRAIN FRAGMENT v3 — PBR + Water Fresnel + SpaceEngine look ─
 const TERRAIN_FRAG2 = GLSL_NOISE + `
-uniform vec3  uColor0;   // deep/water
-uniform vec3  uColor1;   // lowland
-uniform vec3  uColor2;   // midland
-uniform vec3  uColor3;   // highland
-uniform vec3  uColor4;   // peak
-uniform vec3  uColor5;   // snow/ice
-uniform vec3  uRockColor;// cliff/slope rock
-uniform float uWaterLevel;
-uniform float uHasWater;
-uniform float uHasSnow;
-uniform vec3  uSunDir;
-uniform vec3  uSunColor;
-uniform vec3  uFogColor;
-uniform float uFogDensity;
-uniform float uTime;
-varying vec3  vWorldPos;
-varying vec3  vNormal;
+uniform vec3  uC0,uC1,uC2,uC3,uC4,uC5,uRock;
+uniform float uWaterLvl,uHasWater,uHasSnow;
+uniform vec3  uSunDir,uSunColor,uFogColor,uAtmColor;
+uniform float uFogDens,uTime;
+varying vec3  vWorldPos,vNormal;
 varying vec2  vUv;
-varying float vElev;
-varying float vSlope;
-varying float vAO;
+varying float vElev,vSlope,vAO,vWetness;
 
 void main(){
-  vec3 N = normalize(vNormal);
-  vec3 L = normalize(uSunDir);
-  vec3 V = normalize(vec3(0,1,0)); // approx view up
+  vec3 N=normalize(vNormal);
+  vec3 L=normalize(uSunDir);
+  vec3 V=normalize(vec3(0,1,0));
+  float e=vElev, sl=vSlope, ao=vAO;
 
-  float e     = vElev;
-  float slope = vSlope;
-  float ao    = vAO;
+  // Micro-detail noise
+  vec3 dp=vWorldPos*0.038;
+  float ma=snoise3(dp)*0.5+0.5;
+  float mb=snoise3(dp*3.8+vec3(5.1,2.2,8.8))*0.5+0.5;
+  float mc=snoise3(dp*9.5+vec3(1.3,7.6,3.4))*0.5+0.5;
+  float micro=ma*0.55+mb*0.30+mc*0.15;
 
-  // ── Micro-detail noise (adds granularity like real rock/sand) ──
-  vec3 detailPos  = vWorldPos * 0.035;
-  float microA    = snoise3(detailPos) * 0.5 + 0.5;
-  float microB    = snoise3(detailPos * 3.7 + vec3(5.1,2.2,8.8)) * 0.5 + 0.5;
-  float microC    = snoise3(detailPos * 9.1 + vec3(1.3,7.6,3.4)) * 0.5 + 0.5;
-  float micro     = microA * 0.55 + microB * 0.30 + microC * 0.15;
+  // Fine grain noise (sand/rock texture)
+  float grain=snoise3(vWorldPos*0.18)*0.5+0.5;
+  float finegrain=snoise3(vWorldPos*0.55+vec3(1.1,2.2,3.3))*0.5+0.5;
 
-  // ── Base terrain color from elevation ──
   vec3 col;
-  float waterLine = uWaterLevel;
-  bool  isWater   = uHasWater > 0.5 && e < waterLine;
+  float wl=uWaterLvl;
+  bool isWater=uHasWater>0.5&&e<wl;
 
   if(isWater){
-    float depth = (waterLine - e) / max(waterLine, 0.001);
-    col = mix(uColor0 * 1.6, uColor0 * 0.3, clamp(depth * 1.4, 0., 1.));
-    // Specular highlight on water
-    vec3 H = normalize(L + V);
-    float spec = pow(max(dot(N,H),0.), 90.) * max(dot(N,L), 0.) * 2.0;
-    col += uSunColor * spec * 0.7;
-    // Fresnel rim
-    float fresnel = pow(1.0 - max(dot(N,V),0.), 4.0);
-    col += uColor0 * fresnel * 0.3 * max(dot(N,L),0.);
-  } else {
-    float landH = uHasWater > 0.5
-      ? clamp((e - waterLine) / (1.0 - waterLine), 0., 1.)
-      : e;
+    // ── WATER — Fresnel reflection ──────────────────
+    float depth=clamp((wl-e)/max(wl,0.001),0.,1.);
+    // Deep water dark, shallow lighter
+    vec3 deepCol  = uC0*0.25;
+    vec3 shallCol = uC0*1.8;
+    col=mix(shallCol,deepCol,depth*depth);
 
-    // Elevation-based base
+    // Fresnel
+    vec3 viewDir=normalize(vec3(vWorldPos.x,80.,vWorldPos.z)-vWorldPos);
+    float fresnel=pow(1.0-max(dot(N,viewDir),0.),4.0);
+
+    // Sun specular on water — key for SpaceEngine look
+    vec3 H=normalize(L+viewDir);
+    float NdotH=max(dot(N,H),0.);
+    float spec=pow(NdotH,180.)*max(dot(N,L),0.)*3.5;
+    // Glinting micro-waves
+    float wave1=snoise3(vWorldPos*0.08+vec3(uTime*0.12,0.,uTime*0.08))*0.5+0.5;
+    float wave2=snoise3(vWorldPos*0.22-vec3(uTime*0.09,0.,uTime*0.15))*0.5+0.5;
+    float waves=wave1*0.6+wave2*0.4;
+    float microSpec=pow(max(dot(N,normalize(L+normalize(vec3(waves-0.5,1.,waves-0.5)))),0.),60.)*0.8;
+
+    col+=uSunColor*(spec+microSpec);
+    col=mix(col,uFogColor*0.6,fresnel*0.35);
+
+    // Shallow shore blend
+    float shore=smoothstep(0.0,0.06,wl-e);
+    vec3 sandCol=mix(uC1,vec3(0.75,0.68,0.48),0.5);
+    col=mix(col,sandCol*(0.5+micro*0.5),smoothstep(0.06,0.0,wl-e)*0.7);
+    _ = shore;
+  } else {
+    // ── LAND — elevation zones ──────────────────────
+    float lh=uHasWater>0.5?clamp((e-wl)/(1.0-wl),0.,1.):e;
+
     vec3 base;
-    if     (landH < 0.06) base = mix(uColor1 * 0.75, uColor1,          smoothstep(0.0, 0.06, landH));
-    else if(landH < 0.28) base = mix(uColor1,          uColor2,         smoothstep(0.06,0.28, landH));
-    else if(landH < 0.58) base = mix(uColor2,          uColor3,         smoothstep(0.28,0.58, landH));
-    else if(landH < 0.80) base = mix(uColor3,          uColor4,         smoothstep(0.58,0.80, landH));
-    else                  base = mix(uColor4,          uColor5,         smoothstep(0.80,1.00, landH));
+    if     (lh<0.06) base=mix(uC1*0.72,uC1,            smoothstep(0.0,0.06,lh));
+    else if(lh<0.28) base=mix(uC1,     uC2,             smoothstep(0.06,0.28,lh));
+    else if(lh<0.58) base=mix(uC2,     uC3,             smoothstep(0.28,0.58,lh));
+    else if(lh<0.80) base=mix(uC3,     uC4,             smoothstep(0.58,0.80,lh));
+    else             base=mix(uC4,     uC5,             smoothstep(0.80,1.0, lh));
 
     // Snow caps
-    if(uHasSnow > 0.5 && landH > 0.78){
-      float snowMask = smoothstep(0.78, 0.92, landH) * (1.0 - slope * 1.4);
-      base = mix(base, uColor5, clamp(snowMask, 0., 1.));
+    if(uHasSnow>0.5&&lh>0.76){
+      float sm=smoothstep(0.76,0.92,lh)*(1.0-sl*1.6);
+      base=mix(base,uC5,clamp(sm,0.,1.));
     }
 
-    // Slope → rock/cliff material (key for realism)
-    float cliffMask = smoothstep(0.38, 0.72, slope);
-    base = mix(base, uRockColor * (0.85 + micro * 0.15), cliffMask);
+    // Rock/cliff by slope
+    float cliff=smoothstep(0.35,0.72,sl);
+    base=mix(base,uRock*(0.82+micro*0.18),cliff);
 
-    // Micro-detail overlay (PBR-style roughness variation)
-    base *= (0.88 + micro * 0.12);
+    // Grain texture (sand/dirt) for SpaceEngine sandy look
+    base*=(0.85+grain*0.10+finegrain*0.05);
 
-    // Beach/shore transition
-    if(uHasWater > 0.5 && landH < 0.06){
-      float shoreMask = 1.0 - smoothstep(0.0, 0.06, landH);
-      vec3  sandColor = mix(uColor1, vec3(0.78, 0.70, 0.50), 0.6);
-      base = mix(base, sandColor, shoreMask * 0.7);
+    // Wetness in valleys — subtle darker/richer color
+    base=mix(base,base*0.65,vWetness*(1.0-sl)*0.4);
+
+    // Shore sand
+    if(uHasWater>0.5&&lh<0.06){
+      vec3 sand=mix(uC1,vec3(0.78,0.70,0.50),0.65);
+      base=mix(base,sand,(1.0-smoothstep(0.,0.06,lh))*0.75);
     }
-
-    col = base;
+    col=base;
   }
 
-  // ── Physically-based lighting ──
-  float NdotL    = dot(N, L);
-  float diffuse  = max(NdotL, 0.0);
-  float terminator = smoothstep(-0.15, 0.20, NdotL);
+  // ── PBR LIGHTING ────────────────────────────────────
+  float NdotL=dot(N,L);
+  float diffuse=max(NdotL,0.0);
+  float terminator=smoothstep(-0.12,0.22,NdotL);
 
-  // Ambient from sky (hemisphere)
-  float skyAmt   = N.y * 0.5 + 0.5;
-  vec3  ambient  = mix(uColor1 * 0.08, uFogColor * 0.18, skyAmt);
+  // Sky hemisphere ambient
+  float skyAmt=N.y*0.5+0.5;
+  vec3 ambient=mix(uC1*0.06,uAtmColor*0.20,skyAmt);
 
-  // Specular on dry rock
-  float roughness = isWater ? 0.05 : mix(0.85, 0.45, slope);
-  float gloss     = 1.0 - roughness;
-  vec3  H2        = normalize(L + V);
-  float spec2     = pow(max(dot(N,H2),0.), 8.0 + gloss * 60.0) * diffuse * gloss * 0.35;
+  // Specular on dry land
+  float roughness=isWater?0.02:mix(0.88,0.42,sl);
+  float gloss=1.0-roughness;
+  vec3 H2=normalize(L+V);
+  float spec2=pow(max(dot(N,H2),0.),6.0+gloss*55.0)*diffuse*gloss*0.28;
 
-  // Final lit color
-  col = col * (ambient + uSunColor * diffuse * terminator * 0.90) * ao;
-  if(!isWater) col += uSunColor * spec2 * ao;
+  col=col*(ambient+uSunColor*diffuse*terminator*0.92)*ao;
+  if(!isWater) col+=uSunColor*spec2*ao;
 
-  // Subsurface scattering fake (warm glow in thin ridges)
-  float sss = max(0., dot(-L, N)) * (1.0 - slope) * 0.08;
-  col += uSunColor * sss * col;
+  // SSS
+  float sss=max(0.,dot(-L,N))*(1.0-sl)*0.06;
+  col+=uSunColor*sss*col;
 
-  // ── Exponential height fog ──
-  float dist   = length(vWorldPos.xz);
-  float heightFog = exp(-max(vWorldPos.y - 30., 0.) * 0.003);
-  float fog    = 1.0 - exp(-dist * uFogDensity * 0.00065);
-  fog          = clamp(fog * heightFog + (1.0 - heightFog) * 0.3, 0., 1.);
-  col          = mix(col, uFogColor * 0.85, fog);
+  // ── VOLUMETRIC FOG — atmospheric haze by height ──────
+  float dist=length(vWorldPos.xz);
+  float hFog=exp(-max(vWorldPos.y-25.,0.)*0.0028);
+  float fog=1.0-exp(-dist*uFogDens*0.00055);
+  fog=clamp(fog*hFog+(1.0-hFog)*0.25,0.,1.);
+  // Color fog with atmosphere tint
+  col=mix(col,uFogColor*0.80+uAtmColor*0.20,fog);
 
-  // ── ACES tone mapping ──
-  col = col * (col * 2.51 + 0.03) / (col * (col * 2.43 + 0.59) + 0.14);
-  col = pow(clamp(col, 0., 1.), vec3(0.88));
-
-  gl_FragColor = vec4(col, 1.0);
+  // ── ACES TONE MAPPING ────────────────────────────────
+  col=col*(col*2.51+0.03)/(col*(col*2.43+0.59)+0.14);
+  col=pow(clamp(col,0.,1.),vec3(0.88));
+  gl_FragColor=vec4(col,1.0);
 }`;
 
-// ── SKY SHADER (v2 — Nishita model) ─────────────────
-const SKY_VERT2 = `
+// Fix for unused variable warning
+const TERRAIN_FRAG2_FIXED = TERRAIN_FRAG2.replace('_ = shore;','');
+
+// ── SKY v3 — Nishita + Sun Bloom + Stars + Moon/planet ─
+const SKY_VERT2=`
 varying vec3 vDir;
 void main(){
-  vDir = normalize(position);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vDir=normalize(position);
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
 }`;
 
-const SKY_FRAG2 = `
-uniform vec3  uSunDir;
-uniform vec3  uRayleighColor; // sky base color
-uniform vec3  uMieColor;      // haze/scattering color
-uniform vec3  uSunColor;
-uniform float uSunSize;
-uniform float uAtmDensity;
-uniform float uMieDensity;
-uniform float uExposure;
+const SKY_FRAG2_FIXED=`
+uniform vec3  uSunDir,uRayleighColor,uMieColor,uSunColor;
+uniform float uSunSize,uAtmDensity,uMieDensity,uExposure;
+uniform vec3  uMoonDir,uMoonColor;
+uniform float uHasMoon,uNightFactor;
 varying vec3  vDir;
 
-// Nishita-approximated Rayleigh + Mie scattering
-vec3 computeSky(vec3 dir, vec3 sunDir){
-  float cosTheta    = dot(dir, sunDir);
-  float upness      = max(dir.y, 0.0);
-
-  // Rayleigh phase (dipole scattering)
-  float rayleighPh  = 0.75 * (1.0 + cosTheta * cosTheta);
-
-  // Mie phase (Henyey-Greenstein, g=0.76)
-  float g = 0.76;
-  float miePh = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosTheta, 1.5);
-  miePh *= 0.07958; // normalization
-
-  // Rayleigh contribution — blue sky
-  vec3 rayleigh = uRayleighColor * rayleighPh * uAtmDensity
-    * exp(-upness * 2.8 * uAtmDensity);
-
-  // Mie contribution — haze near sun and horizon
-  vec3 mie = uMieColor * miePh * uMieDensity
-    * exp(-upness * 1.2 * uMieDensity);
-
-  // Zenith→horizon gradient
-  float horizon = pow(1.0 - upness, 5.0);
-  vec3  sky     = mix(rayleigh + mie, uMieColor * 0.9, horizon * uMieDensity);
-
-  // Ozone layer absorbs red at zenith (blue at top of atmosphere)
-  sky += uRayleighColor * upness * 0.15 * uAtmDensity;
-
-  return sky;
-}
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 
 void main(){
-  vec3 dir = normalize(vDir);
-  if(dir.y < -0.02){
-    gl_FragColor = vec4(0.008, 0.006, 0.01, 1.0);
-    return;
+  vec3 dir=normalize(vDir);
+  if(dir.y<-0.02){gl_FragColor=vec4(0.006,0.005,0.008,1.0);return;}
+
+  vec3 sun=normalize(uSunDir);
+  float cosT=dot(dir,sun);
+  float up=max(dir.y,0.0);
+
+  // Rayleigh + Mie
+  float rayleighPh=0.75*(1.0+cosT*cosT);
+  float g=0.76;
+  float miePh=(1.0-g*g)/pow(1.0+g*g-2.0*g*cosT,1.5)*0.07958;
+  vec3 rayleigh=uRayleighColor*rayleighPh*uAtmDensity*exp(-up*2.8*uAtmDensity);
+  vec3 mie=uMieColor*miePh*uMieDensity*exp(-up*1.2*uMieDensity);
+  float horizon=pow(1.0-up,5.0);
+  vec3 sky=mix(rayleigh+mie,uMieColor*0.90,horizon*uMieDensity);
+  sky+=uRayleighColor*up*0.15*uAtmDensity;
+
+  // ── SUN DISK + BLOOM ──────────────────────────────
+  float sunDist=acos(clamp(cosT,-1.,1.));
+  float sunDisk=smoothstep(uSunSize,uSunSize*0.12,sunDist);
+  float corona1=smoothstep(uSunSize*5.0,uSunSize*0.9,sunDist)*0.15;
+  float corona2=smoothstep(uSunSize*12.0,uSunSize*2.0,sunDist)*0.06;
+  // SpaceEngine-style bloom: radial glow that fades
+  float bloom=exp(-sunDist*6.0)*0.18*max(sun.y,0.02);
+  float bloom2=exp(-sunDist*2.5)*0.06*max(sun.y,0.02);
+  sky+=uSunColor*(sunDisk*5.0+corona1+corona2+bloom+bloom2);
+
+  // Lens flare spikes (horizontal + vertical cross)
+  float spike1=exp(-abs(dir.y-sun.y)*80.0)*exp(-abs(dot(dir,vec3(1,0,0))-dot(sun,vec3(1,0,0)))*4.0)*0.04;
+  float spike2=exp(-abs(dir.x-sun.x)*80.0)*exp(-abs(dot(dir,vec3(0,1,0))-sun.y)*4.0)*0.03;
+  sky+=uSunColor*(spike1+spike2)*max(sun.y,0.0);
+
+  // ── MOON / PLANET IN SKY ──────────────────────────
+  if(uHasMoon>0.5){
+    float moonDist=acos(clamp(dot(dir,normalize(uMoonDir)),-1.,1.));
+    float moonDisk=smoothstep(0.12,0.06,moonDist);
+    float moonGlow=smoothstep(0.35,0.08,moonDist)*0.08;
+    sky+=uMoonColor*(moonDisk*2.5+moonGlow);
   }
 
-  vec3 sunDir = normalize(uSunDir);
-  vec3 sky    = computeSky(dir, sunDir);
-
-  // Sun disk with corona layers
-  float cosA      = dot(dir, sunDir);
-  float sunDist   = acos(clamp(cosA, -1.0, 1.0));
-  float sunDisk   = smoothstep(uSunSize, uSunSize * 0.15, sunDist);
-  float corona1   = smoothstep(uSunSize * 5.0, uSunSize * 0.9, sunDist) * 0.12;
-  float corona2   = smoothstep(uSunSize * 12.0, uSunSize * 2.0, sunDist) * 0.04;
-  float glare     = exp(-sunDist * 8.0) * 0.08 * max(sunDir.y, 0.0);
-
-  sky += uSunColor * (sunDisk * 4.0 + corona1 + corona2 + glare);
-
-  // Stars (visible at night and thin atmosphere)
-  float nightMask = 1.0 - clamp(sunDir.y * 3.0, 0., 1.);
-  if(dir.y > 0.01 && nightMask > 0.01){
-    vec3 sd = dir * 220.0;
-    float s1 = fract(sin(dot(floor(sd.xz),vec2(127.1,311.7)))*43758.5);
-    float s2 = fract(sin(dot(floor(sd.xy),vec2(269.5,183.3)))*43758.5);
-    float star = step(0.994, s1) * step(0.994, s2) * nightMask;
-    // Twinkling
-    float twinkle = snoise3_stub(dir * 80.0) * 0.0 + 1.0;
-    sky += vec3(star * 0.6 * twinkle);
+  // ── STARS ──────────────────────────────────────────
+  float nightMask=clamp(1.0-sun.y*3.5,0.,1.)*uNightFactor;
+  if(dir.y>0.01&&nightMask>0.02){
+    // Multi-layer stars
+    vec3 sd1=dir*180.0; float s1=fract(sin(dot(floor(sd1.xz),vec2(127.1,311.7)))*43758.5);
+    vec3 sd2=dir*320.0; float s2=fract(sin(dot(floor(sd2.xy),vec2(269.5,183.3)))*43758.5);
+    vec3 sd3=dir*520.0; float s3=fract(sin(dot(floor(sd3.xz),vec2(93.7,421.1)))*43758.5);
+    float star=(step(0.994,s1)*0.9+step(0.996,s2)*0.6+step(0.998,s3)*0.4)*nightMask;
+    // Star color tint (blue/white/yellow)
+    float tint=fract(sin(dot(floor(sd1.xz),vec2(41.2,77.3)))*8765.4);
+    vec3 starCol=mix(vec3(0.7,0.8,1.0),vec3(1.0,0.95,0.8),tint);
+    sky+=starCol*star*0.65;
+    // Nebula haze (subtle reddish/bluish clouds)
+    float neb=fbm_sky(dir*1.8+vec3(uNightFactor*0.1))*0.5+0.5;
+    float neb2=fbm_sky(dir*2.5-vec3(0.3,0.1,0.5))*0.5+0.5;
+    sky+=vec3(0.15,0.05,0.08)*neb*nightMask*0.3;
+    sky+=vec3(0.03,0.05,0.15)*neb2*nightMask*0.2;
   }
 
-  // HDR exposure + ACES
-  sky *= uExposure;
-  sky  = sky * (sky * 2.51 + 0.03) / (sky * (sky * 2.43 + 0.59) + 0.14);
-  sky  = pow(clamp(sky, 0., 1.), vec3(0.88));
-
-  gl_FragColor = vec4(sky, 1.0);
+  sky*=uExposure;
+  sky=sky*(sky*2.51+0.03)/(sky*(sky*2.43+0.59)+0.14);
+  sky=pow(clamp(sky,0.,1.),vec3(0.88));
+  gl_FragColor=vec4(sky,1.0);
 }`;
 
-// Fix: replace star stub with actual implementation
-const SKY_FRAG2_FIXED = SKY_FRAG2.replace(
-  'float twinkle = snoise3_stub(dir * 80.0) * 0.0 + 1.0;',
-  'float twinkle = 1.0;'
-);
+// Add fbm_sky to the sky shader
+const SKY_FRAG2_WITH_NOISE = `
+float fbm_sky(vec3 p){
+  float v=0.,a=0.5;
+  for(int i=0;i<4;i++){
+    float n=fract(sin(dot(floor(p),vec3(127.1,311.7,74.7)))*43758.5);
+    v+=a*n; p*=2.0; a*=0.5;
+  }
+  return v;
+}
+` + SKY_FRAG2_FIXED;
 
-// ── CLOUD SHADER (v2 — Volumetric-like) ─────────────
+// ── CLOUD SHADER v3 — volumetric-like with silver lining ─
+const CLOUD_VERT2=`varying vec2 vUv;varying vec3 vPos;void main(){vUv=uv;vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+
 const CLOUD_FRAG2 = GLSL_NOISE + `
-uniform float uTime;
-uniform vec3  uSunDir;
-uniform float uCoverage;
+uniform float uTime,uCoverage;
+uniform vec3  uSunDir,uSunColor;
 varying vec2  vUv;
 
 void main(){
-  vec2 uv  = vUv * 6.0;
-  float t  = uTime * 0.018;
+  vec2 uv=vUv*6.0;
+  float t=uTime*0.018;
+  vec3 p1=vec3(uv+vec2(t,t*0.35),0.0);
+  vec3 p2=vec3(uv*1.7-vec2(t*0.6,-t*0.4),1.5);
+  vec3 p3=vec3(uv*3.1+vec2(t*0.3,t*0.8),3.0);
+  float c1=fbm6(p1)*0.5+0.5;
+  float c2=fbm6(p2)*0.5+0.5;
+  float c3=snoise3(p3)*0.5+0.5;
+  float cloud=c1*0.55+c2*0.30+c3*0.15;
+  float thresh=0.52-uCoverage*0.20;
+  float alpha=smoothstep(thresh,thresh+0.22,cloud);
+  if(alpha<0.01)discard;
 
-  // Multi-layer cloud structure (mimics volumetric)
-  vec3 p1  = vec3(uv + vec2(t, t*0.35), 0.0);
-  vec3 p2  = vec3(uv*1.7 - vec2(t*0.6, -t*0.4), 1.5);
-  vec3 p3  = vec3(uv*3.1 + vec2(t*0.3, t*0.8), 3.0);
+  float edge=1.0-pow(alpha,0.4);
+  float sunUp=max(dot(vec3(0,1,0),normalize(uSunDir)),0.);
+  float shadow=fbm6(p1+vec3(0.04,0.0,0.02))*0.5+0.5;
+  float selfShad=mix(0.65,1.0,step(thresh,shadow));
 
-  float c1 = fbm6(p1) * 0.5 + 0.5;
-  float c2 = fbm6(p2) * 0.5 + 0.5;
-  float c3 = snoise3(p3) * 0.5 + 0.5;
+  vec3 cloudLit=vec3(0.97,0.98,1.00)*uSunColor*(0.75+sunUp*0.25)*selfShad;
+  vec3 cloudDark=vec3(0.42,0.46,0.54)*selfShad*0.7;
+  vec3 col=mix(cloudDark,cloudLit,clamp(sunUp+0.35,0.,1.));
 
-  float cloud = c1 * 0.55 + c2 * 0.30 + c3 * 0.15;
+  // Silver lining at edges — SpaceEngine signature look
+  float silvLining=edge*pow(sunUp+0.3,2.0);
+  col=mix(col,vec3(1.0,0.98,0.90)*uSunColor,silvLining*0.35);
 
-  float thresh = 0.52 - uCoverage * 0.20;
-  float alpha  = smoothstep(thresh, thresh + 0.22, cloud);
-  if(alpha < 0.01) discard;
-
-  // Fake volumetric depth — lighter on edges, darker in center
-  float edge = 1.0 - pow(alpha, 0.4);
-
-  // Lighting: top lit by sun, bottom shaded
-  float sunUp  = max(dot(vec3(0,1,0), normalize(uSunDir)), 0.);
-  float litTop = 0.88 + sunUp * 0.12;
-  float shadow = fbm6(p1 + vec3(0.04, 0.0, 0.02)) * 0.5 + 0.5;
-  float selfShad= mix(0.72, 1.0, step(thresh, shadow));
-
-  // Cloud color: white on top, slightly blue-gray underneath
-  vec3 cloudLit  = vec3(0.97, 0.98, 1.00) * litTop * selfShad;
-  vec3 cloudDark = vec3(0.55, 0.60, 0.68) * selfShad * 0.7;
-  vec3 col = mix(cloudDark, cloudLit, clamp(sunUp + 0.3, 0., 1.));
-
-  // Silver lining at edges
-  col = mix(col, vec3(1.0, 0.98, 0.92) * litTop, edge * 0.2);
-
-  // Tone map clouds
-  col = col / (col + vec3(0.5));
-
-  gl_FragColor = vec4(col, alpha * 0.88);
+  col=col/(col+vec3(0.5));
+  gl_FragColor=vec4(col,alpha*0.90);
 }`;
 
-const CLOUD_VERT2 = `
-varying vec2 vUv;
-varying vec3 vPos;
-void main(){
-  vUv = uv;
-  vPos = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`;
-
-// ── Color palette del bioma ──────────────────────────
+// ── getSurfaceColors v3 ──────────────────────────────
 function getSurfaceColors(v){
   const {Ca,Fe,Si,Mg,S,H2S,H2O,Temp,O2,CO2,pH,pressure,gravity}=v;
-  const hasSulf = H2S>2||S>8000;
-  const isHot   = Temp>55;
-  const isCold  = Temp<-15;
-  const isVCold = Temp<-70;
-  const hasLife = O2>10&&Mg>12&&!hasSulf&&!isHot&&Temp>-10;
-  const isIron  = Fe>55&&!hasSulf;
-  const isCalc  = Ca>48&&CO2>0.08&&!hasSulf;
-  const hasWater= H2O>18;
-  const hasSnow = isCold||Temp<3;
+  const hasSulf=H2S>2||S>8000, isHot=Temp>55, isCold=Temp<-15,
+        isVCold=Temp<-70, hasLife=O2>10&&Mg>12&&!hasSulf&&!isHot&&Temp>-10,
+        isIron=Fe>55&&!hasSulf, isCalc=Ca>48&&CO2>0.08&&!hasSulf,
+        hasWater=H2O>18, hasSnow=isCold||Temp<3;
+  const T3=window.THREE;
 
-  // Defaults (rocky)
-  let c=[
-    [0.22,0.20,0.16],// c0 deep/water
-    [0.35,0.32,0.24],// c1 lowland
-    [0.42,0.38,0.28],// c2 midland
-    [0.52,0.47,0.38],// c3 highland
-    [0.66,0.60,0.52],// c4 peak
-    [0.88,0.90,0.94],// c5 snow
-  ];
-  let rock   = [0.42,0.38,0.34];
-  let water  = [0.06,0.18,0.40];
-  let fog    = [0.52,0.58,0.68];
-  let sky1   = [0.10,0.18,0.42];// zenith
-  let sky2   = [0.42,0.62,0.88];// horizon/mie
-  let sunCol = [1.00,0.97,0.88];
-  let atmD=Math.min(1.4,(pressure||1)*0.75);
-  let mieD=Math.min(1.0,(pressure||1)*0.5+H2O*0.004);
-  let cloudCov= hasWater?Math.min(0.65,H2O/100*0.85):0.04;
-  let waterLvl= hasWater?0.32:-1.0;
-  let fogD    = Math.min(0.8,(pressure||1)*0.4+H2O*0.003);
-  let exposure= 1.15;
+  // Defaults
+  let c=[[0.22,0.20,0.16],[0.35,0.32,0.24],[0.42,0.38,0.28],[0.52,0.47,0.38],[0.66,0.60,0.52],[0.88,0.90,0.94]];
+  let rock=[0.42,0.38,0.34],water=[0.06,0.18,0.40],fog=[0.52,0.58,0.68];
+  let sky1=[0.10,0.18,0.42],sky2=[0.42,0.62,0.88],sunCol=[1.00,0.97,0.88];
+  let atmD=Math.min(1.4,(pressure||1)*0.75), mieD=Math.min(1.0,(pressure||1)*0.5+H2O*0.004);
+  let cloudCov=hasWater?Math.min(0.65,H2O/100*0.85):0.04;
+  let waterLvl=hasWater?0.32:-1.0, fogD=Math.min(0.8,(pressure||1)*0.4+H2O*0.003);
+  let exposure=1.18;
+  // Moon params (SpaceEngine: nearby giant planet or moon)
+  let moonDir=new T3.Vector3(-0.6,0.5,0.4).normalize();
+  let moonCol=new T3.Color(0.35,0.65,1.00);
+  let hasMoon=0.0, nightFactor=1.0;
 
   if(hasSulf){
     c=[[0.38,0.28,0.02],[0.55,0.44,0.06],[0.65,0.54,0.09],[0.72,0.62,0.14],[0.80,0.70,0.20],[0.90,0.85,0.45]];
     rock=[0.50,0.38,0.05];water=[0.42,0.32,0.02];fog=[0.68,0.56,0.08];
     sky1=[0.40,0.30,0.02];sky2=[0.70,0.55,0.06];sunCol=[1.0,0.82,0.25];
     cloudCov=0.75;atmD=1.2;mieD=1.0;exposure=1.05;
+    moonCol=new T3.Color(0.9,0.6,0.1); hasMoon=1.0;
   } else if(isVCold){
     c=[[0.30,0.45,0.65],[0.52,0.66,0.84],[0.65,0.76,0.92],[0.80,0.88,0.97],[0.90,0.94,0.99],[0.96,0.98,1.00]];
     rock=[0.45,0.55,0.72];water=[0.18,0.32,0.58];fog=[0.65,0.78,0.92];
-    sky1=[0.03,0.05,0.12];sky2=[0.18,0.28,0.50];sunCol=[0.82,0.90,1.00];
-    atmD=0.25;mieD=0.2;cloudCov=0.08;exposure=1.3;
+    sky1=[0.01,0.02,0.06];sky2=[0.08,0.14,0.28];sunCol=[0.75,0.82,1.00];
+    atmD=0.15;mieD=0.1;cloudCov=0.06;exposure=1.4;nightFactor=1.0;
+    moonCol=new T3.Color(0.35,0.65,1.00); hasMoon=1.0; // Blue planet visible
   } else if(isCold){
     c=[[0.22,0.35,0.58],[0.42,0.55,0.74],[0.58,0.68,0.86],[0.72,0.80,0.94],[0.85,0.90,0.97],[0.94,0.96,1.00]];
     rock=[0.48,0.52,0.62];water=[0.12,0.28,0.52];fog=[0.55,0.68,0.85];
     sky1=[0.10,0.20,0.46];sky2=[0.42,0.62,0.85];sunCol=[1.00,0.96,0.82];
-    exposure=1.1;
   } else if(isHot){
     c=[[0.15,0.04,0.01],[0.28,0.08,0.02],[0.38,0.12,0.03],[0.22,0.06,0.02],[0.12,0.04,0.01],[0.88,0.38,0.12]];
     rock=[0.18,0.06,0.02];water=[0.55,0.18,0.02];fog=[0.48,0.16,0.04];
@@ -5087,54 +5149,63 @@ function getSurfaceColors(v){
     c=[[0.62,0.58,0.48],[0.78,0.74,0.62],[0.70,0.66,0.55],[0.86,0.82,0.72],[0.92,0.88,0.80],[0.97,0.97,0.97]];
     rock=[0.55,0.50,0.42];water=[0.18,0.52,0.78];fog=[0.82,0.80,0.74];
     sky1=[0.32,0.52,0.92];sky2=[0.68,0.82,0.98];sunCol=[1.00,0.98,0.92];
+    // Gold sunset look like image 2
+    moonCol=new T3.Color(1.0,0.92,0.70); hasMoon=0.0;
   } else if(hasLife){
     c=[[0.04,0.18,0.42],[0.16,0.40,0.14],[0.24,0.50,0.17],[0.35,0.38,0.24],[0.52,0.47,0.38],[0.92,0.94,0.98]];
     rock=[0.38,0.34,0.28];water=[0.04,0.20,0.46];fog=[0.52,0.68,0.88];
     sky1=[0.07,0.25,0.68];sky2=[0.40,0.66,0.94];sunCol=[1.00,0.97,0.88];
-    exposure=1.15;
+    hasMoon=0.5;
   }
 
-  const C = window.THREE?window.THREE.Color:class{constructor(r,g,b){this.r=r;this.g=g;this.b=b;}};
-  return {
+  const C=T3.Color;
+  return{
     c0:new C(...c[0]),c1:new C(...c[1]),c2:new C(...c[2]),
     c3:new C(...c[3]),c4:new C(...c[4]),c5:new C(...c[5]),
-    rockColor: new C(...rock),
-    waterColor: new C(...water),
-    fogColor:   new C(...fog),
-    skyZenith:  new C(...sky1),
-    skyHorizon: new C(...sky2),
-    sunColor:   new C(...sunCol),
-    sunDir: new window.THREE.Vector3(0.7,0.45,0.35).normalize(),
-    atmDens:atmD, mieDens:mieD, cloudCov, waterLvl, fogDens:fogD,
-    hasWater:hasWater?1.0:0.0, hasSnow:hasSnow?1.0:0.0,
-    exposure,
+    rock:new C(...rock),water:new C(...water),fog:new C(...fog),
+    skyZenith:new C(...sky1),skyHorizon:new C(...sky2),sunColor:new C(...sunCol),
+    atmColor:new C(...sky2).multiplyScalar(0.5),
+    moonDir,moonCol,hasMoon,nightFactor,
+    sunDir:new T3.Vector3(0.7,0.45,0.35).normalize(),
+    atmDens:atmD,mieDens:mieD,cloudCov,waterLvl,fogDens:fogD,
+    hasWater:hasWater?1.0:0.0,hasSnow:hasSnow?1.0:0.0,exposure,
   };
 }
 
 // ── renderSurface ────────────────────────────────────
 function renderSurface(el){
   const E=lang==='en';
+  const biome=(()=>{
+    const{H2S,S,Temp,Fe,Ca,CO2,O2,Mg,H2O}=vals;
+    if(H2S>2||S>8000)  return E?'🌋 Sulfuric planet (Io-type)':'🌋 Planeta Sulfúrico (tipo Io)';
+    if(Temp<-70)       return E?'❄ Deep frozen world':'❄ Mundo profundamente helado';
+    if(Temp<-15)       return E?'❄ Glacial world':'❄ Mundo glacial';
+    if(Temp>55)        return E?'🔥 Volcanic world':'🔥 Planeta Volcánico';
+    if(Fe>55)          return E?'🔴 Iron desert (Mars-type)':'🔴 Desierto ferroso (tipo Marte)';
+    if(Ca>48&&CO2>0.08)return E?'🪨 Calcium carbonate world':'🪨 Mundo calcáreo';
+    if(O2>10&&Mg>12)   return E?'🌿 Habitable biosphere':'🌿 Biosfera Habitable';
+    return E?'🪐 Rocky world':'🪐 Mundo Rocoso';
+  })();
+
   el.innerHTML=`
-<div style="position:relative;height:100%;background:#000;overflow:hidden;">
+<div style="position:relative;height:100%;background:#000;">
   <canvas id="surf-canvas" style="width:100%;height:100%;display:block;cursor:grab;"></canvas>
 
-  <!-- HUD izquierda -->
-  <div style="position:absolute;top:12px;left:14px;pointer-events:none;">
-    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(0,212,170,0.9);line-height:2.0;">
-      <div style="font-size:13px;font-weight:800;color:var(--teal);margin-bottom:5px;letter-spacing:.05em;">
-        🏔 ${E?'Planet Surface':'Superficie del Planeta'}
-      </div>
-      <span style="color:rgba(0,212,170,0.4);">T°     </span>${vals.Temp>0?'+':''}${vals.Temp}°C<br>
-      <span style="color:rgba(0,212,170,0.4);">O₂     </span>${vals.O2}%<br>
-      <span style="color:rgba(0,212,170,0.4);">H₂O    </span>${vals.H2O}% ${E?'surface':'sup'}<br>
-      <span style="color:rgba(0,212,170,0.4);">PRES   </span>${vals.pressure||1.0} atm<br>
-      <span style="color:rgba(0,212,170,0.4);">GRAV   </span>${vals.gravity}g<br>
-      <span style="color:rgba(0,212,170,0.4);">pH     </span>${vals.pH}
+  <!-- HUD -->
+  <div style="position:absolute;top:12px;left:14px;font-family:'JetBrains Mono',monospace;pointer-events:none;">
+    <div style="font-size:12px;font-weight:800;color:var(--teal);margin-bottom:5px;letter-spacing:.05em;">
+      🏔 ${E?'Planet Surface':'Superficie del Planeta'}
     </div>
-    <div id="surf-biome" style="margin-top:8px;font-size:9px;color:rgba(0,212,170,0.5);font-family:'JetBrains Mono',monospace;"></div>
+    <div id="surf-biome" style="font-size:9px;color:rgba(0,212,170,0.5);margin-bottom:6px;">${biome}</div>
+    <div style="font-size:9px;color:rgba(0,212,170,0.7);line-height:2.0;">
+      <span style="color:rgba(0,212,170,0.4);">T°    </span>${vals.Temp>0?'+':''}${vals.Temp}°C<br>
+      <span style="color:rgba(0,212,170,0.4);">O₂    </span>${vals.O2}%<br>
+      <span style="color:rgba(0,212,170,0.4);">H₂O   </span>${vals.H2O}%<br>
+      <span style="color:rgba(0,212,170,0.4);">PRES  </span>${vals.pressure||1} atm
+    </div>
   </div>
 
-  <!-- Controles derecha -->
+  <!-- Controls -->
   <div style="position:absolute;top:12px;right:14px;display:flex;flex-direction:column;gap:5px;">
     <button onclick="surfTOD('day')"    id="sbtn-day"    class="btn btn-teal" style="font-size:10px;padding:5px 12px;">☀ ${E?'Day':'Día'}</button>
     <button onclick="surfTOD('sunset')" id="sbtn-sunset" class="btn"          style="font-size:10px;padding:5px 12px;">🌅 ${E?'Sunset':'Atardecer'}</button>
@@ -5143,56 +5214,39 @@ function renderSurface(el){
     <button onclick="surfWire()"        id="sbtn-wire"   class="btn"          style="font-size:10px;padding:5px 12px;">⬡ Wire</button>
     <button onclick="surfSnap()"                         class="btn"          style="font-size:10px;padding:5px 12px;">📷 ${E?'Screenshot':'Captura'}</button>
     <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
-    <div style="font-size:8px;color:var(--muted);text-align:center;padding:2px;">
-      ${E?'Quality:':'Calidad:'}
-    </div>
     <button onclick="surfQuality('low')"  id="sbtn-low"  class="btn" style="font-size:9px;padding:3px 8px;">🔵 ${E?'Low':'Baja'}</button>
     <button onclick="surfQuality('mid')"  id="sbtn-mid"  class="btn btn-teal" style="font-size:9px;padding:3px 8px;">🟡 ${E?'Medium':'Media'}</button>
     <button onclick="surfQuality('high')" id="sbtn-high" class="btn" style="font-size:9px;padding:3px 8px;">🔴 ${E?'High':'Alta'}</button>
   </div>
 
-  <!-- Barra inferior -->
-  <div style="position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:9px;color:rgba(255,255,255,0.25);font-family:'JetBrains Mono',monospace;pointer-events:none;">
-    ${E
-      ?'Drag to orbit · Scroll to zoom · Analytical normals · Nishita atmosphere · Slope PBR · AO'
-      :'Arrastra para orbitar · Scroll zoom · Normales analíticas · Atmósfera Nishita · PBR por pendiente · AO'}
+  <!-- Info bar -->
+  <div style="position:absolute;bottom:8px;left:14px;font-size:9px;color:rgba(255,255,255,0.25);font-family:'JetBrains Mono',monospace;">
+    ${E?'Drag to rotate · Scroll to zoom · SpaceEngine-quality renderer':'Arrastra para rotar · Scroll zoom · Renderer calidad SpaceEngine'}
   </div>
 
   <!-- Loading -->
-  <div id="surf-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:#000;">
-    <div style="width:32px;height:32px;border:3px solid rgba(0,212,170,0.2);border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
-    <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">${E?'Building terrain…':'Generando terreno…'}</div>
+  <div id="surf-loading" style="position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;flex-direction:column;gap:10px;background:#000;">
+    <div style="width:32px;height:32px;border:3px solid rgba(0,212,170,0.2);
+      border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+      ${E?'Building terrain…':'Generando terreno…'}
+    </div>
   </div>
 </div>`;
 
-  // Label de bioma
-  const biomeName = ()=>{
-    const {H2S,S,Temp,Fe,Ca,CO2,O2,Mg,H2O}=vals;
-    if(H2S>2||S>8000)  return E?'🌋 Sulfuric planet (Io-type)':'🌋 Planeta Sulfúrico (tipo Io)';
-    if(Temp<-70)       return E?'❄ Deep frozen world':'❄ Mundo profundamente helado';
-    if(Temp<-15)       return E?'❄ Glacial world':'❄ Mundo glacial';
-    if(Temp>55)        return E?'🔥 Volcanic planet':'🔥 Planeta Volcánico';
-    if(Fe>55)          return E?'🔴 Iron-rich desert (Mars-type)':'🔴 Desierto ferroso (tipo Marte)';
-    if(Ca>48&&CO2>0.08)return E?'🪨 Calcium carbonate world':'🪨 Mundo de carbonato cálcico';
-    if(O2>10&&Mg>12)   return E?'🌿 Habitable biosphere':'🌿 Biosfera Habitable';
-    return E?'🪐 Rocky world':'🪐 Mundo Rocoso';
-  };
-  setTimeout(()=>{
-    const b=document.getElementById('surf-biome');
-    if(b) b.textContent=biomeName();
-    initSurface2();
-  },80);
+  setTimeout(()=>initSurface2(), 80);
 }
 
 function initSurface2(){
   const canvas=document.getElementById('surf-canvas');
   if(!canvas||!window.THREE){
     const l=document.getElementById('surf-loading');
-    if(l) l.innerHTML='<div style="color:#F87171;font-size:11px;">Three.js no disponible</div>';
+    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">Three.js not available</div>';
     return;
   }
   const T=window.THREE;
-  const container2 = canvas.parentElement;
+  const container2=canvas.parentElement;
   const W=container2.clientWidth||900;
   const H=container2.clientHeight||560;
   canvas.width=W; canvas.height=H;
@@ -5205,42 +5259,50 @@ function initSurface2(){
   renderer.toneMapping=T.NoToneMapping;
   renderer.setClearColor(0x000000);
 
-  // ResizeObserver para superficie
-  const ro2 = new ResizeObserver(()=>{
-    const nW=container2.clientWidth, nH=container2.clientHeight;
-    if(nW>0&&nH>0){ renderer.setSize(nW,nH); camera.aspect=nW/nH; camera.updateProjectionMatrix(); }
+  const ro2=new ResizeObserver(()=>{
+    const nW=container2.clientWidth,nH=container2.clientHeight;
+    if(nW>0&&nH>0){renderer.setSize(nW,nH);camera.aspect=nW/nH;camera.updateProjectionMatrix();}
   });
   ro2.observe(container2);
 
   const col=getSurfaceColors(vals);
+  const segs=128;
 
   // ── TERRAIN ──────────────────────────────────────
-  // Resolución adaptativa — empieza en Media (segura en todos los equipos)
-  // El usuario puede subir a Alta con el botón si su GPU lo permite
-  const segments = 128;
-  const tGeo=new T.PlaneGeometry(3200,3200,segments,segments);
+  const tGeo=new T.PlaneGeometry(3200,3200,segs,segs);
   tGeo.rotateX(-Math.PI/2);
   const tMat=new T.ShaderMaterial({
     vertexShader:TERRAIN_VERT2,
-    fragmentShader:TERRAIN_FRAG2,
+    fragmentShader:TERRAIN_FRAG2_FIXED,
     uniforms:{
-      uTime:{value:0},
       uScale:{value:Math.max(0.55,(vals.gravity||1)*0.75)},
-      uColor0:{value:col.c0}, uColor1:{value:col.c1},
-      uColor2:{value:col.c2}, uColor3:{value:col.c3},
-      uColor4:{value:col.c4}, uColor5:{value:col.c5},
-      uRockColor:{value:col.rockColor},
-      uWaterLevel:{value:col.waterLvl},
-      uHasWater:{value:col.hasWater},
-      uHasSnow:{value:col.hasSnow},
-      uSunDir:{value:col.sunDir},
-      uSunColor:{value:col.sunColor},
-      uFogColor:{value:col.fogColor},
-      uFogDensity:{value:col.fogDens},
+      uTime:{value:0},
+      uC0:{value:col.c0},uC1:{value:col.c1},uC2:{value:col.c2},
+      uC3:{value:col.c3},uC4:{value:col.c4},uC5:{value:col.c5},
+      uRock:{value:col.rock},
+      uWaterLvl:{value:col.waterLvl},uHasWater:{value:col.hasWater},uHasSnow:{value:col.hasSnow},
+      uSunDir:{value:col.sunDir},uSunColor:{value:col.sunColor},
+      uFogColor:{value:col.fog},uAtmColor:{value:col.atmColor},uFogDens:{value:col.fogDens},
     },
   });
-  const terrain=new T.Mesh(tGeo,tMat);
-  scene.add(terrain);
+  scene.add(new T.Mesh(tGeo,tMat));
+
+  // ── SKY ──────────────────────────────────────────
+  const skyGeo=new T.SphereGeometry(5000,32,16);
+  const skyMat=new T.ShaderMaterial({
+    vertexShader:SKY_VERT2,
+    fragmentShader:SKY_FRAG2_WITH_NOISE,
+    uniforms:{
+      uSunDir:{value:col.sunDir},uRayleighColor:{value:col.skyZenith},
+      uMieColor:{value:col.skyHorizon},uSunColor:{value:col.sunColor},
+      uSunSize:{value:0.022},uAtmDensity:{value:col.atmDens},uMieDensity:{value:col.mieDens},
+      uExposure:{value:col.exposure},
+      uMoonDir:{value:col.moonDir},uMoonColor:{value:col.moonCol},
+      uHasMoon:{value:col.hasMoon},uNightFactor:{value:col.nightFactor},
+    },
+    side:T.BackSide,depthWrite:false,
+  });
+  scene.add(new T.Mesh(skyGeo,skyMat));
 
   // ── WATER ────────────────────────────────────────
   let waterMesh=null;
@@ -5248,32 +5310,13 @@ function initSurface2(){
     const wGeo=new T.PlaneGeometry(3200,3200,1,1);
     wGeo.rotateX(-Math.PI/2);
     const wMat=new T.MeshPhongMaterial({
-      color:col.waterColor,transparent:true,opacity:0.72,
-      shininess:150,specular:new T.Color(1,1,1),
+      color:col.water,transparent:true,opacity:0.70,
+      shininess:200,specular:new T.Color(1,1,1),
     });
     waterMesh=new T.Mesh(wGeo,wMat);
     waterMesh.position.y=48;
     scene.add(waterMesh);
   }
-
-  // ── SKY ──────────────────────────────────────────
-  const skyGeo=new T.SphereGeometry(5000,32,16);
-  const skyMat=new T.ShaderMaterial({
-    vertexShader:SKY_VERT2,
-    fragmentShader:SKY_FRAG2_FIXED,
-    uniforms:{
-      uSunDir:{value:col.sunDir},
-      uRayleighColor:{value:col.skyZenith},
-      uMieColor:{value:col.skyHorizon},
-      uSunColor:{value:col.sunColor},
-      uSunSize:{value:0.022},
-      uAtmDensity:{value:col.atmDens},
-      uMieDensity:{value:col.mieDens},
-      uExposure:{value:col.exposure},
-    },
-    side:T.BackSide,depthWrite:false,
-  });
-  scene.add(new T.Mesh(skyGeo,skyMat));
 
   // ── CLOUDS ───────────────────────────────────────
   let cloudMesh=null;
@@ -5281,13 +5324,9 @@ function initSurface2(){
     const cGeo=new T.PlaneGeometry(3000,3000,1,1);
     cGeo.rotateX(-Math.PI/2);
     const cMat=new T.ShaderMaterial({
-      vertexShader:CLOUD_VERT2,
-      fragmentShader:CLOUD_FRAG2,
-      uniforms:{
-        uTime:{value:0},
-        uSunDir:{value:col.sunDir},
-        uCoverage:{value:col.cloudCov},
-      },
+      vertexShader:CLOUD_VERT2,fragmentShader:CLOUD_FRAG2,
+      uniforms:{uTime:{value:0},uSunDir:{value:col.sunDir},
+        uSunColor:{value:col.sunColor},uCoverage:{value:col.cloudCov}},
       transparent:true,depthWrite:false,side:T.DoubleSide,
     });
     cloudMesh=new T.Mesh(cGeo,cMat);
@@ -5296,21 +5335,20 @@ function initSurface2(){
   }
 
   // ── LIGHTING ─────────────────────────────────────
-  const sunLight=new T.DirectionalLight(col.sunColor,1.9);
+  const sunLight=new T.DirectionalLight(col.sunColor,2.0);
   sunLight.position.copy(col.sunDir).multiplyScalar(1200);
   scene.add(sunLight);
-  const ambLight=new T.AmbientLight(col.skyHorizon,0.28);
-  scene.add(ambLight);
-  const hemi=new T.HemisphereLight(col.skyZenith,col.c1,0.38);
+  scene.add(new T.AmbientLight(col.skyHorizon,0.28));
+  const hemi=new T.HemisphereLight(col.skyZenith,col.c1,0.40);
   scene.add(hemi);
 
   // ── CAMERA ORBIT ─────────────────────────────────
-  let theta=0.3,phi=0.22,radius=260,isDrag=false,prev={x:0,y:0};
+  let theta=0.3,phi=0.22,radius=265,isDrag=false,prev={x:0,y:0};
   const target=new T.Vector3(0,25,0);
   function updateCam(){
     camera.position.set(
       target.x+radius*Math.sin(theta)*Math.cos(phi),
-      target.y+radius*Math.sin(phi)+85,
+      target.y+radius*Math.sin(phi)+88,
       target.z+radius*Math.cos(theta)*Math.cos(phi));
     camera.lookAt(target);
   }
@@ -5324,16 +5362,9 @@ function initSurface2(){
     phi=Math.max(-0.05,Math.min(1.15,phi+(e.clientY-prev.y)*0.003));
     prev={x:e.clientX,y:e.clientY};updateCam();
   };
-  const onWH=e=>{
-    radius=Math.max(25,Math.min(1200,radius+e.deltaY*0.25));
-    updateCam();e.preventDefault();
-  };
+  const onWH=e=>{radius=Math.max(25,Math.min(1200,radius+e.deltaY*0.25));updateCam();e.preventDefault();};
   const onTD=e=>{isDrag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
-  const onTM=e=>{
-    if(!isDrag)return;
-    theta-=(e.touches[0].clientX-prev.x)*0.004;
-    prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();
-  };
+  const onTM=e=>{if(!isDrag)return;theta-=(e.touches[0].clientX-prev.x)*0.004;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();};
   canvas.addEventListener('mousedown',onMD);
   window.addEventListener('mouseup',onMU);
   window.addEventListener('mousemove',onMM);
@@ -5343,26 +5374,22 @@ function initSurface2(){
   window.addEventListener('touchend',onMU);
 
   // ── ANIMATE ──────────────────────────────────────
-  let animId;
+  let animId,surfTime2=0;
   function animate(){
     animId=requestAnimationFrame(animate);
-    surfaceTime+=0.016;
-    tMat.uniforms.uTime.value=surfaceTime;
-    if(cloudMesh)cloudMesh.material.uniforms.uTime.value=surfaceTime;
-    if(waterMesh)waterMesh.position.y=48+Math.sin(surfaceTime*0.5)*0.6;
+    surfTime2+=0.016;
+    tMat.uniforms.uTime.value=surfTime2;
+    if(cloudMesh)cloudMesh.material.uniforms.uTime.value=surfTime2;
+    if(waterMesh)waterMesh.position.y=48+Math.sin(surfTime2*0.5)*0.8;
     renderer.render(scene,camera);
   }
 
-  // Hide loading
   const loading=document.getElementById('surf-loading');
-  if(loading){loading.style.display='none';}
+  if(loading)loading.style.display='none';
   animate();
 
-  // ── STATE ─────────────────────────────────────────
   surfaceState={
-    scene,renderer,camera,terrain,cloudMesh,waterMesh,
-    tMat,skyMat,sunLight,ambLight,hemi,col,
-    theta,phi,radius,target,updateCam,
+    scene,renderer,camera,tMat,skyMat,cloudMesh,waterMesh,sunLight,hemi,col,
     cleanup:()=>{
       cancelAnimationFrame(animId);
       ro2.disconnect();
@@ -5382,70 +5409,63 @@ function initSurface2(){
 function surfTOD(mode){
   if(!surfaceState.tMat)return;
   const T=window.THREE;
-  const {tMat,skyMat,sunLight,ambLight,hemi,col}=surfaceState;
-  let sd,si,ai,exp;
+  const{tMat,skyMat,sunLight,hemi,col,cloudMesh,waterMesh}=surfaceState;
+  let sd,si,ai,exp,nightF;
   if(mode==='day'){
     sd=new T.Vector3(0.70,0.48,0.35).normalize();
-    si=1.9;ai=0.28;exp=col.exposure;
+    si=2.0;ai=0.28;exp=col.exposure;nightF=0.0;
     skyMat.uniforms.uRayleighColor.value=col.skyZenith;
     skyMat.uniforms.uMieColor.value=col.skyHorizon;
     skyMat.uniforms.uSunColor.value=col.sunColor;
+    if(sunLight)sunLight.color.copy(col.sunColor);
   } else if(mode==='sunset'){
-    sd=new T.Vector3(0.97,0.06,0.22).normalize();
-    si=1.3;ai=0.15;exp=col.exposure*0.85;
-    skyMat.uniforms.uRayleighColor.value=new T.Color(0.05,0.08,0.22);
-    skyMat.uniforms.uMieColor.value     =new T.Color(0.88,0.38,0.08);
-    skyMat.uniforms.uSunColor.value     =new T.Color(1.00,0.52,0.12);
-  } else {
-    sd=new T.Vector3(0.1,-0.25,0.96).normalize();
-    si=0.04;ai=0.04;exp=0.6;
+    sd=new T.Vector3(0.97,0.05,0.22).normalize();
+    si=1.4;ai=0.14;exp=col.exposure*0.88;nightF=0.2;
+    skyMat.uniforms.uRayleighColor.value=new T.Color(0.04,0.06,0.20);
+    skyMat.uniforms.uMieColor.value=new T.Color(0.90,0.38,0.06);
+    skyMat.uniforms.uSunColor.value=new T.Color(1.00,0.52,0.10);
+    if(sunLight)sunLight.color.copy(new T.Color(1.00,0.52,0.10));
+  } else { // night
+    sd=new T.Vector3(0.1,-0.3,0.95).normalize();
+    si=0.04;ai=0.03;exp=0.55;nightF=1.0;
     skyMat.uniforms.uRayleighColor.value=new T.Color(0.001,0.002,0.008);
-    skyMat.uniforms.uMieColor.value     =new T.Color(0.004,0.006,0.018);
-    skyMat.uniforms.uSunColor.value     =new T.Color(0.75,0.82,1.00);
+    skyMat.uniforms.uMieColor.value=new T.Color(0.003,0.005,0.016);
+    skyMat.uniforms.uSunColor.value=new T.Color(0.70,0.78,1.00);
+    if(sunLight)sunLight.color.copy(new T.Color(0.1,0.12,0.18));
   }
   [tMat.uniforms.uSunDir,skyMat.uniforms.uSunDir].forEach(u=>u.value=sd);
-  if(surfaceState.cloudMesh) surfaceState.cloudMesh.material.uniforms.uSunDir.value=sd;
+  if(cloudMesh)cloudMesh.material.uniforms.uSunDir.value=sd;
+  if(cloudMesh)cloudMesh.material.uniforms.uSunColor.value=skyMat.uniforms.uSunColor.value;
   tMat.uniforms.uSunColor.value=skyMat.uniforms.uSunColor.value;
-  sunLight.position.copy(sd).multiplyScalar(1200);
-  sunLight.intensity=si; ambLight.intensity=ai;
-  if(hemi)hemi.intensity=ai*1.3;
   skyMat.uniforms.uExposure.value=exp;
+  skyMat.uniforms.uNightFactor.value=nightF;
+  if(sunLight){sunLight.position.copy(sd).multiplyScalar(1200);sunLight.intensity=si;}
+  if(hemi)hemi.intensity=ai*1.3;
 
   ['day','sunset','night'].forEach(m=>{
     const b=document.getElementById('sbtn-'+m);
-    if(!b)return;
-    b.className=m===mode?'btn btn-teal':'btn';
+    if(b)b.className=m===mode?'btn btn-teal':'btn';
   });
 }
 
-let surfQualityLevel = 'mid'; // default medium
-
+let surfWireOn=false;
 function surfQuality(q){
-  surfQualityLevel = q;
-  // Actualizar botones
-  ['low','mid','high'].forEach(m=>{
-    const b=document.getElementById('sbtn-'+m);
-    if(b){b.className=m===q?'btn btn-teal':'btn';}
-  });
-  // Recrear terreno con nueva resolución
   if(!surfaceState.scene)return;
   const T=window.THREE;
-  const segs = q==='low'?64:q==='mid'?128:256;
-  const {scene,tMat,terrain}=surfaceState;
-  if(terrain){scene.remove(terrain);terrain.geometry.dispose();}
-  const newGeo=new T.PlaneGeometry(3200,3200,segs,segs);
-  newGeo.rotateX(-Math.PI/2);
-  const newTerrain=new T.Mesh(newGeo,tMat);
-  scene.add(newTerrain);
-  surfaceState.terrain=newTerrain;
+  const segs=q==='low'?64:q==='mid'?128:256;
+  const{scene,tMat}=surfaceState;
+  scene.children.filter(c=>c.isMesh&&c.material===tMat).forEach(m=>{scene.remove(m);m.geometry.dispose();});
+  const g=new T.PlaneGeometry(3200,3200,segs,segs);g.rotateX(-Math.PI/2);
+  scene.add(new T.Mesh(g,tMat));
+  ['low','mid','high'].forEach(m=>{const b=document.getElementById('sbtn-'+m);if(b)b.className=m===q?'btn btn-teal':'btn';});
 }
 
 function surfWire(){
   if(!surfaceState.tMat)return;
-  wireframeOn=!wireframeOn;
-  surfaceState.tMat.wireframe=wireframeOn;
+  surfWireOn=!surfWireOn;
+  surfaceState.tMat.wireframe=surfWireOn;
   const b=document.getElementById('sbtn-wire');
-  if(b){b.style.background=wireframeOn?'rgba(0,212,170,0.15)':'';b.style.borderColor=wireframeOn?'var(--teal)':'var(--border)';b.style.color=wireframeOn?'var(--teal)':'var(--muted)';}
+  if(b){b.style.background=surfWireOn?'rgba(0,212,170,0.15)':'';b.style.borderColor=surfWireOn?'var(--teal)':'var(--border)';}
 }
 
 function surfSnap(){
@@ -5456,8 +5476,6 @@ function surfSnap(){
   link.href=surfaceState.renderer.domElement.toDataURL('image/png');
   link.click();
 }
-
-
 
 // ═══════════════════════════════════════════════════════
 // X-RAY VISION — Órganos internos procedurales
