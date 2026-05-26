@@ -1495,61 +1495,55 @@ function renderPlanet(el){
         color:rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;">
         ${t('rotate')}
       </div>
-      <div style="position:absolute;bottom:8px;right:12px;">
-        <a href="nature-connections.html" target="_blank"
-          style="font-size:8px;color:rgba(0,212,170,0.6);text-decoration:none;
-          font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.06);
-          border:0.5px solid rgba(0,212,170,0.25);padding:3px 9px;border-radius:4px;
-          transition:all .15s;"
-          onmouseover="this.style.background='rgba(0,212,170,0.12)';this.style.color='rgba(0,212,170,0.9)'"
-          onmouseout="this.style.background='rgba(0,212,170,0.06)';this.style.color='rgba(0,212,170,0.6)'">
-          ${t('natureLink')}
-        </a>
-      </div>
     </div>
 
-    <!-- COLUMNA 3 — Panel derecho estático -->
-    <div class="scroll" style="background:#070C14;padding:12px 11px;
-      display:flex;flex-direction:column;gap:0;">
+    <!-- COLUMNA 3 — Panel derecho -->
+    <div style="background:#070C14;border-left:1px solid rgba(255,255,255,0.06);
+      display:flex;flex-direction:column;overflow:hidden;">
 
-      <!-- BIOCOMPAT score -->
-      <div id="right-biocompat" style="margin-bottom:14px;"></div>
+      <!-- Scroll area para todo excepto el botón -->
+      <div class="scroll" style="flex:1;padding:12px 11px;min-height:0;">
 
-      <!-- Análogos terrestres -->
-      <div style="margin-bottom:14px;">
-        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
-          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
-          display:flex;align-items:center;gap:6px;">
-          ${t('analogsTitle')}
-          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+        <!-- BIOCOMPAT score -->
+        <div id="right-biocompat" style="margin-bottom:12px;"></div>
+
+        <!-- Análogos terrestres -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('analogsTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-analogs"></div>
         </div>
-        <div id="right-analogs"></div>
+
+        <!-- Ciclos minerales -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('cyclesTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-cycles"></div>
+        </div>
+
+        <!-- Parámetros estelares -->
+        <div style="margin-bottom:4px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('stellarTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-stellar"></div>
+        </div>
       </div>
 
-      <!-- Ciclos minerales -->
-      <div style="margin-bottom:14px;">
-        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
-          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
-          display:flex;align-items:center;gap:6px;">
-          ${t('cyclesTitle')}
-          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
-        </div>
-        <div id="right-cycles"></div>
-      </div>
-
-      <!-- Parámetros estelares -->
-      <div style="margin-bottom:14px;">
-        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
-          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
-          display:flex;align-items:center;gap:6px;">
-          ${t('stellarTitle')}
-          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
-        </div>
-        <div id="right-stellar"></div>
-      </div>
-
-      <!-- Botón crear — siempre visible -->
-      <div style="padding-top:10px;border-top:0.5px solid rgba(255,255,255,0.06);margin-top:10px;">
+      <!-- Botón crear — SIEMPRE visible, fuera del scroll -->
+      <div style="flex:0 0 auto;padding:10px 11px;
+        border-top:0.5px solid rgba(255,255,255,0.06);background:#070C14;">
         <button onclick="createPlanet()" class="btn btn-teal"
           style="width:100%;font-size:10px;font-weight:700;padding:9px;">
           ✦ ${E?'Create Planet':'Crear Planeta'}
@@ -1561,7 +1555,21 @@ function renderPlanet(el){
 
   <!-- ══ FILA INFERIOR — Rasgos emergentes dinámicos ══ -->
   <div id="bottom-panel" style="flex:0 0 auto;border-top:1px solid rgba(255,255,255,0.06);
-    background:rgba(4,8,16,0.98);padding:10px 16px;overflow-y:auto;max-height:38%;">
+    background:rgba(4,8,16,0.98);padding:8px 16px;overflow-y:auto;max-height:32%;min-height:120px;">
+  </div>
+
+  <!-- Barra de pie — siempre visible -->
+  <div style="flex:0 0 auto;border-top:0.5px solid rgba(255,255,255,0.04);
+    background:rgba(2,5,9,0.98);padding:5px 16px;display:flex;justify-content:flex-end;">
+    <a href="nature-connections.html" target="_blank"
+      style="font-size:9px;color:rgba(0,212,170,0.6);text-decoration:none;
+      font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.06);
+      border:0.5px solid rgba(0,212,170,0.25);padding:3px 10px;border-radius:4px;
+      transition:all .15s;"
+      onmouseover="this.style.background='rgba(0,212,170,0.14)';this.style.color='rgba(0,212,170,1)'"
+      onmouseout="this.style.background='rgba(0,212,170,0.06)';this.style.color='rgba(0,212,170,0.6)'">
+      ${t('natureLink')}
+    </a>
   </div>
 
 </div>`;
