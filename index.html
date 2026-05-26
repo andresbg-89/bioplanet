@@ -1141,9 +1141,12 @@ function initThree(canvasId){
   const c=document.getElementById(canvasId);
   if(!c||!window.THREE)return;
   const T=window.THREE;
-  const W=c.parentElement.clientWidth||700;
-  const H=c.parentElement.clientHeight||500;
-  c.width=W;c.height=H;
+
+  // Usar el tamaño real del contenedor padre
+  const container = c.parentElement;
+  const W = container.clientWidth  || 700;
+  const H = container.clientHeight || 500;
+  c.width=W; c.height=H;
 
   const scene=new T.Scene();
   const cam=new T.PerspectiveCamera(40,W/H,0.1,1000);
@@ -1155,6 +1158,22 @@ function initThree(canvasId){
   renderer.setClearColor(0x000000,1);
   renderer.toneMapping=T.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.2;
+
+  // ── ResizeObserver — redimensiona automáticamente ──
+  const ro = new ResizeObserver(()=>{
+    const nW = container.clientWidth;
+    const nH = container.clientHeight;
+    if(nW>0 && nH>0){
+      renderer.setSize(nW, nH);
+      cam.aspect = nW/nH;
+      cam.updateProjectionMatrix();
+    }
+  });
+  ro.observe(container);
+
+  // Guardar cleanup del observer
+  if(!threeState.cleanupFns) threeState.cleanupFns=[];
+  threeState.cleanupFns.push(()=>ro.disconnect());
 
   // ── STARS (enhanced) ──
   const starCount=3000;
@@ -1395,12 +1414,13 @@ function renderPlanet(el){
   el.innerHTML=`
 <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
 
-  <!-- ══ FILA SUPERIOR — 3 columnas ══ -->
-  <div style="display:grid;grid-template-columns:210px 1fr 200px;flex:1;min-height:0;overflow:hidden;">
+  <!-- ══ FILA SUPERIOR — 3 columnas redimensionables ══ -->
+  <div id="planet-row" style="display:flex;flex:1;min-height:0;overflow:hidden;">
 
     <!-- COLUMNA 1 — Sliders -->
-    <div class="scroll" style="border-right:1px solid rgba(255,255,255,0.06);
-      padding:14px 12px;background:#070C14;">
+    <div id="col-left" class="scroll" style="width:210px;min-width:140px;max-width:340px;
+      flex-shrink:0;border-right:1px solid rgba(255,255,255,0.06);
+      padding:14px 12px;background:#070C14;overflow-y:auto;box-sizing:border-box;">
 
       <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.30);
         margin-bottom:12px;letter-spacing:.14em;text-transform:uppercase;">
@@ -1466,8 +1486,18 @@ function renderPlanet(el){
       </style>
     </div>
 
+    <!-- DRAG HANDLE izquierdo -->
+    <div id="drag-left" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;
+      position:relative;z-index:10;transition:background .15s;"
+      onmouseover="this.style.background='rgba(0,212,170,0.25)'"
+      onmouseout="if(!window._dragging)this.style.background='transparent'"
+      onmousedown="startDrag(event,'left')">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        width:1px;height:32px;background:rgba(255,255,255,0.12);border-radius:1px;"></div>
+    </div>
+
     <!-- COLUMNA 2 — Globo 3D -->
-    <div style="position:relative;background:#000;border-right:1px solid rgba(255,255,255,0.06);">
+    <div id="col-center" style="flex:1;position:relative;background:#000;overflow:hidden;">
       <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
 
       <!-- HUD top-left -->
@@ -1495,13 +1525,33 @@ function renderPlanet(el){
         color:rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;">
         ${t('rotate')}
       </div>
+      <div style="position:absolute;bottom:8px;right:12px;">
+        <a href="nature-connections.html" target="_blank"
+          style="font-size:9px;color:rgba(0,212,170,0.7);text-decoration:none;
+          font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);
+          border:0.5px solid rgba(0,212,170,0.30);padding:3px 10px;border-radius:4px;"
+          onmouseover="this.style.background='rgba(0,212,170,0.16)'"
+          onmouseout="this.style.background='rgba(0,212,170,0.08)'">
+          ${t('natureLink')}
+        </a>
+      </div>
+    </div>
+
+    <!-- DRAG HANDLE derecho -->
+    <div id="drag-right" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;
+      position:relative;z-index:10;transition:background .15s;"
+      onmouseover="this.style.background='rgba(0,212,170,0.25)'"
+      onmouseout="if(!window._dragging)this.style.background='transparent'"
+      onmousedown="startDrag(event,'right')">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        width:1px;height:32px;background:rgba(255,255,255,0.12);border-radius:1px;"></div>
     </div>
 
     <!-- COLUMNA 3 — Panel derecho -->
-    <div style="background:#070C14;border-left:1px solid rgba(255,255,255,0.06);
-      display:flex;flex-direction:column;overflow:hidden;">
+    <div id="col-right" style="width:200px;min-width:160px;max-width:360px;flex-shrink:0;
+      background:#070C14;display:flex;flex-direction:column;overflow:hidden;">
 
-      <!-- Scroll area para todo excepto el botón -->
+      <!-- Scroll area -->
       <div class="scroll" style="flex:1;padding:12px 11px;min-height:0;">
 
         <!-- BIOCOMPAT score -->
@@ -1541,7 +1591,7 @@ function renderPlanet(el){
         </div>
       </div>
 
-      <!-- Botón crear — SIEMPRE visible, fuera del scroll -->
+      <!-- Botón crear — siempre visible -->
       <div style="flex:0 0 auto;padding:10px 11px;
         border-top:0.5px solid rgba(255,255,255,0.06);background:#070C14;">
         <button onclick="createPlanet()" class="btn btn-teal"
@@ -1556,20 +1606,6 @@ function renderPlanet(el){
   <!-- ══ FILA INFERIOR — Rasgos emergentes dinámicos ══ -->
   <div id="bottom-panel" style="flex:0 0 auto;border-top:1px solid rgba(255,255,255,0.06);
     background:rgba(4,8,16,0.98);padding:8px 16px;overflow-y:auto;max-height:32%;min-height:120px;">
-  </div>
-
-  <!-- Barra de pie — siempre visible -->
-  <div style="flex:0 0 auto;border-top:0.5px solid rgba(255,255,255,0.04);
-    background:rgba(2,5,9,0.98);padding:5px 16px;display:flex;justify-content:flex-end;">
-    <a href="nature-connections.html" target="_blank"
-      style="font-size:9px;color:rgba(0,212,170,0.6);text-decoration:none;
-      font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.06);
-      border:0.5px solid rgba(0,212,170,0.25);padding:3px 10px;border-radius:4px;
-      transition:all .15s;"
-      onmouseover="this.style.background='rgba(0,212,170,0.14)';this.style.color='rgba(0,212,170,1)'"
-      onmouseout="this.style.background='rgba(0,212,170,0.06)';this.style.color='rgba(0,212,170,0.6)'">
-      ${t('natureLink')}
-    </a>
   </div>
 
 </div>`;
@@ -2381,9 +2417,398 @@ function renderEcosystem(el){
 
 // ─── GALLERY TAB ──────────────────────────────────────
 function renderGallery(el){
-  const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
-  el.innerHTML=`<div style="padding:18px 20px;overflow-y:auto;height:100%;"><div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('galTitle')}</div><div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${t('galDesc')}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;"><div><div class="label">${t('orbitalView')}</div><div id="gal-planet" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')" class="btn btn-teal">🌍 ${t('genPlanet')}</button></div></div><div><div class="label">${t('surfaceView')}</div><div id="gal-surface" style="height:240px;border-radius:10px;overflow:hidden;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('Alien planet surface level view, ${vals.Temp>50?'volcanic hot lava flows':''}${vals.Temp<-20?'frozen icy tundra':''}${vals.H2S>2?'sulfuric geysers and acid pools':''}${vals.O2>15?'alien vegetation forests':'rocky barren terrain'} landscape, dramatic alien sky with ${vals.H2S>2?'yellow sulfuric':'blue oxygen'} atmosphere, hyper detailed, 8k, cinematic lighting',600,400,'gal-surface')" class="btn btn-teal">🏔 ${lang==='en'?'Generate surface':'Generar superficie'}</button></div></div></div><div class="label">${t('creatureArt')}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">${creatures.map((cr,i)=>{const imgId=`gal-cr-${i}`;return`<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);"><div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;"><button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate':'Generar'}</button></div><div style="padding:8px 10px;"><div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div></div></div>`;}).join('')}</div></div>`;
+  const E = lang==='en';
+  const creatures = Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('galTitle')}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${t('galDesc')}</div>
+
+  <!-- Fila superior: 2 imágenes principales -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div>
+      <div class="label">${t('orbitalView')}</div>
+      <div id="gal-planet" style="height:220px;border-radius:10px;overflow:hidden;
+        background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+        <button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')"
+          class="btn btn-teal">🌍 ${t('genPlanet')}</button>
+      </div>
+    </div>
+    <div>
+      <div class="label">${t('surfaceView')}</div>
+      <div id="gal-surface" style="height:220px;border-radius:10px;overflow:hidden;
+        background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+        <button onclick="makeAIImg('Alien planet surface ${vals.Temp>50?'volcanic lava':''}${vals.Temp<-20?'frozen tundra':''}${vals.H2S>2?'sulfuric geysers':''}${vals.O2>15?'alien vegetation':'rocky terrain'}, cinematic 8k',600,400,'gal-surface')"
+          class="btn btn-teal">🏔 ${E?'Generate surface':'Generar superficie'}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DESCRIPCIÓN CIENTÍFICA DEL PLANETA ── -->
+  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;
+    padding:16px;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;">
+          🔭 ${E?'Scientific Planet Description':'Descripción Científica del Planeta'}
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          ${E?'AI-generated based on mineral parameters':'Generada por IA basada en parámetros minerales'}
+        </div>
+      </div>
+      <button onclick="generatePlanetDescription()"
+        class="btn btn-teal" style="font-size:10px;padding:6px 14px;flex-shrink:0;">
+        ✦ ${E?'Generate description':'Generar descripción'}
+      </button>
+    </div>
+    <div id="planet-desc-result" style="font-size:10px;color:var(--muted);line-height:1.8;
+      min-height:60px;display:flex;align-items:center;justify-content:center;">
+      <span style="color:var(--dim);font-style:italic;">
+        ${E?'Click "Generate description" to analyze this planet with AI…':'Haz clic en "Generar descripción" para analizar este planeta con IA…'}
+      </span>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD DE IMAGEN → PARÁMETROS ── -->
+  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;
+    padding:16px;margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">
+      📸 ${E?'Upload Planet Image → Extract Parameters':'Subir Imagen de Planeta → Extraer Parámetros'}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:12px;">
+      ${E?'Upload any planet image and AI will analyze it to estimate mineralogy, atmosphere and temperature, then apply them to the sliders.':'Sube cualquier imagen de planeta y la IA la analizará para estimar mineralogía, atmósfera y temperatura, y los aplicará a los sliders.'}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">
+      <!-- Upload zone -->
+      <div>
+        <div id="upload-zone" onclick="document.getElementById('img-upload').click()"
+          style="height:160px;border:1.5px dashed rgba(255,255,255,0.15);border-radius:8px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:8px;cursor:pointer;transition:all .2s;background:rgba(255,255,255,0.02);"
+          ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+          ondragleave="this.style.borderColor='rgba(255,255,255,0.15)'"
+          ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';handleImageDrop(event)">
+          <div style="font-size:28px;">🌍</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.5;">
+            ${E?'Click or drag & drop<br>any planet image':'Haz clic o arrastra<br>una imagen de planeta'}
+          </div>
+          <div style="font-size:9px;color:var(--dim);">JPG, PNG, WEBP</div>
+        </div>
+        <input type="file" id="img-upload" accept="image/*" style="display:none;"
+          onchange="handleImageUpload(this)">
+        <!-- Preview -->
+        <div id="upload-preview" style="display:none;margin-top:8px;">
+          <img id="preview-img" style="width:100%;height:120px;object-fit:cover;
+            border-radius:6px;border:0.5px solid var(--border);">
+        </div>
+      </div>
+      <!-- Resultado análisis -->
+      <div id="upload-result" style="min-height:160px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:9px;color:var(--dim);font-style:italic;
+          display:flex;align-items:center;justify-content:center;height:160px;">
+          ${E?'Analysis will appear here after uploading an image.':'El análisis aparecerá aquí después de subir una imagen.'}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Criaturas -->
+  <div class="label" style="margin-bottom:10px;">${t('creatureArt')}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">
+    ${creatures.map((cr,i)=>{
+      const imgId=`gal-cr-${i}`;
+      const cached=imgCache[cr.seed];
+      return`
+      <div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);">
+        <div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;
+          display:flex;align-items:center;justify-content:center;">
+          ${cached
+            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"/>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}',${cr.seed})"
+                class="btn btn-teal" style="font-size:10px;">
+                🎨 ${E?'Generate':'Generar'}
+              </button>`}
+        </div>
+        <div style="padding:8px 10px;">
+          <div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+</div>`;
 }
+
+// ─── Genera descripción científica del planeta con IA ─
+async function generatePlanetDescription(){
+  const E = lang==='en';
+  const el = document.getElementById('planet-desc-result');
+  if(!el) return;
+
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--muted);">
+    <div style="width:18px;height:18px;border:2px solid rgba(0,212,170,0.3);
+      border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <span style="font-size:10px;">${E?'Analyzing planet with AI…':'Analizando planeta con IA…'}</span>
+  </div>`;
+
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,pressure,gravity}=vals;
+  const score=Math.round(calcScore(vals)*100);
+
+  const prompt=E?`You are a planetary scientist. Analyze this alien planet with these parameters and write a vivid, scientifically-grounded description. Include: type of precipitation (rain, snow, or exotic minerals that fall), probability of meteorite impacts, seasonal cycles, geological activity, sky color and atmosphere, unique phenomena, and any other fascinating scientific facts. Be specific, use real chemistry and physics. Write 5-6 engaging paragraphs.
+
+Planet parameters:
+- Calcium: ${Ca}K ppm, Iron: ${Fe}K ppm, Silicon: ${Si}K ppm, Phosphorus: ${P}K ppm
+- Magnesium: ${Mg}K ppm, Copper: ${Cu} ppm, Sulfur: ${S} ppm, Nickel: ${Ni} ppm, Vanadium: ${V} ppm
+- O₂: ${O2}%, CO₂: ${CO2}%, H₂S: ${H2S}%, H₂O surface: ${H2O}%
+- Temperature: ${Temp}°C, pH: ${pH}, Pressure: ${pressure} atm, Gravity: ${gravity}g
+- Habitability score: ${score}/100
+
+Focus on: what falls from the sky, meteorite risk, volcanic activity, seasons, unique phenomena.`
+  :`Eres un científico planetario. Analiza este planeta alienígena con estos parámetros y escribe una descripción vívida y científicamente fundamentada. Incluye: tipo de precipitación (lluvia, nieve, o minerales exóticos que caen), probabilidad de impactos de meteoritos, ciclos estacionales, actividad geológica, color del cielo y atmósfera, fenómenos únicos y otros datos científicos fascinantes. Sé específico, usa química y física real. Escribe 5-6 párrafos atractivos.
+
+Parámetros del planeta:
+- Calcio: ${Ca}K ppm, Hierro: ${Fe}K ppm, Silicio: ${Si}K ppm, Fósforo: ${P}K ppm
+- Magnesio: ${Mg}K ppm, Cobre: ${Cu} ppm, Azufre: ${S} ppm, Níquel: ${Ni} ppm, Vanadio: ${V} ppm
+- O₂: ${O2}%, CO₂: ${CO2}%, H₂S: ${H2S}%, H₂O superficie: ${H2O}%
+- Temperatura: ${Temp}°C, pH: ${pH}, Presión: ${pressure} atm, Gravedad: ${gravity}g
+- Score de habitabilidad: ${score}/100
+
+Enfócate en: qué cae del cielo, riesgo de meteoritos, actividad volcánica, estaciones, fenómenos únicos.`;
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text||'';
+
+    // Formatear párrafos
+    const paragraphs = text.split('\n').filter(p=>p.trim().length>0);
+    el.innerHTML=`
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${paragraphs.map(p=>`
+          <p style="font-size:10px;color:rgba(255,255,255,0.70);
+            line-height:1.8;margin:0;">${p}</p>`).join('')}
+      </div>`;
+  } catch(err){
+    el.innerHTML=`<div style="font-size:10px;color:#F87171;">
+      ${E?'Could not connect to AI. Check your internet connection.':'No se pudo conectar con la IA. Verifica tu conexión.'}
+    </div>`;
+  }
+}
+
+// ─── Upload imagen → análisis con Claude Vision ───────
+function handleImageDrop(e){
+  const file = e.dataTransfer?.files?.[0];
+  if(file && file.type.startsWith('image/')) processUploadedImage(file);
+}
+
+function handleImageUpload(input){
+  const file = input.files?.[0];
+  if(file) processUploadedImage(file);
+}
+
+function processUploadedImage(file){
+  const E = lang==='en';
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    const base64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/jpeg';
+
+    // Mostrar preview
+    const prev = document.getElementById('upload-preview');
+    const img  = document.getElementById('preview-img');
+    if(prev&&img){ prev.style.display='block'; img.src=e.target.result; }
+
+    // Zona upload feedback
+    const zone = document.getElementById('upload-zone');
+    if(zone) zone.style.borderColor = 'var(--teal)';
+
+    // Resultado
+    const res = document.getElementById('upload-result');
+    if(!res) return;
+    res.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--muted);height:100%;justify-content:center;">
+      <div style="width:18px;height:18px;border:2px solid rgba(0,212,170,0.3);
+        border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <span style="font-size:10px;">${E?'Analyzing image with AI…':'Analizando imagen con IA…'}</span>
+    </div>`;
+
+    const prompt=E?`You are a planetary geologist analyzing an image of a planet. Based on the visual appearance (colors, surface texture, atmosphere, clouds, terrain), estimate the following parameters. Respond ONLY with valid JSON, no other text:
+{
+  "description": "2-sentence visual description of what you see",
+  "Ca": number (calcium ppm x1000, 1-200),
+  "Fe": number (iron ppm x1000, 1-200),
+  "Si": number (silicon ppm x1000, 50-400),
+  "P": number (phosphorus ppm x1000, 0.1-5),
+  "Mg": number (magnesium ppm x1000, 1-100),
+  "Cu": number (copper ppm, 1-300),
+  "S": number (sulfur ppm, 10-50000),
+  "O2": number (oxygen %, 0-35),
+  "CO2": number (CO2 %, 0-96),
+  "H2S": number (H2S %, 0-10),
+  "H2O": number (water surface %, 0-100),
+  "Temp": number (temperature °C, -200 to 500),
+  "pH": number (pH, 0-14),
+  "pressure": number (atmospheric pressure atm, 0.001-100),
+  "gravity": number (gravity g, 0.1-5),
+  "reasoning": "Brief scientific reasoning for your estimates based on the visual colors and features"
+}`
+    :`Eres un geólogo planetario analizando una imagen de un planeta. Basándote en la apariencia visual (colores, textura superficial, atmósfera, nubes, terreno), estima los siguientes parámetros. Responde SOLO con JSON válido, sin otro texto:
+{
+  "description": "Descripción visual de 2 frases de lo que ves",
+  "Ca": número (calcio ppm x1000, 1-200),
+  "Fe": número (hierro ppm x1000, 1-200),
+  "Si": número (silicio ppm x1000, 50-400),
+  "P": número (fósforo ppm x1000, 0.1-5),
+  "Mg": número (magnesio ppm x1000, 1-100),
+  "Cu": número (cobre ppm, 1-300),
+  "S": número (azufre ppm, 10-50000),
+  "O2": número (oxígeno %, 0-35),
+  "CO2": número (CO2 %, 0-96),
+  "H2S": número (H2S %, 0-10),
+  "H2O": número (agua superficie %, 0-100),
+  "Temp": número (temperatura °C, -200 a 500),
+  "pH": número (pH, 0-14),
+  "pressure": número (presión atmosférica atm, 0.001-100),
+  "gravity": número (gravedad g, 0.1-5),
+  "reasoning": "Razonamiento científico breve para tus estimaciones basado en los colores y características visuales"
+}`;
+
+    try{
+      const response = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:1000,
+          messages:[{
+            role:'user',
+            content:[
+              {type:'image', source:{type:'base64', media_type:mediaType, data:base64}},
+              {type:'text', text:prompt}
+            ]
+          }]
+        })
+      });
+
+      const data = await response.json();
+      const raw  = data.content?.[0]?.text||'{}';
+      let parsed;
+      try{
+        const clean = raw.replace(/```json|```/g,'').trim();
+        parsed = JSON.parse(clean);
+      } catch(e){
+        parsed = {};
+      }
+
+      if(!parsed.Ca && !parsed.Fe){
+        res.innerHTML=`<div style="font-size:10px;color:#F87171;">
+          ${E?'Could not parse planet parameters from image.':'No se pudieron extraer parámetros de la imagen.'}
+        </div>`;
+        return;
+      }
+
+      // Mostrar resultado con botón de aplicar
+      const paramKeys=['Ca','Fe','Si','P','Mg','Cu','S','O2','CO2','H2S','H2O','Temp','pH','pressure','gravity'];
+      window._pendingParams = parsed;
+
+      res.innerHTML=`
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <!-- Descripción visual -->
+          ${parsed.description?`
+          <div style="font-size:9px;color:rgba(255,255,255,0.55);line-height:1.6;
+            padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;font-style:italic;">
+            "${parsed.description}"
+          </div>`:''}
+
+          <!-- Parámetros estimados -->
+          <div style="font-size:8px;font-weight:700;letter-spacing:.10em;
+            color:rgba(255,255,255,0.30);text-transform:uppercase;margin-top:2px;">
+            ${E?'Estimated parameters:':'Parámetros estimados:'}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+            ${paramKeys.filter(k=>parsed[k]!==undefined).map(k=>`
+              <div style="display:flex;justify-content:space-between;padding:3px 6px;
+                background:rgba(255,255,255,0.025);border-radius:3px;">
+                <span style="font-size:8px;color:rgba(255,255,255,0.35);
+                  font-family:'JetBrains Mono',monospace;">${k}</span>
+                <span style="font-size:8px;color:rgba(255,255,255,0.70);
+                  font-family:'JetBrains Mono',monospace;font-weight:600;">
+                  ${typeof parsed[k]==='number'?parsed[k].toFixed(2):parsed[k]}
+                </span>
+              </div>`).join('')}
+          </div>
+
+          <!-- Razonamiento -->
+          ${parsed.reasoning?`
+          <div style="font-size:8.5px;color:rgba(255,255,255,0.40);line-height:1.6;
+            padding:7px;background:rgba(0,212,170,0.04);border:0.5px solid rgba(0,212,170,0.15);
+            border-radius:5px;">
+            🔬 ${parsed.reasoning}
+          </div>`:''}
+
+          <!-- Botón aplicar -->
+          <button onclick="applyImageParams()"
+            class="btn btn-teal" style="font-size:10px;font-weight:700;padding:8px;margin-top:4px;">
+            ⚡ ${E?'Apply parameters to sliders →':'Aplicar parámetros a los sliders →'}
+          </button>
+        </div>`;
+
+    } catch(err){
+      res.innerHTML=`<div style="font-size:10px;color:#F87171;">
+        ${E?'Error analyzing image. Check your connection.':'Error al analizar la imagen. Verifica tu conexión.'}
+      </div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── Aplica los parámetros extraídos de la imagen ─────
+function applyImageParams(){
+  const p = window._pendingParams;
+  if(!p) return;
+  const E = lang==='en';
+  const keys=['Ca','Fe','Si','P','Mg','Cu','S','Ni','V','O2','CO2','H2S','H2O','Temp','pH','pressure','gravity'];
+  keys.forEach(k=>{
+    if(p[k]!==undefined){
+      const m=SLIDERS.find(s=>s.sym===k);
+      if(!m) return;
+      const v=Math.max(m.min, Math.min(m.max, parseFloat(p[k])||0));
+      vals[k]=v;
+      const sl=document.getElementById('sl-'+k);
+      if(sl){
+        sl.value=v;
+        const pct=Math.round((v-m.min)/(m.max-m.min)*100);
+        sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+      }
+      const vl=document.getElementById('vl-'+k);
+      if(vl){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+    }
+  });
+  if(threeState.update) threeState.update(vals);
+  updatePlanetPanel();
+  // Feedback visual
+  const btn = document.querySelector('#upload-result button');
+  if(btn){
+    btn.textContent = E?'✓ Applied!':'✓ Aplicado!';
+    btn.style.background='rgba(0,212,170,0.2)';
+    setTimeout(()=>{
+      btn.textContent = E?'⚡ Apply parameters to sliders →':'⚡ Aplicar parámetros a los sliders →';
+      btn.style.background='';
+    }, 2000);
+  }
+}
+
+
 
 // ═══════════════════════════════════════════════════════
 // ACCIONES
@@ -4767,8 +5192,9 @@ function initSurface2(){
     return;
   }
   const T=window.THREE;
-  const W=canvas.parentElement.clientWidth||900;
-  const H=canvas.parentElement.clientHeight||560;
+  const container2 = canvas.parentElement;
+  const W=container2.clientWidth||900;
+  const H=container2.clientHeight||560;
   canvas.width=W; canvas.height=H;
 
   const scene=new T.Scene();
@@ -4776,8 +5202,15 @@ function initSurface2(){
   const renderer=new T.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true});
   renderer.setSize(W,H);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.toneMapping=T.NoToneMapping; // handled in shader
+  renderer.toneMapping=T.NoToneMapping;
   renderer.setClearColor(0x000000);
+
+  // ResizeObserver para superficie
+  const ro2 = new ResizeObserver(()=>{
+    const nW=container2.clientWidth, nH=container2.clientHeight;
+    if(nW>0&&nH>0){ renderer.setSize(nW,nH); camera.aspect=nW/nH; camera.updateProjectionMatrix(); }
+  });
+  ro2.observe(container2);
 
   const col=getSurfaceColors(vals);
 
@@ -4932,6 +5365,7 @@ function initSurface2(){
     theta,phi,radius,target,updateCam,
     cleanup:()=>{
       cancelAnimationFrame(animId);
+      ro2.disconnect();
       canvas.removeEventListener('mousedown',onMD);
       window.removeEventListener('mouseup',onMU);
       window.removeEventListener('mousemove',onMM);
@@ -5695,8 +6129,9 @@ function init3DCreature(cr){
   const canvas = document.getElementById('c3d-canvas');
   if(!canvas||!window.THREE){ return; }
   const T  = window.THREE;
-  const W  = canvas.parentElement.clientWidth  || 560;
-  const H  = canvas.parentElement.clientHeight || 400;
+  const container3 = canvas.parentElement;
+  const W  = container3.clientWidth  || 560;
+  const H  = container3.clientHeight || 400;
   canvas.width=W; canvas.height=H;
 
   // Cleanup anterior
@@ -5716,6 +6151,13 @@ function init3DCreature(cr){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.toneMapping = T.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
+
+  // ResizeObserver criatura 3D
+  const ro3 = new ResizeObserver(()=>{
+    const nW=container3.clientWidth, nH=container3.clientHeight;
+    if(nW>0&&nH>0){ renderer.setSize(nW,nH); camera.aspect=nW/nH; camera.updateProjectionMatrix(); }
+  });
+  ro3.observe(container3);
 
   // Stars
   const starPts = new Float32Array(600*3);
@@ -5808,6 +6250,7 @@ function init3DCreature(cr){
   c3dState={scene,renderer,camera,creature,
     cleanup:()=>{
       cancelAnimationFrame(animId);
+      ro3.disconnect();
       canvas.removeEventListener('mousedown',onMD);
       window.removeEventListener('mouseup',onMU);
       window.removeEventListener('mousemove',onMM);
@@ -5970,6 +6413,59 @@ function c3dExplode(){
   });
 }
 
+
+
+// ═══════════════════════════════════════════════════════
+// DRAG RESIZE — Paneles redimensionables
+// ═══════════════════════════════════════════════════════
+window._dragging = false;
+
+function startDrag(e, side){
+  e.preventDefault();
+  window._dragging = true;
+  const startX   = e.clientX;
+  const colLeft  = document.getElementById('col-left');
+  const colRight = document.getElementById('col-right');
+  if(!colLeft||!colRight) return;
+
+  const startLeft  = colLeft.offsetWidth;
+  const startRight = colRight.offsetWidth;
+  const handle = document.getElementById('drag-' + side);
+  if(handle) handle.style.background = 'rgba(0,212,170,0.35)';
+
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  const onMove = (ev)=>{
+    const dx = ev.clientX - startX;
+    if(side === 'left'){
+      const nW = Math.max(140, Math.min(340, startLeft + dx));
+      colLeft.style.width = nW + 'px';
+    } else {
+      const nW = Math.max(160, Math.min(360, startRight - dx));
+      colRight.style.width = nW + 'px';
+    }
+  };
+
+  const onUp = ()=>{
+    window._dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if(handle) handle.style.background = 'transparent';
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup',   onUp);
+    // Notificar resize al globo Three.js
+    const col2 = document.getElementById('col-center');
+    if(col2 && threeState.renderer){
+      const nW=col2.clientWidth, nH=col2.clientHeight;
+      threeState.renderer.setSize(nW, nH);
+      if(threeState.cam){ threeState.cam.aspect=nW/nH; threeState.cam.updateProjectionMatrix(); }
+    }
+  };
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup',   onUp);
+}
 
 buildTabBtns();
 renderMain();
