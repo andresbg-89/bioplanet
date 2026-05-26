@@ -1391,6 +1391,452 @@ function renderMain(){
 // ─── PLANET TAB ──────────────────────────────────────
 function renderPlanet(el){
   const E = lang==='en';
+
+  el.innerHTML=`
+<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+  <!-- ══ FILA SUPERIOR — 3 columnas ══ -->
+  <div style="display:grid;grid-template-columns:210px 1fr 200px;flex:1;min-height:0;overflow:hidden;">
+
+    <!-- COLUMNA 1 — Sliders -->
+    <div class="scroll" style="border-right:1px solid rgba(255,255,255,0.06);
+      padding:14px 12px;background:#070C14;">
+
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.30);
+        margin-bottom:12px;letter-spacing:.14em;text-transform:uppercase;">
+        ${E?'Planet Composition':'Composición del Planeta'}
+      </div>
+
+      <!-- Presets -->
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:14px;">
+        ${Object.keys(PRESETS).map(name=>`
+          <button onclick="applyPresetDash('${name}')"
+            style="font-size:8px;padding:3px 9px;border-radius:3px;cursor:pointer;
+              border:0.5px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);
+              color:rgba(255,255,255,0.45);transition:all .15s;font-family:inherit;"
+            onmouseover="this.style.background='rgba(255,255,255,0.10)';this.style.color='rgba(255,255,255,0.90)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='rgba(255,255,255,0.45)'">
+            ${name}
+          </button>`).join('')}
+      </div>
+
+      <!-- Sliders por grupo -->
+      ${(()=>{
+        const groups={};
+        SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+        const groupLabels={
+          Suelo:E?'SOIL (ppm × 1000)':'SUELO (ppm × 1000)',
+          Atmósfera:E?'ATMOSPHERE (%)':'ATMÓSFERA (%)',
+          Entorno:E?'PHYSICAL CONDITIONS':'CONDICIONES FÍSICAS',
+        };
+        return Object.entries(groups).map(([g,ms])=>`
+          <div style="margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+                color:rgba(255,255,255,0.22);white-space:nowrap;">${groupLabels[g]||g}</div>
+              <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+            </div>
+            ${ms.map(m=>{
+              const dec=m.step<1?(m.step<0.01?4:2):0;
+              return`
+              <div style="margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                  <div style="display:flex;gap:5px;align-items:baseline;">
+                    <span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.68);
+                      font-family:'JetBrains Mono',monospace;">${m.sym}</span>
+                    <span style="font-size:7.5px;color:rgba(255,255,255,0.20);">${m.label}</span>
+                  </div>
+                  <span id="vl-${m.sym}" style="font-size:8.5px;color:rgba(255,255,255,0.55);
+                    font-family:'JetBrains Mono',monospace;">${vals[m.sym].toFixed(dec)}</span>
+                </div>
+                <input type="range" min="${m.min}" max="${m.max}" step="${m.step}"
+                  value="${vals[m.sym]}" id="sl-${m.sym}"
+                  oninput="setValDash('${m.sym}',parseFloat(this.value))"
+                  style="width:100%;height:3px;cursor:pointer;border-radius:2px;
+                    outline:none;-webkit-appearance:none;appearance:none;
+                    background:rgba(255,255,255,0.08);"/>
+              </div>`;
+            }).join('')}
+          </div>`).join('');
+      })()}
+      <style>
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 0 0 2px rgba(255,255,255,0.10);}
+        input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 0 3px rgba(255,255,255,0.22);}
+        input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#fff;border:none;cursor:pointer;}
+      </style>
+    </div>
+
+    <!-- COLUMNA 2 — Globo 3D -->
+    <div style="position:relative;background:#000;border-right:1px solid rgba(255,255,255,0.06);">
+      <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
+
+      <!-- HUD top-left -->
+      <div class="hud-overlay" style="top:10px;left:12px;">
+        <div class="hud-data" style="font-size:9px;">
+          <span class="hud-label">${t('codeId')} </span>
+          <span id="hud-code" style="color:rgba(0,212,170,0.8);">${planetCode(vals)}</span><br>
+          <span class="hud-label">T° </span><span id="hud-temp">${vals.Temp>0?'+':''}${vals.Temp}°C</span><br>
+          <span class="hud-label">P </span><span id="hud-pres">${vals.pressure||1} atm</span><br>
+          <span class="hud-label">G </span><span id="hud-grav">${vals.gravity}g</span>
+        </div>
+      </div>
+
+      <!-- HUD bottom-left: minerales -->
+      <div class="hud-overlay" style="bottom:38px;left:12px;">
+        <div class="hud-data" style="font-size:9px;">
+          <span class="hud-label">Ca </span>${vals.Ca}K &nbsp;<span class="hud-label">Fe </span>${vals.Fe}K<br>
+          <span class="hud-label">Si </span>${vals.Si}K &nbsp;<span class="hud-label">Mg </span>${vals.Mg}K<br>
+          <span class="hud-label">O₂ </span>${vals.O2}% &nbsp;<span class="hud-label">H₂O </span>${vals.H2O}%
+        </div>
+      </div>
+
+      <!-- Bottom bar -->
+      <div style="position:absolute;bottom:8px;left:12px;font-size:7.5px;
+        color:rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;">
+        ${t('rotate')}
+      </div>
+      <div style="position:absolute;bottom:8px;right:12px;">
+        <a href="nature-connections.html" target="_blank"
+          style="font-size:8px;color:rgba(0,212,170,0.4);text-decoration:none;
+          font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.05);
+          border:0.5px solid rgba(0,212,170,0.15);padding:2px 7px;border-radius:3px;">
+          🕸
+        </a>
+      </div>
+    </div>
+
+    <!-- COLUMNA 3 — Panel derecho estático -->
+    <div class="scroll" style="background:#070C14;padding:12px 11px;
+      display:flex;flex-direction:column;gap:0;">
+
+      <!-- BIOCOMPAT score -->
+      <div id="right-biocompat" style="margin-bottom:14px;"></div>
+
+      <!-- Análogos terrestres -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
+          display:flex;align-items:center;gap:6px;">
+          ${t('analogsTitle')}
+          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+        </div>
+        <div id="right-analogs"></div>
+      </div>
+
+      <!-- Ciclos minerales -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
+          display:flex;align-items:center;gap:6px;">
+          ${t('cyclesTitle')}
+          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+        </div>
+        <div id="right-cycles"></div>
+      </div>
+
+      <!-- Parámetros estelares -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+          color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:8px;
+          display:flex;align-items:center;gap:6px;">
+          ${t('stellarTitle')}
+          <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+        </div>
+        <div id="right-stellar"></div>
+      </div>
+
+      <!-- Botón crear -->
+      <div style="margin-top:auto;padding-top:8px;">
+        <button onclick="createPlanet()" class="btn btn-teal"
+          style="width:100%;font-size:10px;font-weight:700;padding:8px;">
+          ✦ ${E?'Create Planet':'Crear Planeta'}
+        </button>
+      </div>
+    </div>
+
+  </div><!-- fin fila superior -->
+
+  <!-- ══ FILA INFERIOR — Rasgos emergentes dinámicos ══ -->
+  <div id="bottom-panel" style="flex:0 0 auto;border-top:1px solid rgba(255,255,255,0.06);
+    background:rgba(4,8,16,0.98);padding:10px 16px;overflow-y:auto;max-height:38%;">
+  </div>
+
+</div>`;
+
+  setTimeout(()=>{
+    initThree('planet3d');
+    SLIDERS.forEach(m=>{
+      const sl=document.getElementById('sl-'+m.sym);
+      if(sl){
+        const pct=Math.round((vals[m.sym]-m.min)/(m.max-m.min)*100);
+        sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+      }
+    });
+  }, 60);
+  updatePlanetPanel();
+}
+
+// ─── Actualiza panel derecho + franja inferior en tiempo real ──
+function updatePlanetPanel(){
+  const E      = lang==='en';
+  const score  = calcScore(vals);
+  const sc     = Math.round(score*100);
+  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+  const cr0    = makeCreatureI18n(vals, generateCreatureSeed(vals,0));
+  const code   = planetCode(vals);
+
+  // ── 1. HUD del globo (sin tocar canvas) ────────────
+  const safe=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
+  safe('hud-code', code);
+  safe('hud-temp', (vals.Temp>0?'+':'')+vals.Temp+'°C');
+  safe('hud-pres', (vals.pressure||1)+' atm');
+  safe('hud-grav', vals.gravity+'g');
+
+  // ── 2. Tags ─────────────────────────────────────────
+  const tags=[];
+  if(vals.O2>15)               tags.push({l:E?'With O₂':'Con O₂',       c:'#00D4AA'});
+  if(vals.H2O>50)              tags.push({l:E?'Oceanic':'Oceánico',      c:'#60A5FA'});
+  if(vals.H2S>2||vals.S>5000)  tags.push({l:E?'Sulfuric':'Sulfúrico',    c:'#FBBF24'});
+  if(vals.Temp<-20)            tags.push({l:E?'Glacial':'Glacial',       c:'#60A5FA'});
+  if(vals.Ca>30&&vals.CO2>0.05)tags.push({l:E?'Calcareous':'Calcáreo',   c:'#4ADE80'});
+  if(vals.CO2>5)               tags.push({l:E?'High CO₂':'CO₂ alto',    c:'#F87171'});
+  if(vals.Fe>55)               tags.push({l:E?'Iron-rich':'Ferroso',     c:'#F87171'});
+  if(vals.Temp>50)             tags.push({l:E?'Volcanic':'Volcánico',    c:'#F87171'});
+
+  // ── 3. BIOCOMPAT score (columna derecha top) ────────
+  const bc=document.getElementById('right-biocompat');
+  if(bc) bc.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="position:relative;width:56px;height:56px;flex-shrink:0;">
+        <svg viewBox="0 0 56 56" width="56" height="56" style="transform:rotate(-90deg);">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
+          <circle cx="28" cy="28" r="22" fill="none" stroke="${scoreCol}" stroke-width="5"
+            stroke-dasharray="${Math.round(sc*1.382)} 138"
+            stroke-linecap="round" style="transition:stroke-dasharray .4s ease;"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;">
+          <div style="font-size:14px;font-weight:900;color:${scoreCol};
+            font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
+          <div style="font-size:5px;color:${scoreCol};letter-spacing:.05em;opacity:.7;">BIOCOMPAT</div>
+        </div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,0.80);
+          margin-bottom:5px;line-height:1.4;">
+          ${score>=0.8?(E?'High probability of complex life.':'Alta probabilidad de vida compleja.')
+           :score>=0.6?(E?'Moderate conditions.':'Condiciones moderadas.')
+           :score>=0.4?(E?'Marginal — extremophiles.':'Marginal — extremófilos.')
+           :score>=0.2?(E?'Extreme — minimal life.':'Entorno extremo.')
+           :(E?'Uninhabitable.':'Inhabitable.')}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">
+          ${tags.slice(0,4).map(tg=>`
+            <span style="font-size:7px;padding:1px 6px;border-radius:99px;
+              background:${tg.c}12;border:0.5px solid ${tg.c}35;
+              color:${tg.c};font-weight:600;">${tg.l}</span>`).join('')
+          ||`<span style="font-size:8px;color:rgba(255,255,255,0.18);">—</span>`}
+        </div>
+      </div>
+    </div>`;
+
+  // ── 4. Análogos terrestres ───────────────────────────
+  const an=document.getElementById('right-analogs');
+  if(an){
+    const analogs=[
+      {cond:vals.O2>15&&vals.Ca>20,  n:'Homo sapiens',         d:E?'High Ca+O₂':'Alta Ca+O₂',    c:'#F87171'},
+      {cond:vals.H2S>1&&vals.O2<5,   n:'Riftia pachyptila',    d:E?'H₂S vent':'Fumarola H₂S',    c:'#FBBF24'},
+      {cond:vals.Temp<=-20,          n:'Dissostichus mawsoni', d:E?'AFP antifreeze':'AFP antárt.',c:'#60A5FA'},
+      {cond:vals.Si>100&&vals.H2O>10,n:'Thalassiosira sp.',    d:E?'Siliceous diatom':'Diatomea', c:'#A78BFA'},
+      {cond:vals.V>200&&vals.H2O>20, n:'Ascidia ceratodes',    d:E?'V → green blood':'Vanadina',  c:'#4ADE80'},
+      {cond:vals.Cu>60&&vals.Fe<20,  n:'Octopus vulgaris',     d:E?'Cu → blue blood':'Cu azul',   c:'#60A5FA'},
+      {cond:vals.pH<3,               n:'Picrophilus torridus', d:'pH 2',                           c:'#F87171'},
+      {cond:vals.Temp>80,            n:'Pyrolobus fumarii',    d:'121°C',                          c:'#FBBF24'},
+    ].filter(a=>a.cond).slice(0,5);
+    an.innerHTML = analogs.length
+      ? analogs.map(a=>`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <div style="width:5px;height:5px;border-radius:50%;flex-shrink:0;
+            background:${a.c};box-shadow:0 0 3px ${a.c};"></div>
+          <div>
+            <div style="font-size:8.5px;font-style:italic;color:rgba(255,255,255,0.65);
+              font-weight:600;">${a.n}</div>
+            <div style="font-size:7.5px;color:rgba(255,255,255,0.28);">${a.d}</div>
+          </div>
+        </div>`).join('')
+      : `<div style="font-size:8px;color:rgba(255,255,255,0.18);">${t('noAnalogs')}</div>`;
+  }
+
+  // ── 5. Ciclos minerales ──────────────────────────────
+  const cy=document.getElementById('right-cycles');
+  if(cy) cy.innerHTML=[
+    {n:t('cycles')[0],a:true,              c:'#4ADE80'},
+    {n:t('cycles')[1],a:vals.O2>0&&vals.H2O>0,c:'#60A5FA'},
+    {n:t('cycles')[2],a:vals.P>=0.1,       c:'#FBBF24'},
+    {n:t('cycles')[3],a:vals.Fe>=10,        c:'#F87171'},
+    {n:t('cycles')[4],a:vals.Ca>=10,        c:'#FBBF24'},
+    {n:t('cycles')[5],a:vals.H2S>0.1||vals.S>500,c:'#A78BFA'},
+    {n:t('cycles')[6],a:vals.V>100,         c:'#4ADE80'},
+  ].map(({n,a,c})=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div style="width:5px;height:5px;border-radius:50%;flex-shrink:0;
+        background:${a?c:'rgba(255,255,255,0.08)'};
+        ${a?`box-shadow:0 0 3px ${c};`:''}"></div>
+      <span style="font-size:8.5px;color:${a?'rgba(255,255,255,0.62)':'rgba(255,255,255,0.20)'};">
+        ${n}</span>
+      ${a?`<span style="font-size:7px;color:rgba(255,255,255,0.22);margin-left:auto;">●</span>`:''}
+    </div>`).join('');
+
+  // ── 6. Parámetros estelares ──────────────────────────
+  const st=document.getElementById('right-stellar');
+  if(st) st.innerHTML=[
+    {l:t('stellarType'),   v:vals.Temp>50?'M-dwarf':vals.O2>15?'G2V (Sol)':'K-type'},
+    {l:t('habitableZone'), v:vals.Temp>=-20&&vals.Temp<=50?(E?'Yes ✓':'Sí ✓'):(E?'No ✗':'No ✗')},
+    {l:t('atmosphere'),    v:vals.pressure>0.5?t('dense'):vals.pressure>0.1?t('thin'):t('noAtm')},
+    {l:t('magnetosphere'), v:vals.Fe>30?t('strong'):vals.Fe>10?t('weak'):t('noField')},
+  ].map(({l,v})=>`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+      <span style="font-size:8px;color:rgba(255,255,255,0.28);">${l}</span>
+      <span style="font-size:8.5px;font-weight:600;color:rgba(255,255,255,0.62);
+        font-family:'JetBrains Mono',monospace;">${v}</span>
+    </div>`).join('');
+
+  // ── 7. FRANJA INFERIOR — Rasgos emergentes ───────────
+  const bp=document.getElementById('bottom-panel');
+  if(!bp) return;
+
+  // Confianza
+  const skConf=vals.Ca>=30&&vals.P>=0.5?0.97:vals.Si>=80?0.94:vals.H2S>2?0.91:0.82;
+  const blConf=vals.Fe>=30&&vals.O2>=2?0.97:vals.Cu>=60?0.95:vals.V>=200?0.93:0.88;
+  const mtConf=vals.O2>=15?0.97:vals.H2S>=1?0.94:vals.Mg>=12?0.91:0.85;
+  const nvConf=vals.O2>=15&&vals.Ca>=25?0.97:vals.Ca>=10?0.91:0.78;
+  const thConf=vals.O2>=18?0.95:vals.Temp<=-10?0.93:vals.Temp>=80?0.90:0.87;
+  const szConf=0.90;
+
+  // Detalles científicos
+  const skDetail=cr0.skeleton.toLowerCase().includes('calcic')||cr0.skeleton.toLowerCase().includes('endos')
+    ?'Ca₁₀(PO₄)₆(OH)₂'
+    :cr0.skeleton.toLowerCase().includes('silic')
+    ?'SiO₂ amorfo, diatomeas'
+    :cr0.skeleton.toLowerCase().includes('sulfur')
+    ?'FeS₂ exoesqueleto'
+    :'Hidrostático / Quitina';
+  const blDetail=cr0.blood.toLowerCase().includes('roja')||cr0.blood.toLowerCase().includes('red')
+    ?(E?'Fe²⁺ in heme group':'Fe²⁺ en grupo hemo')
+    :cr0.blood.toLowerCase().includes('cyan')
+    ?(E?'Cu²⁺ hemocyanin':'Cu²⁺ hemocianina')
+    :cr0.blood.toLowerCase().includes('vanad')
+    ?(E?'V³⁺ vanadocytes':'V³⁺ vanadocitos')
+    :(E?'No circulatory fluid':'Sin fluido circ.');
+  const mtDetail=cr0.meta.toLowerCase().includes('aerob')
+    ?(E?'36 ATP/glucose':'36 ATP/glucosa')
+    :cr0.meta.toLowerCase().includes('foto')||cr0.meta.toLowerCase().includes('photo')
+    ?(E?'Mg-chlorophyll + CO₂':'Clorofila-Mg + CO₂')
+    :cr0.meta.toLowerCase().includes('quimio')||cr0.meta.toLowerCase().includes('chemo')
+    ?(E?'H₂S → sulfate + E':'H₂S → sulfato + E')
+    :(E?'Anaerobic ferm.':'Fermentación anaeróbica');
+  const nvDetail=cr0.nervous.toLowerCase().includes('cerebro')||cr0.nervous.toLowerCase().includes('brain')
+    ?(E?'~86 billion neurons':'~86 mil millones neur.')
+    :cr0.nervous.toLowerCase().includes('ganglio')
+    ?(E?'Distributed ganglia':'Ganglios distribuidos')
+    :(E?'Diffuse network':'Red difusa');
+  const thDetail=cr0.thermo.toLowerCase().includes('homeo')
+    ?(E?'Constant internal T°':'T° interna constante')
+    :cr0.thermo.toLowerCase().includes('crio')
+    ?(E?'AFP antifreeze':'AFP anticongelantes')
+    :cr0.thermo.toLowerCase().includes('termo')||cr0.thermo.toLowerCase().includes('thermo')
+    ?(E?'Proteins >100°C':'Proteínas >100°C')
+    :(E?'T° = environment':'Temperatura = ambiente');
+
+  // Descripción ser vivo
+  const {O2,H2S,Ca,Fe,Mg,P,H2O,Temp,pH,S}=vals;
+  const lifeDesc=H2S>4||S>10000
+    ?(E?`Sulfuric env. (H₂S ${H2S}%): chemosynthetic organisms, acid-resistant exoskeleton, pH ${pH} membranes.`
+       :`Entorno sulfúrico (H₂S ${H2S}%): organismos quimiosintéticos, exoesqueleto ácido-resistente, membranas pH ${pH}.`)
+    :Temp<-30
+    ?(E?`Extreme cold (${Temp}°C): AFP antifreeze proteins, slowed metabolism, geothermal vent ecosystems.`
+       :`Frío extremo (${Temp}°C): proteínas AFP anticongelantes, metabolismo ralentizado, ecosistemas en fumarolas.`)
+    :O2>18&&Ca>20&&P>0.5
+    ?(E?`Ideal conditions (O₂ ${O2}%, Ca ${Ca}K, P ${P}K): complex multicellular life, calcic endoskeleton, centralized brain, 36 ATP aerobic metabolism.`
+       :`Condiciones ideales (O₂ ${O2}%, Ca ${Ca}K, P ${P}K): vida multicelular compleja, endoesqueleto calcico, cerebro centralizado, metabolismo aeróbico 36 ATP.`)
+    :Temp>60
+    ?(E?`High temp (${Temp}°C): thermostable extremophiles only, heat-resistant proteins, volcanic ecosystems.`
+       :`Alta temperatura (${Temp}°C): solo extremófilos termoestables, proteínas resistentes al calor, ecosistemas volcánicos.`)
+    :score<0.3
+    ?(E?`Only simple/microbial life possible. Score: ${sc}%.`
+       :`Solo vida simple o microbiana posible. Score: ${sc}%.`)
+    :(E?`Moderate conditions (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%): diverse multicellular life. Score: ${sc}%.`
+       :`Condiciones moderadas (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%): vida multicelular diversa. Score: ${sc}%.`);
+
+  const traits=[
+    {cat:E?'SKELETON':'ESQUELETO',       v:cr0.skeleton, detail:skDetail, conf:skConf},
+    {cat:E?'CIRCULATORY':'CIRCULATORIO', v:cr0.blood,    detail:blDetail, conf:blConf},
+    {cat:E?'METABOLISM':'METABOLISMO',   v:cr0.meta,     detail:mtDetail, conf:mtConf},
+    {cat:E?'NERVOUS':'NERVIOSO',         v:cr0.nervous,  detail:nvDetail, conf:nvConf},
+    {cat:E?'THERMOREG.':'TERMORREGUL.',  v:cr0.thermo,   detail:thDetail, conf:thConf},
+    {cat:E?'SIZE':'TAMAÑO',             v:cr0.size,     detail:cr0.loco, conf:szConf},
+  ];
+
+  bp.innerHTML=`
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;">
+
+      <!-- Título + descripción -->
+      <div style="min-width:0;">
+        <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+          color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px;">
+          ${E?'Emerging traits — updates in real time':'Rasgos emergentes — tiempo real'}
+        </div>
+        <!-- Grid de rasgos -->
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:10px;">
+          ${traits.map(tr=>`
+            <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.07);
+              border-radius:5px;padding:6px 7px;">
+              <div style="font-size:6.5px;font-weight:700;letter-spacing:.10em;
+                color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:3px;">
+                ${tr.cat}
+              </div>
+              <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.78);
+                margin-bottom:2px;line-height:1.3;">${tr.v.split(' ').slice(0,2).join(' ')}</div>
+              <div style="font-size:7.5px;color:rgba(255,255,255,0.28);
+                margin-bottom:5px;line-height:1.4;">${tr.detail}</div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <div style="flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;">
+                  <div style="height:100%;width:${Math.round(tr.conf*100)}%;
+                    background:rgba(255,255,255,0.35);border-radius:1px;
+                    transition:width .3s ease;"></div>
+                </div>
+                <span style="font-size:6.5px;color:rgba(255,255,255,0.30);
+                  font-family:'JetBrains Mono',monospace;">
+                  ${tr.conf.toFixed(2)}
+                </span>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Descripción del ser vivo -->
+      <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
+        border-radius:6px;padding:10px 12px;min-width:240px;max-width:320px;flex-shrink:0;">
+        <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+          color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:7px;">
+          🧬 ${E?'Probable life':'Ser vivo probable'}
+        </div>
+        <div style="font-size:9px;color:rgba(255,255,255,0.48);line-height:1.75;">
+          ${lifeDesc}
+        </div>
+        <button onclick="switchTab('creatures')"
+          style="margin-top:10px;width:100%;padding:5px;border-radius:5px;cursor:pointer;
+            font-family:inherit;border:0.5px solid rgba(255,255,255,0.12);
+            background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.50);
+            font-size:8px;font-weight:600;letter-spacing:.04em;transition:all .2s;"
+          onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.85)'"
+          onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='rgba(255,255,255,0.50)'">
+          ${E?'Full creature description ↗':'Descripción completa del ser vivo ↗'}
+        </button>
+      </div>
+
+    </div>`;
+}
   el.innerHTML=`
 <div style="display:grid;grid-template-columns:210px 1fr 290px;height:100%;overflow:hidden;">
 
@@ -1532,294 +1978,6 @@ function renderPlanet(el){
   }, 60);
   updatePlanetPanel();
 }
-
-// ─── Actualiza HUD + panel derecho en tiempo real ─────
-function updatePlanetPanel(){
-  const E    = lang==='en';
-  const score= calcScore(vals);
-  const sc   = Math.round(score*100);
-  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
-  const scoreLbl = score>=0.8?(E?'HABITABLE':'HABITABLE')
-    :score>=0.6?(E?'MODERATE':'MODERADO')
-    :score>=0.4?(E?'MARGINAL':'MARGINAL')
-    :score>=0.2?(E?'EXTREME':'EXTREMO')
-    :(E?'HOSTILE':'INHÓSPITO');
-  const cr0  = makeCreatureI18n(vals, generateCreatureSeed(vals,0));
-  const code = planetCode(vals);
-
-  // ── Actualizar HUD del globo (sin tocar el canvas) ──
-  const safe=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
-  safe('hud-code', code);
-  safe('hud-temp', (vals.Temp>0?'+':'')+vals.Temp+'°C');
-  safe('hud-pres', (vals.pressure||1)+' atm');
-  safe('hud-sc',   sc);
-  safe('hud-lbl',  'BIOCOMPAT');
-  safe('hud-o2',   vals.O2+'%');
-  safe('hud-h2o',  vals.H2O+'%');
-  safe('hud-ph',   vals.pH);
-  const box=document.getElementById('hud-score-box');
-  if(box){box.style.background=`${scoreCol}18`;box.style.borderColor=`${scoreCol}40`;}
-  const scEl=document.getElementById('hud-sc');
-  if(scEl)scEl.style.color=scoreCol;
-  const lblEl=document.getElementById('hud-lbl');
-  if(lblEl)lblEl.style.color=scoreCol;
-
-  // ── Actualizar rasgos base en centro inferior ────────
-  const ct=document.getElementById('center-traits');
-  if(ct){
-    ct.innerHTML=`
-      <div style="font-size:7px;font-weight:700;letter-spacing:.12em;
-        color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:6px;">
-        ${E?'Main organism traits':'Rasgos — organismo principal'}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-        ${[
-          {l:E?'Skeleton':'Esqueleto',   v:cr0.skeleton},
-          {l:E?'Blood':'Sangre',         v:cr0.blood},
-          {l:E?'Metabolism':'Metabolismo',v:cr0.meta},
-          {l:E?'Nervous':'Nervioso',     v:cr0.nervous},
-          {l:E?'Thermoreg.':'Termoreg.', v:cr0.thermo},
-          {l:E?'Size':'Tamaño',          v:cr0.size},
-        ].map(({l,v})=>`
-          <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.06);
-            border-radius:4px;padding:4px 6px;">
-            <div style="font-size:7px;color:rgba(255,255,255,0.22);text-transform:uppercase;
-              letter-spacing:.06em;margin-bottom:1px;">${l}</div>
-            <div style="font-size:8px;color:rgba(255,255,255,0.65);font-weight:500;
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.split(' ').slice(0,3).join(' ')}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  // ── Tags de condición ────────────────────────────────
-  const tags=[];
-  if(vals.O2>15)               tags.push({l:E?'With O₂':'Con O₂',        c:'#00D4AA'});
-  if(vals.H2O>50)              tags.push({l:E?'Oceanic':'Oceánico',       c:'#60A5FA'});
-  if(vals.H2S>2||vals.S>5000)  tags.push({l:E?'Sulfuric':'Sulfúrico',     c:'#FBBF24'});
-  if(vals.Temp<-20)            tags.push({l:E?'Glacial':'Glacial',        c:'#60A5FA'});
-  if(vals.Ca>30&&vals.CO2>0.05)tags.push({l:E?'Calcareous':'Calcáreo',    c:'#4ADE80'});
-  if(vals.CO2>5)               tags.push({l:E?'High CO₂':'CO₂ alto',     c:'#F87171'});
-  if(vals.Fe>55)               tags.push({l:E?'Iron-rich':'Ferroso',      c:'#F87171'});
-  if(vals.Temp>50)             tags.push({l:E?'Volcanic':'Volcánico',     c:'#F87171'});
-  if(vals.Mg>25&&vals.O2>10)   tags.push({l:E?'Photosynthesis':'Fotosíntesis',c:'#4ADE80'});
-
-  // ── Confianza de rasgos ──────────────────────────────
-  const skConf = vals.Ca>=30&&vals.P>=0.5?0.97:vals.Si>=80?0.94:vals.H2S>2?0.91:0.82;
-  const blConf = vals.Fe>=30&&vals.O2>=2?0.97:vals.Cu>=60?0.95:vals.V>=200?0.93:0.88;
-  const mtConf = vals.O2>=15?0.97:vals.H2S>=1?0.94:vals.Mg>=12?0.91:0.85;
-  const nvConf = vals.O2>=15&&vals.Ca>=25?0.97:vals.Ca>=10?0.91:0.78;
-  const thConf = vals.O2>=18?0.95:vals.Temp<=-10?0.93:vals.Temp>=80?0.90:0.87;
-  const tgConf = 0.90;
-
-  // Detalles científicos por rasgo
-  const skDetail = cr0.skeleton.toLowerCase().includes('calcic')||cr0.skeleton.toLowerCase().includes('endos')
-    ?'Ca₁₀(PO₄)₆(OH)₂ hidroxiapatita'
-    :cr0.skeleton.toLowerCase().includes('silic')
-    ?'SiO₂ amorfo, como diatomeas'
-    :cr0.skeleton.toLowerCase().includes('sulfur')
-    ?'FeS₂ exoesqueleto sulfúrico'
-    :'Hidrostático / Quitina';
-  const blDetail = cr0.blood.toLowerCase().includes('hemo')&&(cr0.blood.includes('roja')||cr0.blood.includes('red'))
-    ?E?'Red blood — Fe²⁺ in heme group':'Sangre roja — Fe²⁺ en grupo hemo'
-    :cr0.blood.toLowerCase().includes('cyan')
-    ?E?'Blue blood — Cu²⁺ in hemocyanin':'Sangre azul — Cu²⁺ en hemocianina'
-    :cr0.blood.toLowerCase().includes('vanad')
-    ?E?'Green blood — V³⁺ vanadocytes':'Sangre verde — V³⁺ vanadocitos'
-    :E?'No circulatory fluid':'Sin fluido circulatorio';
-  const mtDetail = cr0.meta.toLowerCase().includes('aerob')
-    ?E?'36 ATP/glucose, respiratory chain':'36 ATP/glucosa, cadena respiratoria'
-    :cr0.meta.toLowerCase().includes('foto')||cr0.meta.toLowerCase().includes('photo')
-    ?E?'Mg-Chlorophyll + CO₂ + photons':'Clorofila-Mg + CO₂ + fotones'
-    :cr0.meta.toLowerCase().includes('quimio')||cr0.meta.toLowerCase().includes('chemo')
-    ?E?'H₂S + O₂ → sulfate + energy':'H₂S + O₂ → sulfato + energía'
-    :E?'Anaerobic fermentation':'Fermentación anaeróbica';
-  const nvDetail = cr0.nervous.toLowerCase().includes('cerebro')||cr0.nervous.toLowerCase().includes('brain')
-    ?E?'86 billion neurons (est.)':'86 mil millones de neuronas'
-    :cr0.nervous.toLowerCase().includes('ganglio')
-    ?E?'Distributed ganglia':'Red de ganglios distribuidos'
-    :E?'Diffuse electrochemical network':'Red electroquímica difusa';
-  const thDetail = cr0.thermo.toLowerCase().includes('homeo')
-    ?E?'Constant internal temperature':'Temperatura interna constante'
-    :cr0.thermo.toLowerCase().includes('crio')
-    ?E?'AFP antifreeze proteins':'Proteínas AFP anticongelantes'
-    :cr0.thermo.toLowerCase().includes('termo')||cr0.thermo.toLowerCase().includes('thermo')
-    ?E?'Thermostable proteins >100°C':'Proteínas termoestables >100°C'
-    :E?'Temperature = environment':'Temperatura = ambiente';
-
-  // Tegumento / piel
-  const tegName = vals.Cu>60&&vals.O2>15
-    ?(E?'Melanized skin':'Piel melanizada')
-    :vals.Si>150
-    ?(E?'Siliceous exoskeleton':'Exoesqueleto silíceo')
-    :vals.H2S>3
-    ?(E?'Acid-resistant cuticle':'Cutícula ácido-resistente')
-    :(E?'Keratinous integument':'Tegumento queratínico');
-  const tegDetail = vals.Cu>60&&vals.O2>15
-    ?(E?'Melanin — tyrosinase Cu':'Melanina — tirosinasa Cu')
-    :vals.Si>150
-    ?(E?'SiO₂ biogenic frustule':'Frústula SiO₂ biogénica')
-    :(E?'Structural protein barrier':'Barrera proteica estructural');
-
-  // Reproducción
-  const repName = score>0.7
-    ?(E?'Sexual reproduction':'Reproducción sexual')
-    :score>0.4
-    ?(E?'Sporulation / fission':'Esporulación / fisión')
-    :(E?'Binary fission':'Fisión binaria');
-  const repDetail = score>0.7
-    ?(E?'Genetic recombination — diversity':'Recombinación genética — diversidad')
-    :(E?'Asexual unicellular division':'División asexual unicelular');
-  const repConf = score>0.7?0.88:0.97;
-
-  // ── Descripción del ser vivo probable ────────────────
-  const lifeDesc=(()=>{
-    const {O2,H2S,Ca,Fe,Si,Mg,P,H2O,Temp,pH,S}=vals;
-    if(H2S>4||S>10000)
-      return E
-        ?`In this sulfuric environment (H₂S ${H2S}%), multicellular organisms emerge with sulfur-resistant exoskeletons (FeS₂), H₂S chemosynthetic metabolism and acid membranes resistant to pH ${pH}. Habitability score: ${sc}%.`
-        :`En este planeta de ambiente sulfúrico (H₂S ${H2S}%), emergería vida con exoesqueleto resistente al azufre (FeS₂), metabolismo quimiosintético de H₂S y membranas resistentes a pH ${pH}. Score de habitabilidad: ${sc}%.`;
-    if(Temp<-30)
-      return E
-        ?`Extreme cold (${Temp}°C) selects for organisms with AFP antifreeze proteins, slowed metabolism and thick insulating membranes. Life concentrated near geothermal vents. Score: ${sc}%.`
-        :`El frío extremo (${Temp}°C) selecciona organismos con proteínas AFP anticongelantes, metabolismo ralentizado y membranas aislantes. Vida concentrada en fumarolas geotérmicas. Score: ${sc}%.`;
-    if(O2>18&&Ca>20&&P>0.5)
-      return E
-        ?`Ideal conditions (O₂ ${O2}%, Ca ${Ca}K ppm, P ${P}K ppm) allow complex multicellular organisms: ${cr0.skeleton} (${skDetail}), ${cr0.blood}, aerobic metabolism with 36 ATP/glucose. Score: ${sc}%.`
-        :`Condiciones ideales (O₂ ${O2}%, Ca ${Ca}K ppm, P ${P}K ppm) permiten organismos multicelulares complejos: ${cr0.skeleton} (${skDetail}), ${cr0.blood}, metabolismo aeróbico de 36 ATP/glucosa. Score de habitabilidad: ${sc}%.`;
-    if(Temp>60)
-      return E
-        ?`High temperature (${Temp}°C) restricts life to thermostable extremophiles with heat-resistant proteins and modified DNA repair. Volcanic hot spring ecosystems. Score: ${sc}%.`
-        :`La alta temperatura (${Temp}°C) restringe la vida a extremófilos termoestables con proteínas resistentes al calor. Ecosistemas en fumarolas volcánicas. Score: ${sc}%.`;
-    if(score<0.3)
-      return E
-        ?`Only simple or microbial life. Difficult conditions: ${cr0.skeleton}, ${cr0.blood}. Aerobic metabolism: ${cr0.meta}. Temperature = environment. Habitability score: ${sc}%.`
-        :`Solo vida simple o microbiana. Condiciones difíciles: ${cr0.skeleton}, ${cr0.blood}. Metabolismo: ${cr0.meta}. Temperatura = ambiente. Score de habitabilidad: ${sc}%.`;
-    return E
-      ?`Moderate conditions (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%) support diverse multicellular life. Dominant organisms: ${cr0.skeleton}, ${cr0.blood}, ${cr0.meta}. Nervous system: ${cr0.nervous}. Score: ${sc}%.`
-      :`Las condiciones moderadas (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%) permiten vida multicelular diversa. Organismos dominantes: ${cr0.skeleton}, ${cr0.blood}, ${cr0.meta}. Sistema nervioso: ${cr0.nervous}. Score: ${sc}%.`;
-  })();
-
-  // ── Render panel derecho ─────────────────────────────
-  const rp=document.getElementById('right-panel');
-  if(!rp) return;
-  rp.innerHTML=`
-    <!-- Score + tags -->
-    <div style="padding:12px 14px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-        <!-- Círculo score -->
-        <div style="position:relative;width:62px;height:62px;flex-shrink:0;">
-          <svg viewBox="0 0 62 62" width="62" height="62" style="transform:rotate(-90deg);">
-            <circle cx="31" cy="31" r="25" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
-            <circle cx="31" cy="31" r="25" fill="none" stroke="${scoreCol}" stroke-width="5"
-              stroke-dasharray="${Math.round(sc*1.571)} 157"
-              stroke-linecap="round" style="transition:stroke-dasharray .4s ease;"/>
-          </svg>
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;
-            align-items:center;justify-content:center;">
-            <div style="font-size:16px;font-weight:900;color:${scoreCol};
-              font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
-            <div style="font-size:5.5px;color:${scoreCol};letter-spacing:.06em;opacity:.7;">BIOCOMPAT</div>
-          </div>
-        </div>
-        <!-- Descripción score -->
-        <div style="flex:1;">
-          <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);
-            margin-bottom:4px;line-height:1.4;">
-            ${score>=0.8?(E?'High probability of complex life.':'Alta probabilidad de vida compleja.')
-             :score>=0.6?(E?'Moderate conditions for life.':'Condiciones moderadas para vida.')
-             :score>=0.4?(E?'Marginal — extremophiles possible.':'Marginal — posibles extremófilos.')
-             :score>=0.2?(E?'Extreme — minimal life.':'Entorno extremo — vida mínima.')
-             :(E?'Uninhabitable.':'Inhabitable.')}
-          </div>
-          <!-- Tags -->
-          <div style="display:flex;flex-wrap:wrap;gap:3px;">
-            ${tags.map(tg=>`
-              <span style="font-size:7.5px;padding:2px 7px;border-radius:99px;
-                background:${tg.c}12;border:0.5px solid ${tg.c}40;color:${tg.c};font-weight:600;">
-                ${tg.l}
-              </span>`).join('')
-            ||`<span style="font-size:8px;color:rgba(255,255,255,0.20);">${E?'No favorable conditions':'Sin condiciones favorables'}</span>`}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- RASGOS EMERGENTES -->
-    <div style="padding:10px 14px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
-      <div style="font-size:8px;font-weight:700;letter-spacing:.12em;
-        color:rgba(255,255,255,0.30);text-transform:uppercase;margin-bottom:8px;">
-        ${E?'Emerging traits':'Rasgos emergentes'}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-        ${[
-          {cat:E?'SKELETON':'ESQUELETO',   v:cr0.skeleton, detail:skDetail,  conf:skConf,  c:'rgba(255,255,255,0.75)'},
-          {cat:E?'CIRCULATORY':'CIRCULATORIO',v:cr0.blood, detail:blDetail,  conf:blConf,  c:'rgba(255,255,255,0.75)'},
-          {cat:E?'METABOLISM':'METABOLISMO', v:cr0.meta,   detail:mtDetail,  conf:mtConf,  c:'rgba(255,255,255,0.75)'},
-          {cat:E?'NERVOUS':'NERVIOSO',      v:cr0.nervous, detail:nvDetail,  conf:nvConf,  c:'rgba(255,255,255,0.75)'},
-          {cat:E?'THERMOREG.':'TERMORREGULACIÓN',v:cr0.thermo,detail:thDetail,conf:thConf,c:'rgba(255,255,255,0.75)'},
-          {cat:E?'INTEGUMENT':'TEGUMENTO',  v:tegName,     detail:tegDetail, conf:tgConf,  c:'rgba(255,255,255,0.75)'},
-          {cat:E?'REPRODUCTION':'REPRODUCCIÓN',v:repName,  detail:repDetail, conf:repConf, c:'rgba(255,255,255,0.75)'},
-        ].map(({cat,v,detail,conf,c})=>`
-          <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.07);
-            border-radius:6px;padding:8px 9px;transition:border-color .2s;"
-            onmouseover="this.style.borderColor='rgba(255,255,255,0.18)'"
-            onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-            <div style="font-size:7px;font-weight:700;letter-spacing:.10em;
-              color:rgba(255,255,255,0.30);text-transform:uppercase;margin-bottom:4px;">${cat}</div>
-            <div style="font-size:10px;font-weight:700;color:${c};
-              margin-bottom:3px;line-height:1.3;">${v}</div>
-            <div style="font-size:7.5px;color:rgba(255,255,255,0.30);
-              line-height:1.5;margin-bottom:5px;">${detail}</div>
-            <div style="display:flex;align-items:center;gap:5px;">
-              <div style="flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;">
-                <div style="height:100%;width:${Math.round(conf*100)}%;
-                  background:rgba(255,255,255,0.40);border-radius:1px;
-                  transition:width .3s ease;"></div>
-              </div>
-              <span style="font-size:7px;color:rgba(255,255,255,0.35);
-                font-family:'JetBrains Mono',monospace;">conf. ${conf.toFixed(2)}</span>
-            </div>
-          </div>`).join('')}
-      </div>
-    </div>
-
-    <!-- SER VIVO PROBABLE -->
-    <div style="padding:10px 14px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
-      <div style="font-size:8px;font-weight:700;letter-spacing:.12em;
-        color:rgba(255,255,255,0.30);text-transform:uppercase;margin-bottom:7px;">
-        🧬 ${E?'Probable life on this planet':'Ser vivo probable en este planeta'}
-      </div>
-      <div style="font-size:9.5px;color:rgba(255,255,255,0.50);line-height:1.75;">
-        ${lifeDesc}
-      </div>
-      <!-- Tags de rasgos -->
-      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
-        ${[cr0.skeleton,cr0.blood,cr0.meta,cr0.loco].map(v=>`
-          <span style="font-size:7.5px;padding:2px 8px;border-radius:99px;
-            background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.10);
-            color:rgba(255,255,255,0.45);">${v.split(' ').slice(0,2).join(' ')}</span>
-        `).join('')}
-      </div>
-    </div>
-
-    <!-- BOTÓN DESCRIPCIÓN COMPLETA -->
-    <div style="padding:10px 14px;">
-      <button onclick="switchTab('creatures')"
-        style="width:100%;padding:8px;border-radius:6px;cursor:pointer;font-family:inherit;
-          border:0.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);
-          color:rgba(255,255,255,0.60);font-size:9px;font-weight:600;letter-spacing:.04em;
-          transition:all .2s;"
-        onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.90)'"
-        onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.color='rgba(255,255,255,0.60)'">
-        ${E?'Full creature description ↗':'Pedir descripción completa del ser vivo ↗'}
-      </button>
-      <button onclick="createPlanet()" class="btn btn-teal"
-        style="width:100%;margin-top:6px;font-size:10px;font-weight:700;padding:8px;">
-        ✦ ${E?'Create & Register Planet':'Crear y Registrar Planeta'}
-      </button>
-    </div>`;
-}
-
 
 // ─── Aplica preset ────────────────────────────────────
 function applyPresetDash(name){
