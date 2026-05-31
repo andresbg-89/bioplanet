@@ -4781,8 +4781,8 @@ async function doAI(){
     return`${p[1]}=${pv[k]}${p[2]} (${eff>0?'+':''}${eff}%)`;
   }).filter(Boolean).join('; ');
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+    const r=await fetch('/api/claude',{method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:700,
         messages:[{role:'user',content:`Biologo especialista en fisiologia planetaria.
 NODO: ${d.name} | SISTEMA: ${s.n} | BASE: ${d.val} ${d.unit} | CAMBIO: ${(pct>=0?'+':'')+pct.toFixed(1)}%

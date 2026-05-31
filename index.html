@@ -1866,11 +1866,31 @@ function renderPlanet(el){
               color:rgba(0,212,170,0.70);font-family:inherit;transition:all .15s;"
             onmouseover="this.style.background='rgba(0,212,170,0.15)';this.style.color='rgba(0,212,170,1)'"
             onmouseout="this.style.background='rgba(0,212,170,0.06)';this.style.color='rgba(0,212,170,0.70)'">
-            ⟳ Live API
+            ⟳ Top 10
           </button>
         </div>
+
+        <!-- BUSCADOR EN VIVO -->
+        <div style="position:relative;margin-bottom:6px;">
+          <input type="text" id="nasa-search" autocomplete="off"
+            placeholder="${E?'Search 5,900+ real exoplanets…':'Buscar 5,900+ exoplanetas reales…'}"
+            oninput="nasaSearchInput(this.value)"
+            onfocus="if(this.value.length>=2)nasaSearchInput(this.value)"
+            style="width:100%;font-size:9px;padding:6px 26px 6px 9px;border-radius:5px;
+              background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.25);
+              color:rgba(255,255,255,0.85);font-family:inherit;outline:none;box-sizing:border-box;"/>
+          <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);
+            font-size:10px;color:rgba(0,212,170,0.5);pointer-events:none;" id="nasa-search-ico">🔍</span>
+          <!-- Resultados desplegables -->
+          <div id="nasa-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;
+            margin-top:3px;max-height:240px;overflow-y:auto;background:#0a0f18;
+            border:0.5px solid rgba(0,212,170,0.30);border-radius:6px;
+            box-shadow:0 8px 24px rgba(0,0,0,0.6);"></div>
+        </div>
+
+        <!-- Presets rápidos de exoplanetas conocidos -->
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">
-          ${Object.keys(EXOPLANETS).map(name=>`
+          ${Object.keys(EXOPLANETS).slice(0,6).map(name=>`
             <button onclick="loadExoplanet('${name}')"
               style="font-size:7.5px;padding:2px 8px;border-radius:3px;cursor:pointer;
                 border:0.5px solid rgba(0,212,170,0.18);background:rgba(0,212,170,0.04);
@@ -3203,7 +3223,7 @@ Parámetros del planeta:
 Enfócate en: qué cae del cielo, riesgo de meteoritos, actividad volcánica, estaciones, fenómenos únicos.`;
 
   try{
-    const res = await fetch('https://api.anthropic.com/v1/messages',{
+    const res = await fetch('/api/claude',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -3308,7 +3328,7 @@ function processUploadedImage(file){
 }`;
 
     try{
-      const response = await fetch('https://api.anthropic.com/v1/messages',{
+      const response = await fetch('/api/claude',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
@@ -7448,6 +7468,149 @@ function loadExoplanet(name){
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// BUSCADOR EN VIVO — NASA Exoplanet Archive (TAP API, sin key)
+// Tabla pscomppars: 5,900+ exoplanetas confirmados con datos reales
+// ═══════════════════════════════════════════════════════
+let nasaSearchTimer=null;
+let nasaSearchCache={};
+
+function nasaSearchInput(q){
+  q=(q||'').trim();
+  const box=document.getElementById('nasa-results');
+  const ico=document.getElementById('nasa-search-ico');
+  if(!box) return;
+
+  if(q.length<2){ box.style.display='none'; if(ico)ico.textContent='🔍'; return; }
+
+  // Debounce — espera 350ms tras dejar de escribir
+  if(nasaSearchTimer) clearTimeout(nasaSearchTimer);
+  if(ico) ico.textContent='⟳';
+  nasaSearchTimer=setTimeout(()=>doNasaSearch(q), 350);
+}
+
+async function doNasaSearch(q){
+  const E=lang==='en';
+  const box=document.getElementById('nasa-results');
+  const ico=document.getElementById('nasa-search-ico');
+  if(!box) return;
+
+  // Cache
+  if(nasaSearchCache[q]){ renderNasaResults(nasaSearchCache[q]); if(ico)ico.textContent='🔍'; return; }
+
+  try{
+    // Escapar comillas simples para ADQL
+    const safe=q.replace(/'/g,"''");
+    const query=`SELECT TOP 25 pl_name,pl_rade,pl_bmasse,pl_eqt,pl_orbsmax,st_teff,sy_dist,disc_year,discoverymethod `
+      +`FROM pscomppars WHERE UPPER(pl_name) LIKE UPPER('%${safe}%') ORDER BY pl_name`;
+    const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+    const res=await fetch(url);
+    const data=await res.json();
+    nasaSearchCache[q]=data;
+    renderNasaResults(data);
+  }catch(err){
+    box.style.display='block';
+    box.innerHTML=`<div style="padding:10px;font-size:8px;color:#F87171;">
+      ${E?'NASA API unreachable. Check connection.':'NASA API no disponible. Verifica conexión.'}
+    </div>`;
+  } finally {
+    if(ico) ico.textContent='🔍';
+  }
+}
+
+function renderNasaResults(data){
+  const E=lang==='en';
+  const box=document.getElementById('nasa-results');
+  if(!box) return;
+  box.style.display='block';
+
+  if(!data || !data.length){
+    box.innerHTML=`<div style="padding:10px;font-size:8px;color:rgba(255,255,255,0.4);">
+      ${E?'No exoplanets found.':'No se encontraron exoplanetas.'}
+    </div>`;
+    return;
+  }
+
+  box.innerHTML=data.map((p,i)=>{
+    const name=p.pl_name||'—';
+    const rad=p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'—';
+    const mass=p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'—';
+    const temp=p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'—';
+    const dist=p.sy_dist?Math.round(parseFloat(p.sy_dist)*3.262)+' ly':'—';
+    const year=p.disc_year||'';
+    // Guardar el planeta en window para el onclick
+    const key='nasaP_'+i;
+    window[key]=p;
+    return `
+      <div onclick="applyNasaPlanet(window.${key})"
+        style="padding:7px 10px;border-bottom:0.5px solid rgba(255,255,255,0.04);cursor:pointer;transition:background .12s;"
+        onmouseover="this.style.background='rgba(0,212,170,0.10)'"
+        onmouseout="this.style.background='transparent'">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.85);">${name}</span>
+          <span style="font-size:7.5px;color:rgba(0,212,170,0.6);white-space:nowrap;">${dist}</span>
+        </div>
+        <div style="font-size:7.5px;color:rgba(255,255,255,0.4);margin-top:2px;">
+          ${rad} · ${mass} · ${temp}${year?' · '+year:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Aplica un planeta de la búsqueda NASA a los sliders
+function applyNasaPlanet(p){
+  if(!p) return;
+  const E=lang==='en';
+  loadNASAPlanet(p);  // reutiliza la conversión existente
+
+  // Cerrar resultados y poner el nombre en el buscador
+  const box=document.getElementById('nasa-results');
+  if(box) box.style.display='none';
+  const inp=document.getElementById('nasa-search');
+  if(inp) inp.value=p.pl_name||'';
+
+  // Mostrar info
+  const el=document.getElementById('exo-info');
+  if(el){
+    el.style.display='block';
+    const rad=p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'—';
+    const mass=p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'—';
+    const tempC=p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'—';
+    const dist=p.sy_dist?Math.round(parseFloat(p.sy_dist)*3.262)+' ly':'—';
+    const star=p.st_teff?Math.round(parseFloat(p.st_teff))+' K':'—';
+    el.innerHTML=`
+      <div style="font-size:9px;font-weight:700;color:rgba(0,212,170,0.9);margin-bottom:4px;">
+        🛰 ${p.pl_name}
+      </div>
+      <div style="font-size:7.5px;color:rgba(255,255,255,0.4);font-style:italic;margin-bottom:5px;">
+        ${E?'Real data from NASA Exoplanet Archive':'Datos reales del NASA Exoplanet Archive'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">
+        ${[
+          [E?'Radius':'Radio',rad],
+          [E?'Mass':'Masa',mass],
+          [E?'Eq. temp':'Temp. eq.',tempC],
+          [E?'Distance':'Distancia',dist],
+          [E?'Star temp':'Temp. estelar',star],
+          [E?'Discovery':'Descubrimiento',p.discoverymethod||'—'],
+        ].map(([l,v])=>`<div><span style="color:rgba(0,212,170,0.4);">${l}: </span><span style="color:rgba(255,255,255,0.65);">${v}</span></div>`).join('')}
+      </div>
+      <div style="font-size:7px;color:rgba(255,255,255,0.3);margin-top:5px;line-height:1.5;">
+        ${E?'⚠ Mineralogy estimated from mass/radius — NASA provides physical data only.':'⚠ Mineralogía estimada de masa/radio — NASA provee solo datos físicos.'}
+      </div>`;
+  }
+  syncTaxTree();
+}
+
+// Cerrar resultados al hacer clic fuera
+document.addEventListener('click',function(e){
+  const box=document.getElementById('nasa-results');
+  const inp=document.getElementById('nasa-search');
+  if(box && inp && !box.contains(e.target) && e.target!==inp){
+    box.style.display='none';
+  }
+});
+
 // ─── Carga exoplanetas LIVE desde la API de la NASA ───
 async function loadNASALive(){
   const E = lang==='en';
@@ -7522,33 +7685,71 @@ async function loadNASALive(){
 // ─── Aplica parámetros de planeta NASA live ───────────
 function loadNASAPlanet(p){
   const E = lang==='en';
-  // Estimar parámetros desde datos observacionales
-  const rad    = parseFloat(p.pl_rade)||1.0;
-  const mass   = parseFloat(p.pl_bmasse)||1.0;
-  const tempK  = parseFloat(p.pl_eqt)||288;
+  // ── Datos observacionales reales de la NASA ──
+  const rad    = parseFloat(p.pl_rade)  || 1.0;   // radios terrestres
+  const mass   = parseFloat(p.pl_bmasse)|| (rad*rad*rad); // masas terrestres (estimada si falta)
+  const tempK  = parseFloat(p.pl_eqt)   || 288;   // temperatura de equilibrio (K)
   const tempC  = Math.round(tempK - 273.15);
-  const grav   = parseFloat((mass/(rad*rad)).toFixed(2));
+  const stTeff = parseFloat(p.st_teff)  || 5772;  // temperatura estelar (K)
 
-  // Escalar mineralogía por masa/radio
-  const scaleFe = Math.min(100, 56*rad*0.8);
-  const scaleSi = Math.min(350, 282*rad*0.7);
-  const scaleO2 = tempC>-20&&tempC<80 ? Math.min(35, 15+Math.random()*15) : tempC<-20?2:0.5;
-  const scaleH2O= tempC>-20&&tempC<80 ? Math.min(100, 30+Math.random()*50) : tempC<-20?80:5;
+  // ── Gravedad superficial real: g = M/R² (en g terrestres) ──
+  const grav   = parseFloat(Math.max(0.1, Math.min(5, mass/(rad*rad))).toFixed(2));
+
+  // ── Densidad relativa → tipo de planeta (determinista, sin azar) ──
+  // densidad ∝ M/R³ ; >1 rocoso denso (más Fe), <0.5 gaseoso/hielo
+  const density = mass/(rad*rad*rad);
+  const rocky   = density >= 0.6;            // rocoso tipo Tierra/Marte
+  const dense   = density >= 1.3;            // núcleo metálico grande
+  const gassy   = density < 0.35;            // mini-Neptuno/gaseoso
+
+  // ── Composición mineral escalada por densidad y tamaño ──
+  // Planetas densos → más hierro/níquel (núcleo metálico)
+  const feBase  = dense ? 80 : rocky ? 56 : 30;
+  const Fe = Math.round(Math.min(100, feBase * Math.sqrt(rad)));
+  const Ni = Math.round(Math.min(50, (dense?40:20) * Math.sqrt(rad)));
+  const Si = Math.round(Math.min(350, (rocky?282:180) * Math.cbrt(rad)));
+  const Mg = Math.round(Math.min(100, 23 * Math.sqrt(rad) * (rocky?1.2:0.8)));
+  const Ca = Math.round(Math.min(80, 41 * Math.cbrt(rad)));
+  const P  = parseFloat(Math.min(5, 1.0 * Math.cbrt(rad)).toFixed(1));
+  const Cu = Math.round(Math.min(300, 60 * Math.cbrt(rad)));
+  const V  = Math.round(Math.min(500, 120 * Math.cbrt(rad)));
+
+  // ── Atmósfera/química por temperatura (zona habitable) ──
+  let O2, CO2, H2S, H2O, S, pH, pressure;
+  if(tempC > 100){
+    // Caliente tipo Venus — CO₂ denso, sin O₂, azufre volcánico
+    O2=0.1; CO2=Math.min(96, 60+rad*10); H2S=tempC>300?2:0.5;
+    H2O=Math.max(0, 5-tempC/100); S=Math.round(8000);
+    pH=tempC>300?1.5:4; pressure=Math.min(100, grav*20);
+  } else if(tempC >= -20 && tempC <= 60){
+    // Zona habitable — posible O₂, agua líquida
+    O2=Math.min(35, 8+rad*6); CO2=0.04+rad*0.1; H2S=0;
+    H2O=Math.min(100, 40+rad*15); S=350;
+    pH=7.0; pressure=parseFloat(Math.max(0.3, Math.min(5, grav*0.9)).toFixed(2));
+  } else if(tempC < -20){
+    // Frío — hielo, atmósfera fina, poco O₂
+    O2=Math.min(10, 2+rad); CO2=0.5; H2S=0;
+    H2O=Math.min(100, 60+rad*10); S=200;
+    pH=7.5; pressure=parseFloat(Math.max(0.1, grav*0.5).toFixed(2));
+  } else {
+    O2=15; CO2=0.04; H2S=0; H2O=50; S=350; pH=7; pressure=1;
+  }
+  // Mundos gaseosos → presión alta, sin superficie sólida de agua
+  if(gassy){ pressure=Math.min(100, pressure*10); H2O=Math.min(H2O, 20); }
 
   const params={
-    Ca:Math.round(41*rad*0.9), Fe:Math.round(scaleFe),
-    Si:Math.round(scaleSi),    P:parseFloat((1.0*rad*0.85).toFixed(1)),
-    Mg:Math.round(23*rad*0.9), Cu:Math.round(60*rad*0.8),
-    S:Math.round(350*rad),     Ni:Math.round(84*rad*0.9),
-    V:Math.round(120*rad*0.9),
-    O2:parseFloat(scaleO2.toFixed(1)), CO2:tempC>100?50:0.04,
-    H2S:0, H2O:Math.round(scaleH2O),
-    Temp:Math.max(-200,Math.min(500,tempC)),
-    pH:7.0, pressure:parseFloat((grav*0.8+0.2).toFixed(2)),
-    gravity:Math.max(0.1,Math.min(5,grav)),
+    Ca, Fe, Si, P, Mg, Cu, S, Ni, V,
+    O2: parseFloat(O2.toFixed(1)),
+    CO2: parseFloat(CO2.toFixed(2)),
+    H2S: parseFloat(H2S.toFixed(1)),
+    H2O: Math.round(H2O),
+    Temp: Math.max(-200, Math.min(500, tempC)),
+    pH: parseFloat(pH.toFixed(1)),
+    pressure,
+    gravity: grav,
   };
 
-  // Aplicar
+  // Aplicar a sliders
   SLIDERS.forEach(m=>{
     if(params[m.sym]===undefined) return;
     const v=Math.max(m.min,Math.min(m.max,params[m.sym]));
@@ -7561,14 +7762,7 @@ function loadNASAPlanet(p){
 
   if(threeState.update) threeState.update(vals);
   updatePlanetPanel();
-
-  // Feedback
-  const el=document.getElementById('exo-info');
-  if(el) el.innerHTML+=`
-    <div style="margin-top:6px;padding:5px;background:rgba(0,212,170,0.08);border-radius:4px;
-      font-size:8px;color:rgba(0,212,170,0.8);">
-      ✓ ${E?`Parameters applied for ${p.pl_name}`:`Parámetros aplicados para ${p.pl_name}`}
-    </div>`;
+  syncTaxTree();
 }
 
 
