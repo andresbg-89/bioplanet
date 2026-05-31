@@ -1,0 +1,7 @@
+{
+  "name": "bioplanet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BioPlanet — Simulador evolutivo científico web"
+}
