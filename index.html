@@ -715,7 +715,6 @@ void main(){
           </div>
         </div>
       </div>
-      <button onclick="createPlanet()" class="btn btn-teal" style="font-weight:700;font-size:11px;" id="create-btn">✦ Crear Planeta</button>
     </div>
   </div>
   <div id="main" style="flex:1;overflow:hidden;"></div>
@@ -2241,25 +2240,12 @@ function updatePlanetPanel(){
     ?(E?'Proteins >100°C':'Proteínas >100°C')
     :(E?'T° = environment':'Temperatura = ambiente');
 
-  // Descripción ser vivo
-  const {O2,H2S,Ca,Fe,Mg,P,H2O,Temp,pH,S}=vals;
-  const lifeDesc=H2S>4||S>10000
-    ?(E?`Sulfuric env. (H₂S ${H2S}%): chemosynthetic organisms, acid-resistant exoskeleton, pH ${pH} membranes.`
-       :`Entorno sulfúrico (H₂S ${H2S}%): organismos quimiosintéticos, exoesqueleto ácido-resistente, membranas pH ${pH}.`)
-    :Temp<-30
-    ?(E?`Extreme cold (${Temp}°C): AFP antifreeze proteins, slowed metabolism, geothermal vent ecosystems.`
-       :`Frío extremo (${Temp}°C): proteínas AFP anticongelantes, metabolismo ralentizado, ecosistemas en fumarolas.`)
-    :O2>18&&Ca>20&&P>0.5
-    ?(E?`Ideal conditions (O₂ ${O2}%, Ca ${Ca}K, P ${P}K): complex multicellular life, calcic endoskeleton, centralized brain, 36 ATP aerobic metabolism.`
-       :`Condiciones ideales (O₂ ${O2}%, Ca ${Ca}K, P ${P}K): vida multicelular compleja, endoesqueleto calcico, cerebro centralizado, metabolismo aeróbico 36 ATP.`)
-    :Temp>60
-    ?(E?`High temp (${Temp}°C): thermostable extremophiles only, heat-resistant proteins, volcanic ecosystems.`
-       :`Alta temperatura (${Temp}°C): solo extremófilos termoestables, proteínas resistentes al calor, ecosistemas volcánicos.`)
-    :score<0.3
-    ?(E?`Only simple/microbial life possible. Score: ${sc}%.`
-       :`Solo vida simple o microbiana posible. Score: ${sc}%.`)
-    :(E?`Moderate conditions (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%): diverse multicellular life. Score: ${sc}%.`
-       :`Condiciones moderadas (${Temp}°C, O₂ ${O2}%, H₂O ${H2O}%): vida multicelular diversa. Score: ${sc}%.`);
+  // ═══ GENERADOR PROCEDURAL DE SER VIVO (Opción B) ═══
+  const {O2,H2S,Ca,Fe,Si,Mg,P,Cu,V,H2O,Temp,pH,S,CO2}=vals;
+  const lifeProfile = generateLifeProfile(vals, cr0, sc);
+  const lifeDesc = lifeProfile.text;
+  const lifeName = lifeProfile.name;
+  const lifeCommon = lifeProfile.common;
 
   const traits=[
     {cat:E?'SKELETON':'ESQUELETO',       v:cr0.skeleton, detail:skDetail, conf:skConf},
@@ -2271,65 +2257,253 @@ function updatePlanetPanel(){
   ];
 
   bp.innerHTML=`
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;">
-
-      <!-- Título + descripción -->
-      <div style="min-width:0;">
-        <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
-          color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px;">
-          ${E?'Emerging traits — updates in real time':'Rasgos emergentes — tiempo real'}
-        </div>
-        <!-- Grid de rasgos -->
-        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:10px;">
-          ${traits.map(tr=>`
-            <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.07);
-              border-radius:5px;padding:6px 7px;">
-              <div style="font-size:6.5px;font-weight:700;letter-spacing:.10em;
-                color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:3px;">
-                ${tr.cat}
+    <div>
+      <!-- RASGOS EMERGENTES -->
+      <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+        color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px;">
+        ${E?'Emerging traits — updates in real time':'Rasgos emergentes — tiempo real'}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px;">
+        ${traits.map(tr=>`
+          <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.07);
+            border-radius:5px;padding:6px 7px;">
+            <div style="font-size:6.5px;font-weight:700;letter-spacing:.10em;
+              color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:3px;">
+              ${tr.cat}
+            </div>
+            <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.78);
+              margin-bottom:2px;line-height:1.3;">${tr.v.split(' ').slice(0,2).join(' ')}</div>
+            <div style="font-size:7.5px;color:rgba(255,255,255,0.28);
+              margin-bottom:5px;line-height:1.4;">${tr.detail}</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <div style="flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;">
+                <div style="height:100%;width:${Math.round(tr.conf*100)}%;
+                  background:rgba(255,255,255,0.35);border-radius:1px;
+                  transition:width .3s ease;"></div>
               </div>
-              <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.78);
-                margin-bottom:2px;line-height:1.3;">${tr.v.split(' ').slice(0,2).join(' ')}</div>
-              <div style="font-size:7.5px;color:rgba(255,255,255,0.28);
-                margin-bottom:5px;line-height:1.4;">${tr.detail}</div>
-              <div style="display:flex;align-items:center;gap:4px;">
-                <div style="flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;">
-                  <div style="height:100%;width:${Math.round(tr.conf*100)}%;
-                    background:rgba(255,255,255,0.35);border-radius:1px;
-                    transition:width .3s ease;"></div>
-                </div>
-                <span style="font-size:6.5px;color:rgba(255,255,255,0.30);
-                  font-family:'JetBrains Mono',monospace;">
-                  ${tr.conf.toFixed(2)}
-                </span>
-              </div>
-            </div>`).join('')}
-        </div>
+              <span style="font-size:6.5px;color:rgba(255,255,255,0.30);
+                font-family:'JetBrains Mono',monospace;">
+                ${tr.conf.toFixed(2)}
+              </span>
+            </div>
+          </div>`).join('')}
       </div>
 
-      <!-- Descripción del ser vivo -->
-      <div style="background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.07);
-        border-radius:6px;padding:10px 12px;min-width:240px;max-width:320px;flex-shrink:0;">
-        <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
-          color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:7px;">
-          🧬 ${E?'Probable life':'Ser vivo probable'}
+      <!-- SER VIVO PROBABLE — fluido, a todo el ancho, debajo de los rasgos -->
+      <div style="border-top:0.5px solid rgba(255,255,255,0.06);padding-top:12px;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+            color:rgba(255,255,255,0.28);text-transform:uppercase;">
+            🧬 ${E?'Probable life':'Ser vivo probable'}
+          </span>
+          <span style="font-size:11px;font-style:italic;font-weight:700;
+            color:rgba(0,212,170,0.85);">${lifeName}</span>
+          <span style="font-size:8px;color:rgba(255,255,255,0.35);">
+            ${E?'"'+lifeCommon+'"':'«'+lifeCommon+'»'}
+          </span>
         </div>
-        <div style="font-size:9px;color:rgba(255,255,255,0.48);line-height:1.75;">
+        <div style="font-size:9.5px;color:rgba(255,255,255,0.52);line-height:1.85;">
           ${lifeDesc}
         </div>
-        <button onclick="switchTab('creatures')"
-          style="margin-top:10px;width:100%;padding:5px;border-radius:5px;cursor:pointer;
-            font-family:inherit;border:0.5px solid rgba(255,255,255,0.12);
-            background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.50);
-            font-size:8px;font-weight:600;letter-spacing:.04em;transition:all .2s;"
-          onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.85)'"
-          onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='rgba(255,255,255,0.50)'">
-          ${E?'Full creature description ↗':'Descripción completa del ser vivo ↗'}
+        <button onclick="requestFullDescription()"
+          style="margin-top:12px;padding:6px 16px;border-radius:5px;cursor:pointer;
+            font-family:inherit;border:0.5px solid rgba(251,191,36,0.30);
+            background:rgba(251,191,36,0.06);color:rgba(251,191,36,0.80);
+            font-size:8px;font-weight:700;letter-spacing:.04em;transition:all .2s;
+            display:inline-flex;align-items:center;gap:5px;"
+          onmouseover="this.style.background='rgba(251,191,36,0.12)';this.style.color='rgba(251,191,36,1)'"
+          onmouseout="this.style.background='rgba(251,191,36,0.06)';this.style.color='rgba(251,191,36,0.80)'">
+          🔒 ${E?'Full AI description (Premium)':'Descripción completa por IA (Premium)'}
         </button>
       </div>
-
     </div>`;
 }
+
+// ═══════════════════════════════════════════════════════
+// GENERADOR PROCEDURAL DE SER VIVO (Opción B)
+// Nombre científico + anatomía + supervivencia, sin IA
+// ═══════════════════════════════════════════════════════
+function generateLifeProfile(v, cr, sc){
+  const E = lang==='en';
+  const {O2,H2S,Ca,Fe,Si,Mg,P,Cu,V,H2O,Temp,pH,S,CO2,gravity,pressure}=v;
+
+  // ── Determinar arquetipo dominante ──
+  const sulf = H2S>4||S>10000;
+  const vCold= Temp<-50;
+  const cold = Temp<-15;
+  const hot  = Temp>60;
+  const iron = Fe>55;
+  const silic= Si>150;
+  const alkaline = pH>10;
+  const acidic   = pH<4;
+  const highO2   = O2>25;
+  const lowO2    = O2<5;
+  const ideal    = O2>=18&&O2<=30&&Ca>20&&P>0.5&&Temp>=-10&&Temp<=40;
+
+  // ── Generar nombre científico latino ──
+  const genusRoots = [];
+  if(iron)  genusRoots.push('Ferro');
+  if(silic) genusRoots.push('Silici');
+  if(Ca>45) genusRoots.push('Calci');
+  if(Cu>80) genusRoots.push('Cupro');
+  if(sulf)  genusRoots.push('Sulfo');
+  if(V>200) genusRoots.push('Vanado');
+  if(genusRoots.length===0) genusRoots.push(Mg>30?'Magno':'Terra');
+  const genusSuffix = silic||Ca>45?'calix':iron?'thorax':sulf?'derm':vCold?'pod':'forma';
+  const genus = genusRoots[0] + genusSuffix;
+
+  const speciesRoots = [];
+  if(vCold) speciesRoots.push('cryo');
+  else if(cold) speciesRoots.push('frigo');
+  else if(hot)  speciesRoots.push('pyro');
+  if(alkaline) speciesRoots.push('basal');
+  else if(acidic) speciesRoots.push('acid');
+  if(highO2) speciesRoots.push('oxy');
+  else if(lowO2) speciesRoots.push('hypox');
+  if(speciesRoots.length===0) speciesRoots.push('vulgar');
+  const species = speciesRoots.join('') + 'is';
+
+  const sciName = genus + ' ' + species;
+
+  // ── Nombre común ──
+  let common;
+  if(iron&&vCold)      common = E?'Iron Chalice':'Cáliz de Hierro';
+  else if(silic&&cold) common = E?'Frost Armor':'Coraza de Escarcha';
+  else if(sulf)        common = E?'Sulfur Wraith':'Espectro de Azufre';
+  else if(hot)         common = E?'Ember Crawler':'Reptador de Brasas';
+  else if(vCold)       common = E?'Deep Frost Dweller':'Morador del Hielo Profundo';
+  else if(Cu>80)       common = E?'Azure Strider':'Caminante Azul';
+  else if(ideal)       common = E?'Verdant Walker':'Caminante Verde';
+  else                 common = E?'Rock Forager':'Forrajeador de Roca';
+
+  // ── Tamaño estimado ──
+  const sizeCm = gravity<0.5?'80-150 cm':gravity>2?'15-35 cm':'40-80 cm';
+  const massKg = gravity<0.5?'5-12 kg':gravity>2?'2-6 kg':'8-20 kg';
+
+  // ── ATP eficiencia según O2 ──
+  const atp = highO2?'48-52 ATP/'+(E?'glucose':'glucosa'):O2>15?'36 ATP/'+(E?'glucose':'glucosa'):lowO2?'2 ATP ('+(E?'fermentation':'fermentación')+')':'18 ATP';
+
+  // ── Construir descripción multi-párrafo ──
+  const parts = [];
+
+  // Párrafo 1 — Identidad y tamaño
+  parts.push(E
+    ? `<b>${sciName}</b> is a ${sizeCm} bilateral organism (${massKg}) adapted to this world's ${sc}% habitability. Its ${cr.skeleton.toLowerCase()} and ${cr.blood.toLowerCase()} define a body built for these exact conditions.`
+    : `<b>${sciName}</b> es un organismo bilateral de ${sizeCm} (${massKg}) adaptado al ${sc}% de habitabilidad de este mundo. Su ${cr.skeleton.toLowerCase()} y ${cr.blood.toLowerCase()} definen un cuerpo construido para estas condiciones exactas.`);
+
+  // Párrafo 2 — Esqueleto/protección según química
+  if(silic||alkaline){
+    parts.push(E
+      ? `Its exoskeleton is biogenic silica (SiO₂)${iron?' impregnated with iron oxides':''}, nearly inert at pH ${pH} where calcium carbonate would dissolve. Trapped gas cavities act as biological aerogel insulation.`
+      : `Su exoesqueleto es sílice biogénica (SiO₂)${iron?' impregnada de óxidos de hierro':''}, casi inerte a pH ${pH} donde el carbonato cálcico se disolvería. Cavidades de gas atrapadas actúan como aislante de aerogel biológico.`);
+  } else if(Ca>20&&P>0.5){
+    parts.push(E
+      ? `A calcic endoskeleton of hydroxyapatite Ca₁₀(PO₄)₆(OH)₂ provides internal support, allowing larger body size and faster locomotion than exoskeletal designs.`
+      : `Un endoesqueleto calcico de hidroxiapatita Ca₁₀(PO₄)₆(OH)₂ provee soporte interno, permitiendo mayor tamaño corporal y locomoción más rápida que los diseños de exoesqueleto.`);
+  }
+
+  // Párrafo 3 — Sangre y respiración
+  let bloodDesc;
+  if(cr.blood.toLowerCase().includes('cyan')||Cu>80){
+    bloodDesc = E
+      ? `Blue hemocyanin blood (Cu²⁺-based) transports oxygen efficiently at low temperatures${cold?', remaining functional where iron-based blood would fail':''}.`
+      : `Sangre azul de hemocianina (base Cu²⁺) transporta oxígeno eficientemente a baja temperatura${cold?', funcionando donde la sangre de hierro fallaría':''}.`;
+  } else if(cr.blood.toLowerCase().includes('vanad')||V>200){
+    bloodDesc = E
+      ? `Green vanadium-based blood (V³⁺ vanadocytes) — extremely rare, exploiting the abundant vanadium (${V} ppm) in this environment.`
+      : `Sangre verde basada en vanadio (vanadocitos V³⁺) — extremadamente rara, aprovechando el vanadio abundante (${V} ppm) en este entorno.`;
+  } else {
+    bloodDesc = E
+      ? `Iron-based hemoglobin with ${cold?'4× higher O₂ affinity to compensate slow molecular diffusion in cold':'high O₂ binding capacity'}${H2S>1?', plus modified histidines that block toxic H₂S from binding the heme iron':''}.`
+      : `Hemoglobina de hierro con ${cold?'afinidad por O₂ 4× mayor para compensar la difusión lenta en frío':'alta capacidad de unión de O₂'}${H2S>1?', más histidinas modificadas que bloquean el H₂S tóxico del hierro del hemo':''}.`;
+  }
+  parts.push(bloodDesc);
+
+  // Párrafo 4 — Metabolismo
+  parts.push(E
+    ? `Metabolism: ${cr.meta.toLowerCase()} yielding ${atp}.${highO2?` With ${O2}% O₂ available, mitochondria reach exceptional efficiency, fueling thermoregulation against ${Temp}°C.`:''}${H2S>3?` Gut sulfur-oxidases convert absorbed H₂S to sulfate for extra energy.`:''}`
+    : `Metabolismo: ${cr.meta.toLowerCase()} produciendo ${atp}.${highO2?` Con ${O2}% de O₂ disponible, las mitocondrias alcanzan eficiencia excepcional, alimentando la termorregulación frente a ${Temp}°C.`:''}${H2S>3?` Sulfuro-oxidasas intestinales convierten el H₂S absorbido en sulfato para energía adicional.`:''}`);
+
+  // Párrafo 5 — Termorregulación / supervivencia clave
+  if(vCold){
+    parts.push(E
+      ? `Survival at ${Temp}°C relies on four-layer cryoprotection: AFP-III antifreeze proteins, endogenous glycerol lowering intracellular freezing to -78°C, cold-activated heat-shock proteins, and bound (non-freezable) water at 58%.`
+      : `La supervivencia a ${Temp}°C depende de crioprotección de 4 capas: proteínas anticongelantes AFP-III, glicerol endógeno bajando la congelación intracelular a -78°C, proteínas de choque activadas por frío, y agua ligada (no congelable) al 58%.`);
+  } else if(hot){
+    parts.push(E
+      ? `At ${Temp}°C, thermostable proteins with extra disulfide bonds and modified DNA-repair enzymes prevent denaturation. Membranes use saturated branched lipids that stay stable above 100°C.`
+      : `A ${Temp}°C, proteínas termoestables con enlaces disulfuro adicionales y enzimas de reparación de ADN modificadas previenen la desnaturalización. Las membranas usan lípidos ramificados saturados estables por encima de 100°C.`);
+  } else if(cr.thermo.toLowerCase().includes('homeo')){
+    parts.push(E
+      ? `Homeothermic — maintains constant internal temperature via insulating ${cr.teg?cr.teg.toLowerCase():'integument'} and metabolic heat, allowing activity across day-night cycles.`
+      : `Homeotermo — mantiene temperatura interna constante mediante ${cr.teg?cr.teg.toLowerCase():'tegumento'} aislante y calor metabólico, permitiendo actividad en todo el ciclo día-noche.`);
+  }
+
+  // Párrafo 6 — Comportamiento y reproducción
+  const repro = sc>0.6
+    ? (E?`Sexual reproduction enables genetic diversity. `:`La reproducción sexual permite diversidad genética. `)
+    : (E?`Reproduces via resilient amniotic eggs with insulating shells. `:`Se reproduce por huevos amnióticos resistentes con cáscaras aislantes. `);
+  const behav = cr.nervous.toLowerCase().includes('cerebro')||cr.nervous.toLowerCase().includes('brain')
+    ? (E?`A centralized brain supports territorial behavior, episodic memory and short-term planning.`:`Un cerebro centralizado soporta comportamiento territorial, memoria episódica y planificación a corto plazo.`)
+    : (E?`A distributed nervous system drives reflexive, stimulus-driven behavior.`:`Un sistema nervioso distribuido genera comportamiento reflejo, guiado por estímulos.`);
+  parts.push(repro + behav);
+
+  // Párrafo 7 — Por qué sobrevive (síntesis)
+  parts.push(E
+    ? `<i>Why it thrives:</i> conditions lethal to unadapted life are its advantages — ${highO2?`the ${O2}% O₂ that would oxidatively poison others fuels its metabolism; `:''}${iron?`the ${Fe}K ppm iron that intoxicates conventional blood builds its armor; `:''}${alkaline?`the pH ${pH} that dissolves carbonate skeletons doesn't touch its silica shell; `:''}${H2S>3?`the H₂S that poisons most respiration is an energy source. `:''}Habitability ${sc}% means: perfect for ${genus}.`
+    : `<i>Por qué prospera:</i> las condiciones letales para vida no adaptada son sus ventajas — ${highO2?`el ${O2}% de O₂ que envenenaría a otros por oxidación alimenta su metabolismo; `:''}${iron?`el hierro de ${Fe}K ppm que intoxica la sangre convencional construye su armadura; `:''}${alkaline?`el pH ${pH} que disuelve esqueletos de carbonato no afecta su coraza de sílice; `:''}${H2S>3?`el H₂S que envenena la mayoría de respiraciones es fuente de energía. `:''}Habitabilidad ${sc}%: perfecto para ${genus}.`);
+
+  return {
+    name: sciName,
+    common: common,
+    text: parts.join(' '),
+  };
+}
+
+// ── Botón Premium (Opción A futura) ──────────────────
+function requestFullDescription(){
+  const E = lang==='en';
+  alert(E
+    ? '🔒 Full AI-generated creature descriptions (detailed anatomy, metabolism, behavior, and scientific reasoning by Claude AI) are a Premium feature.\n\nUpgrade to BioPlanet Pro to unlock unlimited AI descriptions.'
+    : '🔒 Las descripciones completas generadas por IA (anatomía detallada, metabolismo, comportamiento y razonamiento científico por Claude AI) son una función Premium.\n\nActualiza a BioPlanet Pro para desbloquear descripciones IA ilimitadas.');
+}
+
+// ── RayMarching HD — modo Premium futuro ──────────────
+function surfRayMarch(){
+  const E = lang==='en';
+  alert(E
+    ? '🔒 RayMarching HD is a Premium feature.\n\nThis cinematic terrain renderer uses Signed Distance Fields and fractional Brownian motion to generate infinitely detailed landscapes with zero geometry — the same technique used in high-end space simulators.\n\nUpgrade to BioPlanet Pro to unlock RayMarching HD surface rendering.'
+    : '🔒 RayMarching HD es una función Premium.\n\nEste renderizador de terreno cinematográfico usa Campos de Distancia con Signo (SDF) y movimiento browniano fraccional para generar paisajes infinitamente detallados con cero geometría — la misma técnica de los simuladores espaciales de alta gama.\n\nActualiza a BioPlanet Pro para desbloquear el renderizado de superficie RayMarching HD.');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RAYMARCHING HD SHADER — listo para activar en versión Premium
+   ───────────────────────────────────────────────────────────────
+   Técnica: SDF + función seno + fBm con derivadas analíticas
+   (Stanislav Petrov / Inigo Quilez). Cero geometría, 8 octavas.
+   Para activar: reemplazar el cuerpo de surfRayMarch() por initRayMarch()
+   que cree un canvas WebGL con este fragment shader.
+
+   const RAYMARCH_FS = `
+   precision highp float;
+   uniform vec2 uRes; uniform vec3 uCam; uniform vec2 uRot;
+   uniform float uAmp,uFreq,uErosion,uFog,uSunAlt,uSeaLevel;
+   uniform vec3 uColLow,uColMid,uColHigh,uColSnow,uWaterCol,uSkyCol,uSunCol;
+   uniform float uHasWater,uHasSnow;
+   #define MAX_STEPS 160
+   #define MAX_DIST 220.0
+   #define SURF_DIST 0.0015
+   vec3 hash3(vec2 p){vec3 q=vec3(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)),dot(p,vec2(419.2,371.9)));return fract(sin(q)*43758.5453);}
+   vec3 noised(vec2 x){vec2 p=floor(x),f=fract(x);vec2 u=f*f*f*(f*(f*6.-15.)+10.);vec2 du=30.*f*f*(f*(f-2.)+1.);
+     float a=hash3(p).x,b=hash3(p+vec2(1,0)).x,c=hash3(p+vec2(0,1)).x,d=hash3(p+vec2(1,1)).x;
+     float k0=a,k1=b-a,k2=c-a,k4=a-b-c+d;return vec3(k0+k1*u.x+k2*u.y+k4*u.x*u.y,du*(vec2(k1,k2)+k4*u.yx));}
+   float terrainH(vec2 p){float a=.5,f=uFreq,sum=0.;vec2 g=vec2(0);mat2 m=mat2(.8,.6,-.6,.8);
+     for(int i=0;i<8;i++){vec3 n=noised(p*f);float s=sin(p.x*f*.5)*sin(p.y*f*.5)*.15;g+=n.yz;
+       sum+=a*(n.x+s)/(1.+uErosion*dot(g,g));a*=.5;f*=2.;p=m*p;}return sum*uAmp*8.;}
+   float map(vec3 p){return p.y-terrainH(p.xz*.05);}
+   // ... raymarch loop + lighting (ver raymarch-prototype.html)
+   `;
+   ═══════════════════════════════════════════════════════════════ */
 
 // ─── Aplica preset ────────────────────────────────────
 function applyPresetDash(name){
@@ -2349,6 +2523,8 @@ function applyPresetDash(name){
   if(threeState.update) threeState.update(vals);
   // Re-renderizar panel completo para actualizar HUD, score, análogos
   if(currentTab==='planet') renderMain();
+  // Sincronizar con el árbol taxonómico (si está abierto)
+  syncTaxTree();
 }
 
 // ─── setVal para dashboard ────────────────────────────
@@ -2364,6 +2540,8 @@ function setValDash(sym,v){
   if(threeState.update) threeState.update(vals);
   // Actualizar panel derecho en tiempo real sin re-renderizar el globo
   updatePlanetPanel();
+  // Sincronizar con el árbol taxonómico (si está abierto)
+  syncTaxTree();
 }
 
 // ─── CREATURES TAB ────────────────────────────────────
@@ -4368,16 +4546,70 @@ async function renderMyPlanets(el){
               </div>
               <!-- Minerales -->
               <div style="font-size:9px;color:var(--dim);line-height:1.4;">⬡ ${minerals}</div>
-              <!-- Botón cargar -->
-              <button onclick="event.stopPropagation();loadPlanetFromGallery('${p.code}');switchTab('planet');"
-                class="btn btn-teal" style="width:100%;margin-top:10px;font-size:10px;padding:5px;">
-                ${lang==='en'?'Load planet':'Cargar planeta'} →
-              </button>
+              <!-- Botones -->
+              <div style="display:flex;gap:6px;margin-top:10px;">
+                <button onclick="event.stopPropagation();loadPlanetFromGallery('${p.code}');switchTab('planet');"
+                  class="btn btn-teal" style="flex:1;font-size:10px;padding:5px;">
+                  ${lang==='en'?'Load':'Cargar'} →
+                </button>
+                <button onclick="event.stopPropagation();deletePlanet('${p.id}','${p.code}')"
+                  title="${lang==='en'?'Delete planet':'Eliminar planeta'}"
+                  style="flex-shrink:0;background:rgba(248,113,113,0.08);border:0.5px solid rgba(248,113,113,0.3);
+                    color:#F87171;font-size:11px;padding:5px 10px;cursor:pointer;border-radius:6px;
+                    font-family:inherit;transition:all .15s;"
+                  onmouseover="this.style.background='rgba(248,113,113,0.18)'"
+                  onmouseout="this.style.background='rgba(248,113,113,0.08)'">
+                  🗑
+                </button>
+              </div>
             </div>`;
           }).join('')}
         </div>
       `}
     </div>`;
+}
+
+// ─── Eliminar planeta ─────────────────────────────────
+async function deletePlanet(id, code){
+  const E = lang==='en';
+  const ok = confirm(E
+    ? `Delete planet ${code}? This cannot be undone.`
+    : `¿Eliminar el planeta ${code}? Esta acción no se puede deshacer.`);
+  if(!ok) return;
+
+  const { error } = await sb.from('planets').delete().eq('id', id);
+  if(error){
+    alert(E ? 'Error deleting planet.' : 'Error al eliminar el planeta.');
+    return;
+  }
+  // Recargar la lista
+  const main = document.getElementById('main');
+  if(main) renderMyPlanets(main);
+}
+
+// ─── Árbol Taxonómico — toggle y sincronización ───────
+let taxTreeOpen=false;
+function toggleTaxTree(){
+  const cont=document.getElementById('tax-tree-container');
+  const icon=document.getElementById('tax-toggle-icon');
+  if(!cont) return;
+  taxTreeOpen=!taxTreeOpen;
+  cont.style.height = taxTreeOpen ? '600px' : '0';
+  if(icon) icon.style.transform = taxTreeOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  // Al abrir, sincronizar los parámetros actuales
+  if(taxTreeOpen) setTimeout(syncTaxTree, 400);
+}
+
+function syncTaxTree(){
+  const frame=document.getElementById('tax-tree-frame');
+  if(!frame || !frame.contentWindow) return;
+  try{
+    frame.contentWindow.postMessage({
+      type:'bioplanet-params',
+      vals:{...vals},
+      code: planetCode(vals),
+    }, '*');
+  }catch(e){}
 }
 
 
@@ -4423,6 +4655,33 @@ function renderValidation(el){
     <button onclick="applyPreset('Tierra');switchTab('planet');" class="btn btn-teal" style="font-size:11px;flex-shrink:0;">
       ${E?'Use Earth parameters →':'Usar parámetros Tierra →'}
     </button>
+  </div>
+
+  <!-- ═══ ÁRBOL TAXONÓMICO TERRESTRE (iframe aislado) ═══ -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+    margin-bottom:16px;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;"
+      onclick="toggleTaxTree()">
+      <div>
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;">
+          🌳 ${E?'Terrestrial Taxonomic Tree':'Árbol Taxonómico Terrestre'}
+          <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:rgba(0,212,255,0.12);
+            border:0.5px solid rgba(0,212,255,0.3);color:#00d4ff;font-weight:600;">
+            ${E?'LIVE SYNC':'SINCRONIZADO'}
+          </span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          ${E?'Earth species organ tree — reacts to your planet sliders in real time':'Árbol de órganos de especies terrestres — reacciona a los sliders de tu planeta en tiempo real'}
+        </div>
+      </div>
+      <div id="tax-toggle-icon" style="font-size:14px;color:var(--teal);transition:transform .2s;">▼</div>
+    </div>
+    <div id="tax-tree-container" style="height:0;overflow:hidden;transition:height .3s ease;">
+      <iframe id="tax-tree-frame" src="taxonomic-tree.html"
+        style="width:100%;height:600px;border:none;display:block;background:#07080f;"
+        title="Taxonomic Tree"></iframe>
+    </div>
   </div>
 
   <!-- Score global -->
@@ -5130,6 +5389,108 @@ float fbm8(vec3 p){
   for(int i=0;i<8;i++){v+=a*snoise3(p);p*=2.07;a*=.48;}
   return v;
 }
+
+// ══════════════════════════════════════════════════════════
+// fBm CON DERIVADAS ANALÍTICAS — técnica de Inigo Quilez
+// https://iquilezles.org/articles/morenoise/
+// El gradiente analítico permite:
+//   1. Erosión procedural (terreno se aplana donde la pendiente es alta)
+//   2. Normales exactas sin sampleos extra (ahorra memoria/GPU)
+//   3. Variedad natural: zonas planas + crestas afiladas
+// ══════════════════════════════════════════════════════════
+
+// Ruido 2D con derivadas analíticas. Devuelve vec3(valor, dx, dy)
+// Basado en hash + interpolación cúbica suave (quintic)
+vec3 hash3(vec2 p){
+  vec3 q=vec3(dot(p,vec2(127.1,311.7)),
+             dot(p,vec2(269.5,183.3)),
+             dot(p,vec2(419.2,371.9)));
+  return fract(sin(q)*43758.5453);
+}
+
+// noised: ruido + sus 2 derivadas (Inigo Quilez)
+vec3 noised(vec2 x){
+  vec2 p=floor(x);
+  vec2 f=fract(x);
+  // Quintic interpolant y su derivada
+  vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+  vec2 du=30.0*f*f*(f*(f-2.0)+1.0);
+
+  float va=hash3(p+vec2(0.,0.)).x;
+  float vb=hash3(p+vec2(1.,0.)).x;
+  float vc=hash3(p+vec2(0.,1.)).x;
+  float vd=hash3(p+vec2(1.,1.)).x;
+
+  float k0=va;
+  float k1=vb-va;
+  float k2=vc-va;
+  float k4=va-vb-vc+vd;
+
+  float value=k0+k1*u.x+k2*u.y+k4*u.x*u.y;
+  vec2 deriv=du*(vec2(k1,k2)+k4*u.yx);
+  return vec3(value, deriv);
+}
+
+// fBm con erosión por derivadas (Inigo Quilez "morenoise")
+// uH = Hurst exponent (0=rugoso, 1=suave). uErosion controla el efecto.
+float fbmErosion(vec2 p, int octaves, float H, float erosion){
+  float a=0.5;
+  float f=1.0;
+  float sum=0.0;
+  vec2  grad=vec2(0.0);  // gradiente acumulado
+  // Matriz de rotación para des-correlacionar octavas
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    grad+=n.yz*f;                          // acumular derivadas
+    // EROSIÓN: dividir por (1 + |gradiente|²) suaviza pendientes pronunciadas
+    sum+=a*n.x/(1.0+erosion*dot(grad,grad));
+    a*=gain;
+    f*=2.0;
+    p=m*p;                                 // rotar dominio
+  }
+  return sum;
+}
+
+// fBm con derivadas que devuelve también la normal analítica
+// Devuelve vec3(altura, derivada_x, derivada_z) — para normales sin sampleo extra
+vec3 fbmDeriv(vec2 p, int octaves, float H){
+  float a=0.5, f=1.0;
+  float sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  mat2 m_acc=mat2(1.0,0.0,0.0,1.0);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    sum+=a*n.x;
+    grad+=a*f*(m_acc*n.yz);                // derivada con regla de la cadena
+    a*=gain; f*=2.0;
+    p=m*p; m_acc=m*m_acc;
+  }
+  return vec3(sum, grad);
+}
+
+// Ridged fBm con derivadas — para crestas montañosas afiladas
+float fbmRidged(vec2 p, int octaves, float H){
+  float a=0.5, f=1.0, sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    float r=1.0-abs(n.x*2.0-1.0);          // crear cresta
+    grad+=n.yz*f;
+    sum+=a*r*r/(1.0+0.3*dot(grad,grad));    // erosión sobre la cresta
+    a*=gain; f*=2.0;
+    p=m*p;
+  }
+  return sum;
+}
 // Nota: fbmWarp eliminado — usa demasiada GPU en vertex shader
 `;
 
@@ -5152,43 +5513,49 @@ varying float vSlope;
 varying float vAO;
 varying float vWetness;
 
+// ── HEIGHTMAP con fBm + erosión (Inigo Quilez) ──────
+// Combina fBm erosionado + ridged para crestas, con Hurst
+uniform float uHurst;     // exponente de Hurst (rugosidad)
+uniform float uErosion;   // intensidad de erosión
+
 float getH(vec3 p){
-  float h1 = fbm6(p*0.0022)*0.5+0.5;
-  float h2 = snoise3(p*0.008+vec3(3.1,7.2,1.8))*0.5+0.5;
-  float h3 = snoise3(p*0.024+vec3(1.4,2.9,5.1))*0.5+0.5;
-  float ridge = 1.0-abs(snoise3(p*0.011)); ridge*=ridge*ridge;
-  return h1*0.60+h2*0.22+h3*0.08+ridge*0.10;
+  vec2 q = p.xz * 0.0022;
+  // Continentes erosionados — derivadas suavizan pendientes pronunciadas
+  float base   = fbmErosion(q, 7, uHurst, uErosion)*0.5+0.5;
+  // Crestas montañosas afiladas
+  float ridges = fbmRidged(q*1.6+vec2(3.1,7.2), 6, uHurst*0.8);
+  // Detalle fino
+  float detail = fbmErosion(q*4.0+vec2(1.4,2.9), 4, uHurst+0.2, uErosion*0.5)*0.5+0.5;
+  return base*0.62 + ridges*0.26 + detail*0.12;
 }
 
 void main(){
   vUv=uv;
   vec3 pos=position;
   float sc=uScale;
-  float h=getH(pos*sc);
 
-  // Normales analíticas
-  float eps=2.2;
-  float hL=getH((pos+vec3(-eps,0,0))*sc);
-  float hR=getH((pos+vec3( eps,0,0))*sc);
-  float hD=getH((pos+vec3(0,0,-eps))*sc);
-  float hU=getH((pos+vec3(0,0, eps))*sc);
-  vNormal=normalize(vec3(hL-hR,eps*0.016,hD-hU));
-  vSlope=1.0-abs(dot(vNormal,vec3(0,1,0)));
+  // Altura + derivadas analíticas en una sola evaluación
+  vec2 q = pos.xz * sc * 0.0022;
+  vec3 hd = fbmDeriv(q, 7, uHurst);      // (altura, dx, dz)
+  float ridges = fbmRidged(q*1.6+vec2(3.1,7.2), 6, uHurst*0.8);
+  float h = (hd.x*0.5+0.5)*0.74 + ridges*0.26;
 
-  // AO
-  float ao=0.0;
-  float ar=4.0;
-  ao+=step(h,getH((pos+vec3( ar,0, ar))*sc))*0.25;
-  ao+=step(h,getH((pos+vec3(-ar,0, ar))*sc))*0.25;
-  ao+=step(h,getH((pos+vec3( ar,0,-ar))*sc))*0.25;
-  ao+=step(h,getH((pos+vec3(-ar,0,-ar))*sc))*0.25;
-  vAO=1.0-ao*0.50;
+  // ── NORMAL ANALÍTICA — sin sampleos extra (ahorra GPU) ──
+  // La derivada del fBm ES la pendiente del terreno
+  vec2 grad = hd.yz * 135.0 * 0.0022 * sc;
+  vNormal = normalize(vec3(-grad.x, 1.0, -grad.y));
+  vSlope = 1.0 - abs(dot(vNormal, vec3(0,1,0)));
 
-  // Wetness (valles bajos)
-  vWetness=smoothstep(0.35,0.0,h);
+  // AO derivado de la pendiente (sin sampleos extra)
+  vAO = 1.0 - clamp(vSlope*0.6, 0.0, 0.5);
 
-  float elev=h*135.0+h*h*75.0;
-  pos.y+=elev;
+  // Wetness en valles bajos
+  vWetness = smoothstep(0.35, 0.0, h);
+
+  // Elevación con erosión aplicada
+  float erosionFactor = 1.0/(1.0 + uErosion*dot(grad,grad)*4.0);
+  float elev = (h*135.0 + h*h*75.0) * mix(0.7, 1.0, erosionFactor);
+  pos.y += elev;
   vElev=h; vWorldPos=pos;
   gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
 }`;
@@ -5538,6 +5905,174 @@ function getSurfaceColors(v){
 }
 
 // ── renderSurface ────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// RAYMARCHING HD — Terreno SDF + fBm derivadas + PBR
+// Técnica Stanislav Petrov / Inigo Quilez. Cero geometría.
+// Sombras suaves, AO, reflexión agua, FXAA. 8 octavas.
+// ══════════════════════════════════════════════════════════
+const RAYMARCH_VS = `attribute vec2 aPos;void main(){gl_Position=vec4(aPos,0.0,1.0);}`;
+
+const RAYMARCH_FS = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform vec3  uCam;
+uniform vec2  uRot;
+uniform float uAmp,uFreq,uErosion,uFog,uSunAlt,uSeaLevel;
+uniform vec3  uColLow,uColMid,uColHigh,uColSnow,uWaterCol,uSkyCol,uSunCol;
+uniform float uHasWater,uHasSnow,uAA;
+uniform float uMaxSteps;
+
+#define MAX_DIST  220.0
+#define SURF_DIST 0.0018
+
+vec3 hash3(vec2 p){
+  vec3 q=vec3(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)),dot(p,vec2(419.2,371.9)));
+  return fract(sin(q)*43758.5453);
+}
+vec3 noised(vec2 x){
+  vec2 p=floor(x),f=fract(x);
+  vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+  vec2 du=30.0*f*f*(f*(f-2.0)+1.0);
+  float a=hash3(p+vec2(0.,0.)).x;
+  float b=hash3(p+vec2(1.,0.)).x;
+  float c=hash3(p+vec2(0.,1.)).x;
+  float d=hash3(p+vec2(1.,1.)).x;
+  float k0=a,k1=b-a,k2=c-a,k4=a-b-c+d;
+  return vec3(k0+k1*u.x+k2*u.y+k4*u.x*u.y, du*(vec2(k1,k2)+k4*u.yx));
+}
+float terrainH(vec2 p){
+  float a=0.5, f=uFreq, sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  for(int i=0;i<8;i++){
+    vec3 n=noised(p*f);
+    float s=sin(p.x*f*0.5)*sin(p.y*f*0.5)*0.15;
+    grad+=n.yz;
+    sum+=a*(n.x+s)/(1.0+uErosion*dot(grad,grad));
+    a*=0.5; f*=2.0; p=m*p;
+  }
+  return sum*uAmp*8.0;
+}
+float map(vec3 p){ return p.y - terrainH(p.xz*0.05); }
+vec3 calcNormal(vec3 p){
+  vec2 e=vec2(0.02,0.0);
+  return normalize(vec3(
+    map(p+e.xyy)-map(p-e.xyy),
+    map(p+e.yxy)-map(p-e.yxy),
+    map(p+e.yyx)-map(p-e.yyx)));
+}
+float softShadow(vec3 ro,vec3 rd){
+  float res=1.0,t=0.12,ph=1e10;
+  for(int i=0;i<26;i++){
+    float h=map(ro+rd*t);
+    if(h<0.001) return 0.0;
+    float y=h*h/(2.0*ph);
+    float d=sqrt(h*h-y*y);
+    res=min(res,10.0*d/max(0.0,t-y));
+    ph=h; t+=clamp(h,0.04,1.6);
+    if(t>45.0) break;
+  }
+  return clamp(res,0.0,1.0);
+}
+float calcAO(vec3 p,vec3 n){
+  float occ=0.0,sca=1.0;
+  for(int i=0;i<5;i++){
+    float hr=0.02+0.12*float(i)/4.0;
+    float dd=map(p+n*hr);
+    occ+=(hr-dd)*sca; sca*=0.92;
+  }
+  return clamp(1.0-2.5*occ,0.0,1.0);
+}
+vec3 renderScene(vec3 ro,vec3 rd,vec3 sunDir){
+  float t=0.0; bool hit=false;
+  for(int i=0;i<150;i++){
+    if(float(i)>=uMaxSteps) break;
+    vec3 p=ro+rd*t;
+    float d=map(p);
+    if(d<SURF_DIST){hit=true;break;}
+    t+=d*0.6;
+    if(t>MAX_DIST) break;
+  }
+  vec3 col;
+  if(hit){
+    vec3 p=ro+rd*t;
+    vec3 N=calcNormal(p);
+    float h=p.y, slope=1.0-N.y, seaH=uSeaLevel*8.0;
+    vec3 surf; float roughness=0.85,metalness=0.0; bool isWater=false;
+    if(uHasWater>0.5 && h<seaH){
+      isWater=true;
+      float depth=clamp((seaH-h)*0.3,0.,1.);
+      surf=mix(uWaterCol*1.6,uWaterCol*0.4,depth);
+      N=mix(N,vec3(0,1,0),0.6); roughness=0.05; metalness=0.85;
+    } else {
+      float nh=clamp((h+8.0)/24.0,0.,1.);
+      if(nh<0.3)      surf=mix(uColLow,uColMid,nh/0.3);
+      else if(nh<0.65)surf=mix(uColMid,uColHigh,(nh-0.3)/0.35);
+      else            surf=mix(uColHigh,uColSnow,(nh-0.65)/0.35);
+      surf=mix(surf,uColHigh*0.7,smoothstep(0.4,0.8,slope));
+      if(uHasSnow>0.5 && nh>0.7) surf=mix(surf,uColSnow,smoothstep(0.7,0.9,nh)*(1.0-slope));
+      roughness=mix(0.9,0.4,slope);
+    }
+    vec3 V=-rd;
+    float diff=max(dot(N,sunDir),0.0);
+    float sh=softShadow(p+N*0.05,sunDir);
+    float ao=calcAO(p,N);
+    float amb=(0.25+0.25*N.y)*ao;
+    vec3 H=normalize(sunDir+V);
+    float specPow=mix(8.0,250.0,1.0-roughness);
+    float spec=pow(max(dot(N,H),0.),specPow)*diff*sh;
+    float specInt=mix(0.15,2.5,metalness);
+    col=surf*(amb+diff*sh*0.9*uSunCol);
+    col+=uSunCol*spec*specInt;
+    if(isWater){
+      vec3 R=reflect(rd,N);
+      float skyR=pow(max(R.y,0.),0.5);
+      vec3 refl=mix(uSkyCol*1.2,uSkyCol*0.6,skyR);
+      float sunR=pow(max(dot(R,sunDir),0.),60.0)*2.0;
+      refl+=uSunCol*sunR;
+      float fres=pow(1.0-max(dot(N,V),0.),5.0);
+      col=mix(col,refl,clamp(fres*0.8+0.15,0.,1.));
+    }
+    float fog=1.0-exp(-t*0.006*uFog);
+    col=mix(col,uSkyCol,fog);
+  } else {
+    float sun=pow(max(dot(rd,sunDir),0.),8.0);
+    float sunDisk=smoothstep(0.9995,0.9998,dot(rd,sunDir));
+    col=uSkyCol*(0.6+0.4*rd.y)+uSunCol*sun*0.5+uSunCol*sunDisk*3.0;
+    col=mix(uSkyCol*1.3,col,smoothstep(-0.1,0.3,rd.y));
+  }
+  return col;
+}
+void main(){
+  vec3 sunDir=normalize(vec3(0.5,uSunAlt,0.3));
+  float cy=cos(uRot.x),sy=sin(uRot.x),cp=cos(uRot.y),sp=sin(uRot.y);
+  vec3 fwd=normalize(vec3(sy*cp,sp,cy*cp));
+  vec3 right=normalize(cross(vec3(0,1,0),fwd));
+  vec3 up=cross(fwd,right);
+  vec3 ro=uCam;
+  vec3 col;
+  if(uAA>0.5){
+    col=vec3(0.0);
+    vec2 off[4];
+    off[0]=vec2(-0.25,-0.25);off[1]=vec2(0.25,-0.25);
+    off[2]=vec2(-0.25,0.25); off[3]=vec2(0.25,0.25);
+    for(int i=0;i<4;i++){
+      vec2 uv=(gl_FragCoord.xy+off[i]-0.5*uRes)/uRes.y;
+      vec3 rd=normalize(uv.x*right+uv.y*up+1.4*fwd);
+      col+=renderScene(ro,rd,sunDir);
+    }
+    col*=0.25;
+  } else {
+    vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+    vec3 rd=normalize(uv.x*right+uv.y*up+1.4*fwd);
+    col=renderScene(ro,rd,sunDir);
+  }
+  col=col*(col*2.51+0.03)/(col*(col*2.43+0.59)+0.14);
+  col=pow(clamp(col,0.,1.),vec3(0.4545));
+  gl_FragColor=vec4(col,1.0);
+}`;
+
 function renderSurface(el){
   const E=lang==='en';
   const biome=(()=>{
@@ -5576,7 +6111,6 @@ function renderSurface(el){
     <button onclick="surfTOD('sunset')" id="sbtn-sunset" class="btn"          style="font-size:10px;padding:5px 12px;">🌅 ${E?'Sunset':'Atardecer'}</button>
     <button onclick="surfTOD('night')"  id="sbtn-night"  class="btn"          style="font-size:10px;padding:5px 12px;">🌙 ${E?'Night':'Noche'}</button>
     <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
-    <button onclick="surfWire()"        id="sbtn-wire"   class="btn"          style="font-size:10px;padding:5px 12px;">⬡ Wire</button>
     <button onclick="surfSnap()"                         class="btn"          style="font-size:10px;padding:5px 12px;">📷 ${E?'Screenshot':'Captura'}</button>
     <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
     <button onclick="surfQuality('low')"  id="sbtn-low"  class="btn" style="font-size:9px;padding:3px 8px;">🔵 ${E?'Low':'Baja'}</button>
@@ -5586,7 +6120,8 @@ function renderSurface(el){
 
   <!-- Info bar -->
   <div style="position:absolute;bottom:8px;left:14px;font-size:9px;color:rgba(255,255,255,0.25);font-family:'JetBrains Mono',monospace;">
-    ${E?'Drag to rotate · Scroll to zoom · SpaceEngine-quality renderer':'Arrastra para rotar · Scroll zoom · Renderer calidad SpaceEngine'}
+    ${E?'Drag to look · Scroll to fly · RayMarching HD':'Arrastra para mirar · Scroll para volar · RayMarching HD'}
+    <span id="surf-tier" style="color:rgba(0,212,170,0.4);"></span>
   </div>
 
   <!-- Loading -->
@@ -5605,131 +6140,77 @@ function renderSurface(el){
 
 function initSurface2(){
   const canvas=document.getElementById('surf-canvas');
-  if(!canvas||!window.THREE){
+  if(!canvas){
     const l=document.getElementById('surf-loading');
-    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">Three.js not available</div>';
+    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">Canvas no disponible</div>';
     return;
   }
-  const T=window.THREE;
+  const gl=canvas.getContext('webgl');
+  if(!gl){
+    const l=document.getElementById('surf-loading');
+    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">WebGL no disponible</div>';
+    return;
+  }
+
   const container2=canvas.parentElement;
-  const W=container2.clientWidth||900;
-  const H=container2.clientHeight||560;
-  canvas.width=W; canvas.height=H;
-
-  const scene=new T.Scene();
-  const camera=new T.PerspectiveCamera(62,W/H,1,9000);
-  const renderer=new T.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true});
-  renderer.setSize(W,H);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.toneMapping=T.NoToneMapping;
-  renderer.setClearColor(0x000000);
-
-  const ro2=new ResizeObserver(()=>{
-    const nW=container2.clientWidth,nH=container2.clientHeight;
-    if(nW>0&&nH>0){renderer.setSize(nW,nH);camera.aspect=nW/nH;camera.updateProjectionMatrix();}
-  });
-  ro2.observe(container2);
-
-  const col=getSurfaceColors(vals);
-  const segs=128;
-
-  // ── TERRAIN ──────────────────────────────────────
-  const tGeo=new T.PlaneGeometry(3200,3200,segs,segs);
-  tGeo.rotateX(-Math.PI/2);
-  const tMat=new T.ShaderMaterial({
-    vertexShader:TERRAIN_VERT2,
-    fragmentShader:TERRAIN_FRAG2_FIXED,
-    uniforms:{
-      uScale:{value:Math.max(0.55,(vals.gravity||1)*0.75)},
-      uTime:{value:0},
-      uC0:{value:col.c0},uC1:{value:col.c1},uC2:{value:col.c2},
-      uC3:{value:col.c3},uC4:{value:col.c4},uC5:{value:col.c5},
-      uRock:{value:col.rock},
-      uWaterLvl:{value:col.waterLvl},uHasWater:{value:col.hasWater},uHasSnow:{value:col.hasSnow},
-      uSunDir:{value:col.sunDir},uSunColor:{value:col.sunColor},
-      uFogColor:{value:col.fog},uAtmColor:{value:col.atmColor},uFogDens:{value:col.fogDens},
-    },
-  });
-  scene.add(new T.Mesh(tGeo,tMat));
-
-  // ── SKY ──────────────────────────────────────────
-  const skyGeo=new T.SphereGeometry(5000,32,16);
-  const skyMat=new T.ShaderMaterial({
-    vertexShader:SKY_VERT2,
-    fragmentShader:SKY_FRAG2_WITH_NOISE,
-    uniforms:{
-      uSunDir:{value:col.sunDir},uRayleighColor:{value:col.skyZenith},
-      uMieColor:{value:col.skyHorizon},uSunColor:{value:col.sunColor},
-      uSunSize:{value:0.022},uAtmDensity:{value:col.atmDens},uMieDensity:{value:col.mieDens},
-      uExposure:{value:col.exposure},
-      uMoonDir:{value:col.moonDir},uMoonColor:{value:col.moonCol},
-      uHasMoon:{value:col.hasMoon},uNightFactor:{value:col.nightFactor},
-    },
-    side:T.BackSide,depthWrite:false,
-  });
-  scene.add(new T.Mesh(skyGeo,skyMat));
-
-  // ── WATER ────────────────────────────────────────
-  let waterMesh=null;
-  if(col.hasWater>0.5){
-    const wGeo=new T.PlaneGeometry(3200,3200,1,1);
-    wGeo.rotateX(-Math.PI/2);
-    const wMat=new T.MeshPhongMaterial({
-      color:col.water,transparent:true,opacity:0.70,
-      shininess:200,specular:new T.Color(1,1,1),
-    });
-    waterMesh=new T.Mesh(wGeo,wMat);
-    waterMesh.position.y=48;
-    scene.add(waterMesh);
+  // Perfil de calidad según el dispositivo (protege rendimiento en móvil)
+  const devProfile = detectDeviceProfile();
+  let qualityMult = devProfile.resMult;   // multiplicador de resolución
+  function fitCanvas(){
+    const dpr=Math.min(window.devicePixelRatio, devProfile.dprMax) * qualityMult;
+    canvas.width=(container2.clientWidth||900)*dpr;
+    canvas.height=(container2.clientHeight||560)*dpr;
   }
+  fitCanvas();
 
-  // ── CLOUDS ───────────────────────────────────────
-  let cloudMesh=null;
-  if(col.cloudCov>0.05){
-    const cGeo=new T.PlaneGeometry(3000,3000,1,1);
-    cGeo.rotateX(-Math.PI/2);
-    const cMat=new T.ShaderMaterial({
-      vertexShader:CLOUD_VERT2,fragmentShader:CLOUD_FRAG2,
-      uniforms:{uTime:{value:0},uSunDir:{value:col.sunDir},
-        uSunColor:{value:col.sunColor},uCoverage:{value:col.cloudCov}},
-      transparent:true,depthWrite:false,side:T.DoubleSide,
-    });
-    cloudMesh=new T.Mesh(cGeo,cMat);
-    cloudMesh.position.y=420;
-    scene.add(cloudMesh);
+  // ── Compilar shaders ──
+  function compile(type,src){
+    const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error('Shader:',gl.getShaderInfoLog(s));
+    return s;
   }
+  const prog=gl.createProgram();
+  gl.attachShader(prog,compile(gl.VERTEX_SHADER,RAYMARCH_VS));
+  gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,RAYMARCH_FS));
+  gl.linkProgram(prog);gl.useProgram(prog);
 
-  // ── LIGHTING ─────────────────────────────────────
-  const sunLight=new T.DirectionalLight(col.sunColor,2.0);
-  sunLight.position.copy(col.sunDir).multiplyScalar(1200);
-  scene.add(sunLight);
-  scene.add(new T.AmbientLight(col.skyHorizon,0.28));
-  const hemi=new T.HemisphereLight(col.skyZenith,col.c1,0.40);
-  scene.add(hemi);
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const aPos=gl.getAttribLocation(prog,'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
 
-  // ── CAMERA ORBIT ─────────────────────────────────
-  let theta=0.3,phi=0.22,radius=265,isDrag=false,prev={x:0,y:0};
-  const target=new T.Vector3(0,25,0);
-  function updateCam(){
-    camera.position.set(
-      target.x+radius*Math.sin(theta)*Math.cos(phi),
-      target.y+radius*Math.sin(phi)+88,
-      target.z+radius*Math.cos(theta)*Math.cos(phi));
-    camera.lookAt(target);
-  }
-  updateCam();
+  const U={};
+  ['uRes','uTime','uCam','uRot','uAmp','uFreq','uErosion','uFog','uSunAlt','uSeaLevel',
+   'uColLow','uColMid','uColHigh','uColSnow','uWaterCol','uSkyCol','uSunCol','uHasWater','uHasSnow','uAA','uMaxSteps']
+   .forEach(n=>U[n]=gl.getUniformLocation(prog,n));
 
-  const onMD=e=>{isDrag=true;prev={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';};
-  const onMU=()=>{isDrag=false;canvas.style.cursor='grab';};
+  // ── Mapear parámetros del planeta a colores RayMarching ──
+  const rmCol=getRayMarchColors(vals);
+
+  // ── Estado de cámara ──
+  let cam={x:0,y:14,z:0}, rot={yaw:0,pitch:-0.15};
+  let tod={sunAlt:0.35, mode:'day'};
+  let drag=false,prev={x:0,y:0};
+
+  const onMD=e=>{drag=true;prev={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';};
+  const onMU=()=>{drag=false;canvas.style.cursor='grab';};
   const onMM=e=>{
-    if(!isDrag)return;
-    theta-=(e.clientX-prev.x)*0.004;
-    phi=Math.max(-0.05,Math.min(1.15,phi+(e.clientY-prev.y)*0.003));
-    prev={x:e.clientX,y:e.clientY};updateCam();
+    if(!drag)return;
+    rot.yaw-=(e.clientX-prev.x)*0.004;
+    rot.pitch=Math.max(-1.4,Math.min(1.4,rot.pitch-(e.clientY-prev.y)*0.004));
+    prev={x:e.clientX,y:e.clientY};
   };
-  const onWH=e=>{radius=Math.max(25,Math.min(1200,radius+e.deltaY*0.25));updateCam();e.preventDefault();};
-  const onTD=e=>{isDrag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
-  const onTM=e=>{if(!isDrag)return;theta-=(e.touches[0].clientX-prev.x)*0.004;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();};
+  const onWH=e=>{
+    const cy=Math.cos(rot.yaw),sy=Math.sin(rot.yaw),cp=Math.cos(rot.pitch),sp=Math.sin(rot.pitch);
+    const step=e.deltaY*0.02;
+    cam.x-=sy*cp*step;cam.y-=sp*step;cam.z-=cy*cp*step;
+    cam.y=Math.max(2,cam.y);
+    e.preventDefault();
+  };
+  const onTD=e=>{drag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const onTM=e=>{if(!drag)return;rot.yaw-=(e.touches[0].clientX-prev.x)*0.004;rot.pitch=Math.max(-1.4,Math.min(1.4,rot.pitch-(e.touches[0].clientY-prev.y)*0.004));prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
   canvas.addEventListener('mousedown',onMD);
   window.addEventListener('mouseup',onMU);
   window.addEventListener('mousemove',onMM);
@@ -5738,23 +6219,79 @@ function initSurface2(){
   canvas.addEventListener('touchmove',onTM,{passive:true});
   window.addEventListener('touchend',onMU);
 
-  // ── ANIMATE ──────────────────────────────────────
-  let animId,surfTime2=0;
-  function animate(){
-    animId=requestAnimationFrame(animate);
-    surfTime2+=0.016;
-    tMat.uniforms.uTime.value=surfTime2;
-    if(cloudMesh)cloudMesh.material.uniforms.uTime.value=surfTime2;
-    if(waterMesh)waterMesh.position.y=48+Math.sin(surfTime2*0.5)*0.8;
-    renderer.render(scene,camera);
+  const ro2=new ResizeObserver(()=>fitCanvas());
+  ro2.observe(container2);
+
+  // ── Render loop con OPTIMIZACIÓN DE CARGA ──
+  // 1. Arranca a baja resolución y sin AA (carga instantánea)
+  // 2. Sube a calidad objetivo tras 600ms (cuando ya se ve algo)
+  // 3. Pausa el render si la pestaña/ventana no está visible
+  let t0=performance.now(),animId;
+  let warmup=true;          // fase de calentamiento
+  let aaActive=false;       // AA arranca apagado
+  const startT=performance.now();
+
+  // Arranque a resolución reducida
+  const targetMult=qualityMult;
+  qualityMult=Math.min(qualityMult,0.5);
+  fitCanvas();
+
+  function render(){
+    animId=requestAnimationFrame(render);
+    // Pausar si la página no está visible (ahorra GPU/batería)
+    if(document.hidden) return;
+    const now=performance.now();
+
+    // Salir del modo warmup tras 600ms → subir a calidad objetivo
+    if(warmup && now-startT>600){
+      warmup=false;
+      qualityMult=targetMult;
+      fitCanvas();
+      aaActive=devProfile.aa;
+    }
+
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.uniform2f(U.uRes,canvas.width,canvas.height);
+    gl.uniform1f(U.uTime,(now-t0)*0.001);
+    gl.uniform3f(U.uCam,cam.x,cam.y,cam.z);
+    gl.uniform2f(U.uRot,rot.yaw,rot.pitch);
+    gl.uniform1f(U.uAmp,rmCol.amp);
+    gl.uniform1f(U.uFreq,rmCol.freq);
+    gl.uniform1f(U.uErosion,rmCol.erosion);
+    gl.uniform1f(U.uFog,rmCol.fog);
+    gl.uniform1f(U.uSunAlt,tod.sunAlt);
+    gl.uniform1f(U.uSeaLevel,rmCol.seaLevel);
+    gl.uniform3fv(U.uColLow,rmCol.colLow);
+    gl.uniform3fv(U.uColMid,rmCol.colMid);
+    gl.uniform3fv(U.uColHigh,rmCol.colHigh);
+    gl.uniform3fv(U.uColSnow,rmCol.colSnow);
+    gl.uniform3fv(U.uWaterCol,rmCol.waterCol);
+    gl.uniform3fv(U.uSkyCol,tod.skyCol||rmCol.skyCol);
+    gl.uniform3fv(U.uSunCol,tod.sunCol||rmCol.sunCol);
+    gl.uniform1f(U.uHasWater,rmCol.hasWater);
+    gl.uniform1f(U.uHasSnow,rmCol.hasSnow);
+    // AA y pasos reducidos durante warmup (carga rápida)
+    gl.uniform1f(U.uAA, aaActive?1.0:0.0);
+    gl.uniform1f(U.uMaxSteps, warmup?60:devProfile.maxSteps);
+    gl.drawArrays(gl.TRIANGLES,0,3);
   }
 
   const loading=document.getElementById('surf-loading');
   if(loading)loading.style.display='none';
-  animate();
+  render();
+
+  // Mostrar el modo detectado e iluminar el botón de calidad correcto
+  const tierEl=document.getElementById('surf-tier');
+  if(tierEl){
+    const labels={mobile:'· 📱 Mobile mode',mid:'· 💻 Balanced',high:'· 🖥 High quality'};
+    tierEl.textContent=' '+(labels[devProfile.tier]||'');
+  }
+  const defQ = devProfile.tier==='mobile'?'low':devProfile.tier==='high'?'high':'mid';
+  ['low','mid','high'].forEach(m=>{const b=document.getElementById('sbtn-'+m);if(b)b.className=m===defQ?'btn btn-teal':'btn';});
 
   surfaceState={
-    scene,renderer,camera,tMat,skyMat,cloudMesh,waterMesh,sunLight,hemi,col,
+    gl,canvas,cam,rot,tod,rmCol,devProfile,
+    setQuality:(mult)=>{ qualityMult=mult; fitCanvas(); },
     cleanup:()=>{
       cancelAnimationFrame(animId);
       ro2.disconnect();
@@ -5765,80 +6302,126 @@ function initSurface2(){
       canvas.removeEventListener('touchstart',onTD);
       canvas.removeEventListener('touchmove',onTM);
       window.removeEventListener('touchend',onMU);
-      renderer.dispose();
     },
   };
 }
 
-// ── Time of Day ──────────────────────────────────────
-function surfTOD(mode){
-  if(!surfaceState.tMat)return;
-  const T=window.THREE;
-  const{tMat,skyMat,sunLight,hemi,col,cloudMesh,waterMesh}=surfaceState;
-  let sd,si,ai,exp,nightF;
-  if(mode==='day'){
-    sd=new T.Vector3(0.70,0.48,0.35).normalize();
-    si=2.0;ai=0.28;exp=col.exposure;nightF=0.0;
-    skyMat.uniforms.uRayleighColor.value=col.skyZenith;
-    skyMat.uniforms.uMieColor.value=col.skyHorizon;
-    skyMat.uniforms.uSunColor.value=col.sunColor;
-    if(sunLight)sunLight.color.copy(col.sunColor);
-  } else if(mode==='sunset'){
-    sd=new T.Vector3(0.97,0.05,0.22).normalize();
-    si=1.4;ai=0.14;exp=col.exposure*0.88;nightF=0.2;
-    skyMat.uniforms.uRayleighColor.value=new T.Color(0.04,0.06,0.20);
-    skyMat.uniforms.uMieColor.value=new T.Color(0.90,0.38,0.06);
-    skyMat.uniforms.uSunColor.value=new T.Color(1.00,0.52,0.10);
-    if(sunLight)sunLight.color.copy(new T.Color(1.00,0.52,0.10));
-  } else { // night
-    sd=new T.Vector3(0.1,-0.3,0.95).normalize();
-    si=0.04;ai=0.03;exp=0.55;nightF=1.0;
-    skyMat.uniforms.uRayleighColor.value=new T.Color(0.001,0.002,0.008);
-    skyMat.uniforms.uMieColor.value=new T.Color(0.003,0.005,0.016);
-    skyMat.uniforms.uSunColor.value=new T.Color(0.70,0.78,1.00);
-    if(sunLight)sunLight.color.copy(new T.Color(0.1,0.12,0.18));
-  }
-  [tMat.uniforms.uSunDir,skyMat.uniforms.uSunDir].forEach(u=>u.value=sd);
-  if(cloudMesh)cloudMesh.material.uniforms.uSunDir.value=sd;
-  if(cloudMesh)cloudMesh.material.uniforms.uSunColor.value=skyMat.uniforms.uSunColor.value;
-  tMat.uniforms.uSunColor.value=skyMat.uniforms.uSunColor.value;
-  skyMat.uniforms.uExposure.value=exp;
-  skyMat.uniforms.uNightFactor.value=nightF;
-  if(sunLight){sunLight.position.copy(sd).multiplyScalar(1200);sunLight.intensity=si;}
-  if(hemi)hemi.intensity=ai*1.3;
+// ── Mapea parámetros del planeta a colores/params RayMarching ──
+// ── DETECCIÓN DE DISPOSITIVO — protege el rendimiento ──
+// Devuelve un perfil de calidad según la GPU/dispositivo disponible
+function detectDeviceProfile(){
+  // 1. Detección de móvil/tablet por user agent
+  const ua = navigator.userAgent||'';
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua);
+  // 2. Pantalla táctil + pantalla pequeña
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+  const smallScreen = Math.min(window.screen.width, window.screen.height) < 768;
+  // 3. Núcleos de CPU (proxy de potencia)
+  const cores = navigator.hardwareConcurrency || 4;
+  // 4. Memoria del dispositivo (si está disponible)
+  const mem = navigator.deviceMemory || 4;
+  // 5. Intentar leer el renderer de la GPU
+  let gpuTier = 'unknown';
+  try{
+    const c = document.createElement('canvas');
+    const g = c.getContext('webgl');
+    const dbg = g && g.getExtension('WEBGL_debug_renderer_info');
+    if(dbg){
+      const r = (g.getParameter(dbg.UNMASKED_RENDERER_WEBGL)||'').toLowerCase();
+      if(/apple|nvidia|radeon rx|geforce|intel iris|arc/.test(r)) gpuTier='high';
+      else if(/mali|adreno|powervr|intel hd|intel uhd/.test(r))   gpuTier='low';
+    }
+  }catch(e){}
 
+  // Decidir perfil
+  let profile;
+  if(isMobile || (isTouch && smallScreen) || gpuTier==='low' || cores<=4 || mem<=3){
+    profile = {
+      tier:'mobile',
+      aa: false,          // sin anti-aliasing (4× más barato)
+      dprMax: 1.0,        // resolución nativa, sin supersampling
+      maxSteps: 90,       // menos pasos de raymarch
+      resMult: 0.65,      // render a 65% y escalar
+    };
+  } else if(gpuTier==='high' && cores>=8 && mem>=8){
+    profile = {tier:'high', aa:true, dprMax:1.5, maxSteps:150, resMult:1.0};
+  } else {
+    profile = {tier:'mid', aa:true, dprMax:1.25, maxSteps:120, resMult:0.85};
+  }
+  return profile;
+}
+
+function getRayMarchColors(v){
+  const {H2S,S,Temp,Fe,Ca,CO2,O2,Mg,H2O,pH,Si,pressure}=v;
+  const sulf=H2S>2||S>8000, vCold=Temp<-70, cold=Temp<-15, hot=Temp>55,
+        iron=Fe>55, calc=Ca>48&&CO2>0.08, life=O2>10&&Mg>12&&!sulf&&!hot;
+  const hasWater=H2O>18?1:0, hasSnow=(cold||Temp<3)?1:0;
+
+  let c;
+  if(sulf)      c={colLow:[0.38,0.28,0.02],colMid:[0.6,0.44,0.06],colHigh:[0.72,0.6,0.12],colSnow:[0.9,0.82,0.4],waterCol:[0.4,0.3,0.02],skyCol:[0.6,0.45,0.08],sunCol:[1.0,0.82,0.25]};
+  else if(vCold)c={colLow:[0.3,0.45,0.65],colMid:[0.55,0.68,0.86],colHigh:[0.78,0.86,0.96],colSnow:[0.96,0.98,1.0],waterCol:[0.15,0.3,0.55],skyCol:[0.06,0.1,0.2],sunCol:[0.75,0.82,1.0]};
+  else if(cold) c={colLow:[0.4,0.52,0.68],colMid:[0.6,0.72,0.86],colHigh:[0.8,0.88,0.95],colSnow:[0.96,0.98,1.0],waterCol:[0.12,0.28,0.52],skyCol:[0.3,0.45,0.65],sunCol:[0.85,0.9,1.0]};
+  else if(hot)  c={colLow:[0.15,0.05,0.03],colMid:[0.4,0.12,0.05],colHigh:[0.6,0.2,0.08],colSnow:[0.9,0.4,0.1],waterCol:[0.6,0.2,0.02],skyCol:[0.35,0.12,0.05],sunCol:[1.0,0.6,0.25]};
+  else if(iron) c={colLow:[0.45,0.2,0.1],colMid:[0.62,0.3,0.12],colHigh:[0.72,0.42,0.2],colSnow:[0.85,0.65,0.5],waterCol:[0.3,0.12,0.05],skyCol:[0.7,0.45,0.3],sunCol:[1.0,0.85,0.6]};
+  else if(calc) c={colLow:[0.62,0.58,0.48],colMid:[0.78,0.74,0.62],colHigh:[0.88,0.84,0.74],colSnow:[0.97,0.97,0.97],waterCol:[0.18,0.52,0.78],skyCol:[0.55,0.72,0.95],sunCol:[1.0,0.98,0.92]};
+  else if(life) c={colLow:[0.12,0.3,0.1],colMid:[0.3,0.4,0.16],colHigh:[0.48,0.42,0.32],colSnow:[0.92,0.94,0.98],waterCol:[0.04,0.2,0.46],skyCol:[0.45,0.62,0.88],sunCol:[1.0,0.97,0.88]};
+  else          c={colLow:[0.25,0.22,0.18],colMid:[0.4,0.36,0.3],colHigh:[0.55,0.5,0.44],colSnow:[0.88,0.9,0.94],waterCol:[0.1,0.2,0.4],skyCol:[0.5,0.6,0.75],sunCol:[1.0,0.95,0.85]};
+
+  return {
+    ...c,
+    hasWater, hasSnow,
+    // Parámetros de terreno según el planeta
+    amp:     hot?1.4 : vCold?0.7 : iron?1.1 : 1.0,
+    freq:    iron?1.8 : life?1.2 : 1.4,
+    erosion: H2O>40?0.85 : (pressure||1)>2?0.7 : cold?0.3 : 0.5,
+    fog:     sulf?1.3 : (pressure||1)>2?1.0 : cold?0.4 : 0.7,
+    seaLevel: hasWater?0.0 : -0.5,
+  };
+}
+
+// ── Time of Day — ahora ajusta sol del RayMarching ──
+function surfTOD(mode){
+  if(!surfaceState.tod)return;
+  const{tod,rmCol}=surfaceState;
+  if(mode==='day'){
+    tod.sunAlt=0.35; tod.skyCol=rmCol.skyCol; tod.sunCol=rmCol.sunCol;
+  } else if(mode==='sunset'){
+    tod.sunAlt=0.08;
+    tod.skyCol=[0.85,0.42,0.12]; tod.sunCol=[1.0,0.55,0.15];
+  } else { // night
+    tod.sunAlt=0.02;
+    tod.skyCol=[0.04,0.06,0.14]; tod.sunCol=[0.3,0.4,0.7];
+  }
+  tod.mode=mode;
   ['day','sunset','night'].forEach(m=>{
     const b=document.getElementById('sbtn-'+m);
     if(b)b.className=m===mode?'btn btn-teal':'btn';
   });
 }
 
-let surfWireOn=false;
+// ── Calidad — ajusta resolución del canvas ──
 function surfQuality(q){
-  if(!surfaceState.scene)return;
-  const T=window.THREE;
-  const segs=q==='low'?64:q==='mid'?128:256;
-  const{scene,tMat}=surfaceState;
-  scene.children.filter(c=>c.isMesh&&c.material===tMat).forEach(m=>{scene.remove(m);m.geometry.dispose();});
-  const g=new T.PlaneGeometry(3200,3200,segs,segs);g.rotateX(-Math.PI/2);
-  scene.add(new T.Mesh(g,tMat));
+  if(!surfaceState.setQuality)return;
+  const mult=q==='low'?0.6:q==='mid'?0.85:1.15;
+  surfaceState.setQuality(mult);
   ['low','mid','high'].forEach(m=>{const b=document.getElementById('sbtn-'+m);if(b)b.className=m===q?'btn btn-teal':'btn';});
 }
 
+// ── Wireframe no aplica a RayMarching — muestra aviso ──
 function surfWire(){
-  if(!surfaceState.tMat)return;
-  surfWireOn=!surfWireOn;
-  surfaceState.tMat.wireframe=surfWireOn;
+  const E=lang==='en';
   const b=document.getElementById('sbtn-wire');
-  if(b){b.style.background=surfWireOn?'rgba(0,212,170,0.15)':'';b.style.borderColor=surfWireOn?'var(--teal)':'var(--border)';}
+  if(b){
+    b.textContent=E?'⬡ N/A (SDF)':'⬡ N/A (SDF)';
+    setTimeout(()=>{if(b)b.textContent='⬡ Wire';},1500);
+  }
 }
 
 function surfSnap(){
-  if(!surfaceState.renderer)return;
-  surfaceState.renderer.render(surfaceState.scene,surfaceState.camera);
+  if(!surfaceState.canvas)return;
   const link=document.createElement('a');
   link.download=`bioplanet-surface-${planetCode(vals)}.png`;
-  link.href=surfaceState.renderer.domElement.toDataURL('image/png');
+  link.href=surfaceState.canvas.toDataURL('image/png');
   link.click();
 }
 
