@@ -922,6 +922,41 @@ const SUPABASE_URL = 'https://nlmzgxqbdqlyznhxnnuf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sbXpneHFiZHFseXpuaHhubnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTUxMDIsImV4cCI6MjA5NTA5MTEwMn0.VYFEIyPWkMmfr_HRRO_UFkGS46BPPkbc2Yh1kuGCTCs';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ─── TOAST — notificación temporal no intrusiva ───────
+function showToast(message, type='success', duration=3200){
+  // Contenedor (se crea una vez)
+  let cont=document.getElementById('toast-container');
+  if(!cont){
+    cont=document.createElement('div');
+    cont.id='toast-container';
+    cont.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+      +'z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;';
+    document.body.appendChild(cont);
+  }
+  const colors={
+    success:{bg:'rgba(0,212,170,0.12)',border:'rgba(0,212,170,0.45)',text:'#00D4AA'},
+    error:  {bg:'rgba(248,113,113,0.12)',border:'rgba(248,113,113,0.45)',text:'#F87171'},
+    info:   {bg:'rgba(96,165,250,0.12)',border:'rgba(96,165,250,0.45)',text:'#60A5FA'},
+  };
+  const c=colors[type]||colors.success;
+  const t=document.createElement('div');
+  t.textContent=message;
+  t.style.cssText=`pointer-events:auto;background:${c.bg};backdrop-filter:blur(12px);`
+    +`border:0.5px solid ${c.border};color:${c.text};font-size:12px;font-weight:600;`
+    +`font-family:'JetBrains Mono',ui-monospace,monospace;padding:11px 20px;border-radius:10px;`
+    +`box-shadow:0 8px 28px rgba(0,0,0,0.5);opacity:0;transform:translateY(12px);`
+    +`transition:opacity .25s ease,transform .25s ease;max-width:90vw;text-align:center;`;
+  cont.appendChild(t);
+  // Animar entrada
+  requestAnimationFrame(()=>{t.style.opacity='1';t.style.transform='translateY(0)';});
+  // Salida
+  setTimeout(()=>{
+    t.style.opacity='0';t.style.transform='translateY(12px)';
+    setTimeout(()=>t.remove(),300);
+  }, duration);
+}
+
+
 // Guardar planeta en Supabase
 async function savePlanetToDB(vals, code, score, creatures) {
   try {
@@ -3534,8 +3569,10 @@ async function createPlanet(){
           ${lang==='en'?'Saved to cloud · Permanent ID:':'Guardado en la nube · ID permanente:'}
           <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--muted);">${result.id?.substring(0,8)}…</span>
         </div>`;
+      showToast(lang==='en'?'✓ Planet saved to cloud':'✓ Planeta guardado en la nube', 'success');
     } else {
       statusEl.innerHTML=`<div style="font-size:9px;color:#F87171;">⚠ ${lang==='en'?'Could not save to cloud':'No se pudo guardar en la nube'}</div>`;
+      showToast(lang==='en'?'⚠ Could not save planet':'⚠ No se pudo guardar el planeta', 'error');
     }
   }
 }
@@ -4605,11 +4642,32 @@ async function deletePlanet(id, code){
     : `¿Eliminar el planeta ${code}? Esta acción no se puede deshacer.`);
   if(!ok) return;
 
-  const { error } = await sb.from('planets').delete().eq('id', id);
+  const { error, count } = await sb
+    .from('planets')
+    .delete({ count: 'exact' })
+    .eq('id', id);
+
   if(error){
-    alert(E ? 'Error deleting planet.' : 'Error al eliminar el planeta.');
+    // Mostrar el error real para diagnóstico
+    console.error('Delete error:', error);
+    showToast(
+      (E?'Error: ':'Error: ') + (error.message||error.code||'unknown'),
+      'error'
+    );
     return;
   }
+
+  // Si no hubo error pero tampoco se borró nada → política RLS bloqueando
+  if(count===0){
+    showToast(
+      E ? 'Could not delete — permission denied (RLS policy).'
+        : 'No se pudo eliminar — permiso denegado (política RLS).',
+      'error'
+    );
+    return;
+  }
+
+  showToast(E ? '✓ Planet deleted' : '✓ Planeta eliminado', 'success');
   // Recargar la lista
   const main = document.getElementById('main');
   if(main) renderMyPlanets(main);
