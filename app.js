@@ -1082,13 +1082,13 @@ function initThree(canvasId){
 // ═══════════════════════════════════════════════════════
 const TABS=[
   {id:'planet',   label:'🌍 Planeta'},
-  {id:'creatures',label:'🦎 Criaturas'},
   {id:'ecosystem',label:'🕸 Ecosistema'},
+  {id:'creatures',label:'🦎 Criaturas'},
   {id:'gallery',  label:'🎨 Galería IA'},
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation','phenomena','surface'];
+  const tabIds=['planet','ecosystem','creatures','gallery','minerals','myplanets','validation','phenomena','surface'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
@@ -2961,7 +2961,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie'],
+    tabs: ['🌍 Planeta','🕸 Ecosistema','🦎 Criaturas','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -3022,7 +3022,7 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface'],
+    tabs: ['🌍 Planet','🕸 Ecosystem','🦎 Creatures','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface'],
     createBtn: 'Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
