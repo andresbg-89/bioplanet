@@ -688,6 +688,7 @@ void main(){
     <div id="tab-btns" style="display:flex;gap:3px;"></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <button onclick="openGallery()" class="btn" style="font-size:11px;font-weight:600;padding:5px 12px;">🌍 Universo</button>
+      <button onclick="restartOnboarding()" id="help-btn" title="Tour de bienvenida" style="padding:4px 9px;border-radius:6px;border:0.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;">❓</button>
       <button onclick="toggleLang()" id="lang-btn" style="padding:4px 10px;border-radius:6px;border:0.5px solid var(--border);background:transparent;color:var(--muted);font-family:JetBrains Mono,monospace;font-size:10px;cursor:pointer;">🌐 EN</button>
       <!-- Clerk user button -->
       <div id="user-btn-area" style="display:flex;align-items:center;gap:6px;">
@@ -7574,8 +7575,125 @@ function startDrag(e, side){
   window.addEventListener('mouseup',   onUp);
 }
 
+// ═══════════════════════════════════════════════════════
+// ONBOARDING — Tour de bienvenida (solo la primera vez)
+// ═══════════════════════════════════════════════════════
+const ONBOARDING_STEPS = [
+  {
+    icon:'🌍',
+    titleEs:'Bienvenido a BioPlanet',
+    titleEn:'Welcome to BioPlanet',
+    bodyEs:'Un simulador científico donde diseñas planetas alienígenas ajustando su composición fisicoquímica — minerales, atmósfera, temperatura, gravedad — y descubres qué vida podría evolucionar en ellos.',
+    bodyEn:'A scientific simulator where you design alien planets by adjusting their physicochemical composition — minerals, atmosphere, temperature, gravity — and discover what life could evolve on them.',
+  },
+  {
+    icon:'🎛️',
+    titleEs:'Ajusta los parámetros',
+    titleEn:'Adjust the parameters',
+    bodyEs:'Usa los sliders de la izquierda para cambiar las condiciones del planeta. El globo 3D y los rasgos de vida reaccionan en tiempo real. ¿No sabes por dónde empezar? Prueba un preset como «Tierra» o busca un exoplaneta real de la NASA.',
+    bodyEn:'Use the sliders on the left to change planet conditions. The 3D globe and life traits react in real time. Not sure where to start? Try a preset like "Earth" or search a real NASA exoplanet.',
+  },
+  {
+    icon:'🦎',
+    titleEs:'Genera criaturas y vida',
+    titleEn:'Generate creatures and life',
+    bodyEs:'En la pestaña Criaturas verás los organismos que podrían sobrevivir en tu mundo, con su anatomía completa. Genera imágenes IA de cada criatura para estudiarlas en detalle.',
+    bodyEn:'In the Creatures tab you\'ll see the organisms that could survive on your world, with full anatomy. Generate AI images of each creature to study them in detail.',
+  },
+  {
+    icon:'💾',
+    titleEs:'Crea y guarda tu planeta',
+    titleEn:'Create and save your planet',
+    bodyEs:'Cuando estés conforme, pulsa «Crear Planeta». Se guardará permanentemente en la nube con sus criaturas e imágenes. Podrás verlo y eliminarlo en la pestaña «Mis Planetas».',
+    bodyEn:'When you\'re happy, click "Create Planet". It will be saved permanently to the cloud with its creatures and images. You can view and delete it in the "My Planets" tab.',
+  },
+];
+
+let onbStep = 0;
+
+function showOnboarding(){
+  const E = lang==='en';
+  let ov=document.getElementById('onboarding-overlay');
+  if(ov) ov.remove();
+  ov=document.createElement('div');
+  ov.id='onboarding-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(2,4,8,0.88);'
+    +'backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:24px;';
+  ov.innerHTML=renderOnbStep();
+  document.body.appendChild(ov);
+}
+
+function renderOnbStep(){
+  const E = lang==='en';
+  const s = ONBOARDING_STEPS[onbStep];
+  const isLast = onbStep === ONBOARDING_STEPS.length-1;
+  const dots = ONBOARDING_STEPS.map((_,i)=>
+    `<div style="width:7px;height:7px;border-radius:50%;background:${i===onbStep?'#00D4AA':'rgba(255,255,255,0.2)'};transition:background .2s;"></div>`
+  ).join('');
+  return `
+    <div style="max-width:440px;width:100%;background:linear-gradient(160deg,#0d1119,#070a10);
+      border:1px solid rgba(0,212,170,0.25);border-radius:18px;padding:32px 30px;
+      box-shadow:0 24px 70px rgba(0,0,0,0.7);animation:fadeIn .3s ease;">
+      <div style="font-size:46px;text-align:center;margin-bottom:14px;">${s.icon}</div>
+      <div style="font-size:19px;font-weight:800;text-align:center;color:#fff;margin-bottom:12px;">
+        ${E?s.titleEn:s.titleEs}
+      </div>
+      <div style="font-size:13px;line-height:1.75;color:rgba(255,255,255,0.6);text-align:center;margin-bottom:24px;">
+        ${E?s.bodyEn:s.bodyEs}
+      </div>
+      <div style="display:flex;justify-content:center;gap:7px;margin-bottom:22px;">${dots}</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        ${onbStep>0?`<button onclick="onbPrev()" style="padding:10px 20px;border-radius:9px;cursor:pointer;
+          font-family:inherit;font-size:12px;font-weight:600;border:0.5px solid rgba(255,255,255,0.15);
+          background:transparent;color:rgba(255,255,255,0.6);">← ${E?'Back':'Atrás'}</button>`:''}
+        <button onclick="${isLast?'finishOnboarding()':'onbNext()'}"
+          style="padding:10px 26px;border-radius:9px;cursor:pointer;font-family:inherit;
+          font-size:12px;font-weight:700;border:none;background:#00D4AA;color:#000;">
+          ${isLast?(E?'Start exploring 🚀':'Empezar a explorar 🚀'):(E?'Next →':'Siguiente →')}
+        </button>
+      </div>
+      ${!isLast?`<div style="text-align:center;margin-top:14px;">
+        <button onclick="finishOnboarding()" style="background:none;border:none;cursor:pointer;
+          font-size:10px;color:rgba(255,255,255,0.3);font-family:inherit;text-decoration:underline;">
+          ${E?'Skip tour':'Saltar tour'}
+        </button>
+      </div>`:''}
+    </div>`;
+}
+
+function onbNext(){
+  if(onbStep < ONBOARDING_STEPS.length-1){
+    onbStep++;
+    const ov=document.getElementById('onboarding-overlay');
+    if(ov) ov.innerHTML=renderOnbStep();
+  }
+}
+function onbPrev(){
+  if(onbStep>0){
+    onbStep--;
+    const ov=document.getElementById('onboarding-overlay');
+    if(ov) ov.innerHTML=renderOnbStep();
+  }
+}
+function finishOnboarding(){
+  const ov=document.getElementById('onboarding-overlay');
+  if(ov){ ov.style.opacity='0'; ov.style.transition='opacity .3s'; setTimeout(()=>ov.remove(),300); }
+  try{ localStorage.setItem('bioplanet_onboarded','1'); }catch(e){}
+}
+
+// Lanza el onboarding solo si es la primera visita
+function maybeShowOnboarding(){
+  let seen=false;
+  try{ seen = localStorage.getItem('bioplanet_onboarded')==='1'; }catch(e){}
+  if(!seen) setTimeout(showOnboarding, 700);
+}
+
+// Permite reabrir el tour manualmente (ej. desde un botón de ayuda)
+function restartOnboarding(){ onbStep=0; showOnboarding(); }
+
 buildTabBtns();
 renderMain();
+maybeShowOnboarding();
 </script>
 </body>
 </html>
