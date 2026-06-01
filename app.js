@@ -109,51 +109,6 @@ const SUPABASE_URL = 'https://nlmzgxqbdqlyznhxnnuf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sbXpneHFiZHFseXpuaHhubnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTUxMDIsImV4cCI6MjA5NTA5MTEwMn0.VYFEIyPWkMmfr_HRRO_UFkGS46BPPkbc2Yh1kuGCTCs';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ─── LIGHTBOX — ver criatura ampliada para estudiar anatomía ───
-function openCreatureLightbox(url, name){
-  let lb=document.getElementById('creature-lightbox');
-  if(lb) lb.remove();
-  lb=document.createElement('div');
-  lb.id='creature-lightbox';
-  lb.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(2,4,8,0.94);'
-    +'backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;'
-    +'flex-direction:column;gap:14px;cursor:zoom-out;padding:30px;';
-  const E=lang==='en';
-  lb.innerHTML=`
-    <div style="font-size:15px;font-style:italic;font-weight:700;color:#00D4AA;
-      font-family:'JetBrains Mono',monospace;">${name}</div>
-    <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:-8px;">
-      ${E?'Anatomical reference · scroll to zoom · click outside to close':'Referencia anatómica · scroll para zoom · clic fuera para cerrar'}
-    </div>
-    <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;max-height:78vh;">
-      <img id="lightbox-img" src="${url}" style="max-width:90vw;max-height:78vh;object-fit:contain;
-        border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.7);transition:transform .15s ease;
-        transform-origin:center;cursor:grab;"/>
-    </div>
-    <div style="display:flex;gap:10px;">
-      <a href="${url}" download="${name.replace(/\s+/g,'_')}_anatomy.jpg"
-        onclick="event.stopPropagation()"
-        style="font-size:11px;padding:8px 18px;border-radius:8px;text-decoration:none;
-          background:rgba(0,212,170,0.12);border:0.5px solid rgba(0,212,170,0.4);color:#00D4AA;
-          font-family:'JetBrains Mono',monospace;font-weight:600;">
-        ⬇ ${E?'Download for 3D reference':'Descargar para referencia 3D'}
-      </a>
-    </div>`;
-  // Zoom con scroll
-  let zoom=1;
-  lb.addEventListener('wheel',(e)=>{
-    e.preventDefault();
-    zoom=Math.max(1,Math.min(5, zoom - e.deltaY*0.002));
-    const img=document.getElementById('lightbox-img');
-    if(img) img.style.transform=`scale(${zoom})`;
-  },{passive:false});
-  // Cerrar al clic fuera de la imagen
-  lb.addEventListener('click',(e)=>{
-    if(e.target.id!=='lightbox-img') lb.remove();
-  });
-  document.body.appendChild(lb);
-}
-
 // ─── TOAST — notificación temporal no intrusiva ───────
 function showToast(message, type='success', duration=3200){
   // Contenedor (se crea una vez)
@@ -698,26 +653,9 @@ function makeCreature(v,seed){
   // Generar habilidades emergentes
   const abilities=generateAbilities(v,seed,sc);
 
-  // Descripción para imagen IA — vista anatómica completa para estudio + base 3D
+  // Descripción para imagen IA — incluye habilidades más llamativas
   const topAbilities=abilities.slice(0,3).map(a=>a.name).join(', ');
-
-  // Mapear locomoción a postura corporal para que la IA muestre el cuerpo completo
-  const bodyPlan = loco.toLowerCase().includes('vuelo')||loco.toLowerCase().includes('fly')?'winged body, wings spread'
-    : loco.toLowerCase().includes('nado')||loco.toLowerCase().includes('swim')?'streamlined aquatic body, fins visible'
-    : loco.toLowerCase().includes('repta')||loco.toLowerCase().includes('crawl')?'elongated multi-limbed body'
-    : complexity==='vertebrado'?'full quadruped or bipedal anatomy'
-    : complexity==='invertebrado'?'segmented body with visible appendages'
-    : 'complete organism body';
-
-  // PROMPT estilo "model sheet" — cuerpo entero, neutral, anatómicamente claro
-  const imgPrompt=`Full body anatomical reference sheet of ${genus} ${sp}, a ${complexity} alien creature, `
-    +`${bodyPlan}, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, `
-    +`featuring ${topAbilities}, `
-    +`ENTIRE BODY VISIBLE head to limbs, full figure centered, neutral T-pose, `
-    +`side profile and front view, orthographic character turnaround, `
-    +`plain neutral light grey studio background, soft even studio lighting no harsh shadows, `
-    +`clear anatomical detail, scientifically coherent xenobiology, creature concept design sheet, `
-    +`subtle bioluminescent markings, sharp focus, 8k ultra detailed, no text labels`;
+  const imgPrompt=`Hyper-detailed scientific concept art of ${genus} ${sp}, a ${complexity} alien organism, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, abilities: ${topAbilities}, bioluminescent details, scientifically coherent alien biology, otherworldly dramatic environment, 8k ultra detailed concept art`;
 
   return {latinName:`${genus} ${sp}`,complexity,skeleton,skCol,blood,bCol,meta,metaCol,nervous,nCol,thermo,tCol,loco,size,orgCol,seed,sc,abilities,imgPrompt};
 }
@@ -1898,8 +1836,8 @@ function renderCreatures(el){
           // Comprobar si ya hay imagen generada en caché
           const cached=imgCache[cr.seed];
           const imgContent=cached
-            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;cursor:zoom-in;" loading="lazy" onclick="openCreatureLightbox('${cached.url}','${cr.latinName.replace(/'/g,"\\'")}')"/>`
-            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',768,768,'${imgId}',${cr.seed},'creature','${cr.latinName.replace(/'/g,"\\'")}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate anatomy view':'Generar vista anatómica'}</button>`;
+            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" loading="lazy"/>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',500,300,'${imgId}',${cr.seed},'creature','${cr.latinName.replace(/'/g,"\\'")}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate AI image':'Generar imagen IA'}</button>`;
           return`
           <div class="card" style="animation:fadeIn .4s ease both;animation-delay:${i*.08}s;position:relative;overflow:hidden;">
             <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${cr.orgCol},transparent);"></div>
@@ -1907,7 +1845,7 @@ function renderCreatures(el){
               <div><div style="font-size:12px;font-weight:700;color:${cr.orgCol};margin-bottom:2px;font-style:italic;">${cr.latinName}</div><div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${code} · #${i+1}</div></div>
               <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
             </div>
-            <div id="${imgId}" style="height:240px;border-radius:8px;overflow:hidden;margin-bottom:6px;background:radial-gradient(circle at 50% 40%, #1a1d28, var(--bg3));position:relative;display:flex;align-items:center;justify-content:center;">
+            <div id="${imgId}" style="height:160px;border-radius:8px;overflow:hidden;margin-bottom:6px;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
               ${imgContent}
             </div>
             <!-- Botón 3D -->
