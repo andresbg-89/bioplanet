@@ -110,8 +110,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ─── TOAST — notificación temporal no intrusiva ───────
-function showToast(message, type='success', duration=3200){
-  // Contenedor (se crea una vez)
+function showToast(message, type='success', duration=3200){  // Contenedor (se crea una vez)
   let cont=document.getElementById('toast-container');
   if(!cont){
     cont=document.createElement('div');
@@ -219,6 +218,42 @@ async function saveAIImage(kind, url, creatureName){
     }
     await sb.from('planets').update({ ai_images: imgs }).eq('id', currentPlanetId);
   }catch(e){ console.error('saveAIImage failed:', e); }
+}
+
+// Eliminar una imagen IA de la galería (memoria + Supabase + vista)
+async function deleteGalImg(containerId, kind, creatureName, seed){
+  const E = lang==='en';
+  // 1. Quitar de la caché en memoria
+  if(kind==='creature' && seed!==undefined){
+    delete imgCache[seed];
+  } else {
+    delete imgCache[containerId];
+  }
+  // 2. Quitar de las imágenes cargadas en memoria
+  if(window.loadedAImages){
+    if(kind==='creature' && creatureName && window.loadedAImages.creatures){
+      delete window.loadedAImages.creatures[creatureName];
+    } else if(kind!=='creature'){
+      delete window.loadedAImages[kind];
+    }
+  }
+  // 3. Quitar de Supabase (si el planeta está guardado)
+  if(currentPlanetId){
+    try{
+      const { data } = await sb.from('planets')
+        .select('ai_images').eq('id', currentPlanetId).single();
+      const imgs = (data && data.ai_images) ? data.ai_images : {};
+      if(kind==='creature' && creatureName && imgs.creatures){
+        delete imgs.creatures[creatureName];
+      } else {
+        delete imgs[kind];
+      }
+      await sb.from('planets').update({ ai_images: imgs }).eq('id', currentPlanetId);
+    }catch(e){ console.error('deleteGalImg failed:', e); }
+  }
+  // 4. Refrescar la galería
+  showToast(E?'Image deleted':'Imagen eliminada','success');
+  renderMain();
 }
 
 // Cargar planetas recientes
@@ -2333,16 +2368,22 @@ function renderGallery(el){
       <div class="label">${t('orbitalView')}</div>
       <div id="gal-planet" style="height:220px;border-radius:10px;overflow:hidden;
         background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-        <button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')"
-          class="btn btn-teal">🌍 ${t('genPlanet')}</button>
+        ${imgCache['gal-planet']||(window.loadedAImages&&window.loadedAImages.planet)
+          ?`<img src="${imgCache['gal-planet']?imgCache['gal-planet'].url:window.loadedAImages.planet}" style="width:100%;height:100%;object-fit:cover;"/>
+             <button onclick="deleteGalImg('gal-planet','planet')" title="${E?'Delete':'Eliminar'}" style="position:absolute;top:6px;right:6px;background:rgba(248,113,113,0.85);border:none;color:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;">🗑</button>`
+          :`<button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet','gal-planet','planet')"
+              class="btn btn-teal">🌍 ${t('genPlanet')}</button>`}
       </div>
     </div>
     <div>
       <div class="label">${t('surfaceView')}</div>
       <div id="gal-surface" style="height:220px;border-radius:10px;overflow:hidden;
         background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
-        <button onclick="makeAIImg(surfaceImgPrompt(vals),600,400,'gal-surface',undefined,'surface')"
-          class="btn btn-teal">🏔 ${E?'Generate surface':'Generar superficie'}</button>
+        ${imgCache['gal-surface']||(window.loadedAImages&&window.loadedAImages.surface)
+          ?`<img src="${imgCache['gal-surface']?imgCache['gal-surface'].url:window.loadedAImages.surface}" style="width:100%;height:100%;object-fit:cover;"/>
+             <button onclick="deleteGalImg('gal-surface','surface')" title="${E?'Delete':'Eliminar'}" style="position:absolute;top:6px;right:6px;background:rgba(248,113,113,0.85);border:none;color:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;">🗑</button>`
+          :`<button onclick="makeAIImg(surfaceImgPrompt(vals),600,400,'gal-surface','gal-surface','surface')"
+              class="btn btn-teal">🏔 ${E?'Generate surface':'Generar superficie'}</button>`}
       </div>
     </div>
   </div>
@@ -2420,14 +2461,18 @@ function renderGallery(el){
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">
     ${creatures.map((cr,i)=>{
       const imgId=`gal-cr-${i}`;
+      // Restaurar desde caché en memoria o desde imágenes guardadas en Supabase
+      const savedUrl = (window.loadedAImages && window.loadedAImages.creatures && window.loadedAImages.creatures[cr.latinName]) || null;
       const cached=imgCache[cr.seed];
+      const imgUrl = cached ? cached.url : savedUrl;
       return`
       <div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);">
         <div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;
           display:flex;align-items:center;justify-content:center;">
-          ${cached
-            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"/>`
-            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}',${cr.seed})"
+          ${imgUrl
+            ?`<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"/>
+               <button onclick="deleteGalImg('${imgId}','creature','${cr.latinName.replace(/'/g,"\\'")}',${cr.seed})" title="${E?'Delete':'Eliminar'}" style="position:absolute;top:6px;right:6px;background:rgba(248,113,113,0.85);border:none;color:#fff;width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:11px;">🗑</button>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}',${cr.seed},'creature','${cr.latinName.replace(/'/g,"\\'")}')"
                 class="btn btn-teal" style="font-size:10px;">
                 🎨 ${E?'Generate':'Generar'}
               </button>`}
