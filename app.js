@@ -6444,19 +6444,29 @@ async function doNasaSearch(q){
   if(nasaSearchCache[q]){ renderNasaResults(nasaSearchCache[q]); if(ico)ico.textContent='🔍'; return; }
 
   try{
-    // Escapar comillas simples para ADQL
-    const safe=q.replace(/'/g,"''");
-    const query=`SELECT TOP 25 pl_name,pl_rade,pl_bmasse,pl_eqt,pl_orbsmax,st_teff,sy_dist,disc_year,discoverymethod `
-      +`FROM pscomppars WHERE UPPER(pl_name) LIKE UPPER('%${safe}%') ORDER BY pl_name`;
-    const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
-    const res=await fetch(url);
-    const data=await res.json();
+    // Usar el proxy /api/nasa (evita CORS). Fallback a NASA directo si el proxy no existe.
+    let data;
+    try{
+      const res=await fetch(`/api/nasa?q=${encodeURIComponent(q)}`);
+      if(!res.ok) throw new Error('proxy '+res.status);
+      data=await res.json();
+    }catch(proxyErr){
+      // Fallback: intento directo a NASA (funciona en algunos navegadores/conexiones)
+      const safe=q.replace(/'/g,"''");
+      const query=`SELECT TOP 25 pl_name,pl_rade,pl_bmasse,pl_eqt,pl_orbsmax,st_teff,sy_dist,disc_year,discoverymethod `
+        +`FROM pscomppars WHERE UPPER(pl_name) LIKE UPPER('%${safe}%') ORDER BY pl_name`;
+      const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+      const res2=await fetch(url);
+      data=await res2.json();
+    }
+    if(data && data.error) throw new Error(data.error);
     nasaSearchCache[q]=data;
     renderNasaResults(data);
   }catch(err){
+    console.error('NASA search error:', err);
     box.style.display='block';
-    box.innerHTML=`<div style="padding:10px;font-size:8px;color:#F87171;">
-      ${E?'NASA API unreachable. Check connection.':'NASA API no disponible. Verifica conexión.'}
+    box.innerHTML=`<div style="padding:10px;font-size:8px;color:#F87171;line-height:1.6;">
+      ${E?'NASA API unavailable right now. Try again in a moment, or use the preset buttons below.':'NASA API no disponible ahora. Intenta de nuevo en un momento, o usa los botones de presets de abajo.'}
     </div>`;
   } finally {
     if(ico) ico.textContent='🔍';
@@ -6573,18 +6583,28 @@ async function loadNASALive(){
   }
 
   try{
-    // NASA Exoplanet Archive TAP API — gratis, sin API key
-    const query=`SELECT TOP 10 pl_name,pl_rade,pl_bmasse,pl_orbper,pl_eqt,st_teff,st_dist,pl_esi
-      FROM ps WHERE pl_esi IS NOT NULL AND pl_esi > 0.5
-      ORDER BY pl_esi DESC`;
-    const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+    // Top planetas potencialmente habitables: tamaño y temperatura tipo Tierra
+    // (pl_esi no existe en NASA; usamos radio y temperatura de equilibrio como proxy)
+    const query=`SELECT TOP 12 pl_name,pl_rade,pl_bmasse,pl_orbper,pl_eqt,st_teff,sy_dist,disc_year `
+      +`FROM pscomppars WHERE pl_rade BETWEEN 0.5 AND 1.8 AND pl_eqt BETWEEN 200 AND 320 `
+      +`ORDER BY pl_eqt ASC`;
 
-    const res  = await fetch(url);
-    const data = await res.json();
+    let data;
+    try{
+      // Vía proxy: enviamos la consulta completa codificada
+      const res=await fetch(`/api/nasa?adql=${encodeURIComponent(query)}`);
+      if(!res.ok) throw new Error('proxy '+res.status);
+      data=await res.json();
+    }catch(proxyErr){
+      const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+      const res2=await fetch(url);
+      data=await res2.json();
+    }
+    if(data && data.error) throw new Error(data.error);
 
     if(!data||!data.length){
       if(el) el.innerHTML=`<div style="color:#F87171;">${E?'No data from NASA API. Using local database.':'Sin datos de NASA API. Usando base de datos local.'}</div>`;
-      if(btn){ btn.textContent='⟳ Live API'; }
+      if(btn){ btn.textContent='⟳ Top 10'; }
       return;
     }
 
@@ -6592,28 +6612,26 @@ async function loadNASALive(){
     if(el){
       el.innerHTML=`
         <div style="font-size:8px;font-weight:700;color:rgba(0,212,170,0.8);margin-bottom:6px;">
-          🛰 ${E?'Live from NASA Exoplanet Archive — top habitable candidates:':'En vivo desde NASA Exoplanet Archive — mejores candidatos habitables:'}
+          🛰 ${E?'Live from NASA — Earth-like temperature candidates:':'En vivo desde NASA — candidatos con temperatura tipo Tierra:'}
         </div>
         ${data.map((p,i)=>{
           const name  = p.pl_name||`Planet ${i+1}`;
-          const esi   = p.pl_esi?parseFloat(p.pl_esi).toFixed(3):'-';
           const rad   = p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'-';
           const mass  = p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'-';
           const temp  = p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'-';
-          const dist  = p.st_dist?Math.round(parseFloat(p.st_dist))+' ly':'-';
-          const esiCol= parseFloat(esi)>=0.80?'#00D4AA':parseFloat(esi)>=0.60?'#FBBF24':'#94A3B8';
+          const dist  = p.sy_dist?Math.round(parseFloat(p.sy_dist)*3.262)+' ly':'-';
           return`
           <div style="background:rgba(0,212,170,0.03);border:0.5px solid rgba(0,212,170,0.12);
             border-radius:4px;padding:5px 7px;margin-bottom:4px;cursor:pointer;transition:all .15s;"
-            onclick="loadNASAPlanet(${JSON.stringify({pl_name:name,pl_rade:p.pl_rade,pl_bmasse:p.pl_bmasse,pl_eqt:p.pl_eqt,pl_esi:esi}).replace(/"/g,'&quot;')})"
+            onclick='loadNASAPlanet(${JSON.stringify({pl_name:name,pl_rade:p.pl_rade,pl_bmasse:p.pl_bmasse,pl_eqt:p.pl_eqt,st_teff:p.st_teff,sy_dist:p.sy_dist})})'
             onmouseover="this.style.background='rgba(0,212,170,0.08)'"
             onmouseout="this.style.background='rgba(0,212,170,0.03)'">
             <div style="display:flex;justify-content:space-between;align-items:baseline;">
               <span style="font-size:8.5px;font-weight:700;color:rgba(255,255,255,0.80);">${name}</span>
-              <span style="font-size:9px;color:${esiCol};font-weight:700;">ESI ${esi}</span>
+              <span style="font-size:8px;color:rgba(0,212,170,0.6);">${dist}</span>
             </div>
             <div style="font-size:7.5px;color:rgba(255,255,255,0.35);margin-top:1px;">
-              ${rad} · ${mass} · ${temp} · ${dist}
+              ${rad} · ${mass} · ${temp}
             </div>
           </div>`;
         }).join('')}`;
