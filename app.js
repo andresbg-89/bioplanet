@@ -1,0 +1,6882 @@
+// ═══════════════════════════════════════════════════════
+// CLERK — Autenticación de usuarios
+// ═══════════════════════════════════════════════════════
+let clerkUser = null;
+let clerkInstance = null;
+
+window.addEventListener('load', async () => {
+  try {
+    await window.Clerk?.load();
+    clerkInstance = window.Clerk;
+    clerkUser = clerkInstance?.user || null;
+    updateUserUI();
+
+    // Escuchar cambios de sesión
+    clerkInstance?.addListener(({ user }) => {
+      clerkUser = user;
+      updateUserUI();
+      if(user) closeSignIn();
+    });
+  } catch(e) {
+    console.warn('Clerk no disponible:', e);
+  }
+});
+
+function updateUserUI(){
+  const signInBtn   = document.getElementById('sign-in-btn');
+  const userMenu    = document.getElementById('user-menu');
+  const userAvatar  = document.getElementById('user-avatar');
+  const userNameEl  = document.getElementById('user-name');
+  const userEmailEl = document.getElementById('user-email');
+
+  if(clerkUser){
+    if(signInBtn)  signInBtn.style.display  = 'none';
+    if(userMenu)   userMenu.style.display   = 'block';
+    const name = clerkUser.firstName || clerkUser.username || clerkUser.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User';
+    const email = clerkUser.emailAddresses?.[0]?.emailAddress || '';
+    const initials = name.slice(0,2).toUpperCase();
+    if(userAvatar)  userAvatar.textContent  = initials;
+    if(userNameEl)  userNameEl.textContent  = name;
+    if(userEmailEl) userEmailEl.textContent = email;
+  } else {
+    if(signInBtn)  signInBtn.style.display  = 'block';
+    if(userMenu)   userMenu.style.display   = 'none';
+  }
+}
+
+function toggleUserMenu(){
+  const dd = document.getElementById('user-dropdown');
+  if(dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+// Cerrar dropdown al click fuera
+document.addEventListener('click', e => {
+  if(!e.target.closest('#user-menu')){
+    const dd = document.getElementById('user-dropdown');
+    if(dd) dd.style.display = 'none';
+  }
+});
+
+async function openSignIn(){
+  const modal = document.getElementById('clerk-modal');
+  const container = document.getElementById('clerk-signin-container');
+  if(!modal || !container) return;
+  modal.style.display = 'flex';
+  try {
+    await clerkInstance?.mountSignIn(container, {
+      appearance:{
+        variables:{ colorPrimary:'#00D4AA', colorBackground:'#070D1A', colorText:'#DDE6F5', colorInputBackground:'#0C1525', borderRadius:'8px' }
+      }
+    });
+  } catch(e){
+    // Fallback si Clerk no cargó
+    container.innerHTML=`
+      <div style="text-align:center;padding:20px;color:var(--muted);font-size:11px;">
+        <div style="font-size:24px;margin-bottom:8px;">⚠</div>
+        Clerk no pudo cargar.<br>Verifica tu conexión a internet.
+      </div>`;
+  }
+}
+
+function closeSignIn(){
+  const modal = document.getElementById('clerk-modal');
+  if(modal) modal.style.display = 'none';
+  try { clerkInstance?.unmountSignIn(document.getElementById('clerk-signin-container')); } catch(e){}
+}
+
+async function signOut(){
+  try {
+    await clerkInstance?.signOut();
+    clerkUser = null;
+    updateUserUI();
+    toggleUserMenu();
+    // Notificación
+    showNotif('✓ Sesión cerrada','#94A3B8');
+  } catch(e){ console.warn('Error al cerrar sesión:', e); }
+}
+
+function showNotif(msg, color='var(--teal)'){
+  const notif = document.createElement('div');
+  notif.style.cssText=`position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);border:1px solid ${color};border-radius:8px;padding:10px 20px;font-size:12px;color:${color};z-index:9999;font-family:'JetBrains Mono',monospace;pointer-events:none;`;
+  notif.textContent = msg;
+  document.body.appendChild(notif);
+  setTimeout(()=>{notif.style.opacity='0';notif.style.transition='opacity .5s';setTimeout(()=>notif.remove(),500);}, 2500);
+}
+
+// ═══════════════════════════════════════════════════════
+// SUPABASE — Cliente y funciones de base de datos
+// ═══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://nlmzgxqbdqlyznhxnnuf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sbXpneHFiZHFseXpuaHhubnVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTUxMDIsImV4cCI6MjA5NTA5MTEwMn0.VYFEIyPWkMmfr_HRRO_UFkGS46BPPkbc2Yh1kuGCTCs';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ─── LIGHTBOX — ver criatura ampliada para estudiar anatomía ───
+function openCreatureLightbox(url, name){
+  let lb=document.getElementById('creature-lightbox');
+  if(lb) lb.remove();
+  lb=document.createElement('div');
+  lb.id='creature-lightbox';
+  lb.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(2,4,8,0.94);'
+    +'backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;'
+    +'flex-direction:column;gap:14px;cursor:zoom-out;padding:30px;';
+  const E=lang==='en';
+  lb.innerHTML=`
+    <div style="font-size:15px;font-style:italic;font-weight:700;color:#00D4AA;
+      font-family:'JetBrains Mono',monospace;">${name}</div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:-8px;">
+      ${E?'Anatomical reference · scroll to zoom · click outside to close':'Referencia anatómica · scroll para zoom · clic fuera para cerrar'}
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;max-height:78vh;">
+      <img id="lightbox-img" src="${url}" style="max-width:90vw;max-height:78vh;object-fit:contain;
+        border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.7);transition:transform .15s ease;
+        transform-origin:center;cursor:grab;"/>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <a href="${url}" download="${name.replace(/\s+/g,'_')}_anatomy.jpg"
+        onclick="event.stopPropagation()"
+        style="font-size:11px;padding:8px 18px;border-radius:8px;text-decoration:none;
+          background:rgba(0,212,170,0.12);border:0.5px solid rgba(0,212,170,0.4);color:#00D4AA;
+          font-family:'JetBrains Mono',monospace;font-weight:600;">
+        ⬇ ${E?'Download for 3D reference':'Descargar para referencia 3D'}
+      </a>
+    </div>`;
+  // Zoom con scroll
+  let zoom=1;
+  lb.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    zoom=Math.max(1,Math.min(5, zoom - e.deltaY*0.002));
+    const img=document.getElementById('lightbox-img');
+    if(img) img.style.transform=`scale(${zoom})`;
+  },{passive:false});
+  // Cerrar al clic fuera de la imagen
+  lb.addEventListener('click',(e)=>{
+    if(e.target.id!=='lightbox-img') lb.remove();
+  });
+  document.body.appendChild(lb);
+}
+
+// ─── TOAST — notificación temporal no intrusiva ───────
+function showToast(message, type='success', duration=3200){
+  // Contenedor (se crea una vez)
+  let cont=document.getElementById('toast-container');
+  if(!cont){
+    cont=document.createElement('div');
+    cont.id='toast-container';
+    cont.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+      +'z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;';
+    document.body.appendChild(cont);
+  }
+  const colors={
+    success:{bg:'rgba(0,212,170,0.12)',border:'rgba(0,212,170,0.45)',text:'#00D4AA'},
+    error:  {bg:'rgba(248,113,113,0.12)',border:'rgba(248,113,113,0.45)',text:'#F87171'},
+    info:   {bg:'rgba(96,165,250,0.12)',border:'rgba(96,165,250,0.45)',text:'#60A5FA'},
+  };
+  const c=colors[type]||colors.success;
+  const t=document.createElement('div');
+  t.textContent=message;
+  t.style.cssText=`pointer-events:auto;background:${c.bg};backdrop-filter:blur(12px);`
+    +`border:0.5px solid ${c.border};color:${c.text};font-size:12px;font-weight:600;`
+    +`font-family:'JetBrains Mono',ui-monospace,monospace;padding:11px 20px;border-radius:10px;`
+    +`box-shadow:0 8px 28px rgba(0,0,0,0.5);opacity:0;transform:translateY(12px);`
+    +`transition:opacity .25s ease,transform .25s ease;max-width:90vw;text-align:center;`;
+  cont.appendChild(t);
+  // Animar entrada
+  requestAnimationFrame(()=>{t.style.opacity='1';t.style.transform='translateY(0)';});
+  // Salida
+  setTimeout(()=>{
+    t.style.opacity='0';t.style.transform='translateY(12px)';
+    setTimeout(()=>t.remove(),300);
+  }, duration);
+}
+
+
+// Guardar planeta en Supabase
+async function savePlanetToDB(vals, code, score, creatures) {
+  try {
+    const userId   = clerkUser?.id    || null;
+    const userName = clerkUser?.firstName || clerkUser?.username || null;
+    // Guardar planeta
+    const { data: planet, error: pErr } = await sb
+      .from('planets')
+      .insert({
+        code,
+        name: `Planeta ${code}`,
+        vals: vals,
+        score: Math.round(score * 100) / 100,
+        is_public: true,
+        user_id:   userId,
+        user_name: userName,
+        ai_images: {},
+      })
+      .select()
+      .single();
+
+    if (pErr) throw pErr;
+
+    // Guardar criaturas
+    const creatureRows = creatures.map(c => ({
+      planet_id: planet.id,
+      latin_name: c.latinName,
+      traits: {
+        skeleton: c.skeleton, blood: c.blood, meta: c.meta,
+        nervous: c.nervous, thermo: c.thermo, loco: c.loco,
+        size: c.size, complexity: c.complexity,
+      },
+      seed: c.seed,
+    }));
+
+    // Borrar criaturas anteriores si existe el planeta
+    await sb.from('creatures').delete().eq('planet_id', planet.id);
+    const { error: cErr } = await sb.from('creatures').insert(creatureRows);
+    if (cErr) {
+      console.error('Error guardando criaturas:', cErr);
+      // No fallar todo el guardado, pero avisar
+      showToast(lang==='en'
+        ? '⚠ Planet saved, but creatures failed (check RLS policy)'
+        : '⚠ Planeta guardado, pero las criaturas fallaron (revisa política RLS)', 'error', 4500);
+    }
+
+    // Recordar el id del planeta actual para asociar imágenes IA
+    currentPlanetId = planet.id;
+
+    return { ok: true, id: planet.id };
+  } catch (err) {
+    console.error('Error guardando planeta:', err);
+    return { ok: false, error: err.message };
+  }
+}
+
+// ID del planeta guardado actualmente (para asociar imágenes IA)
+let currentPlanetId = null;
+
+// Guardar la URL de una imagen IA en el planeta actual
+async function saveAIImage(kind, url, creatureName){
+  if(!currentPlanetId) return; // solo si el planeta ya está guardado
+  try{
+    // Leer las imágenes actuales
+    const { data } = await sb.from('planets')
+      .select('ai_images').eq('id', currentPlanetId).single();
+    const imgs = (data && data.ai_images) ? data.ai_images : {};
+    if(kind==='creature' && creatureName){
+      imgs.creatures = imgs.creatures || {};
+      imgs.creatures[creatureName] = url;
+    } else {
+      imgs[kind] = url;
+    }
+    await sb.from('planets').update({ ai_images: imgs }).eq('id', currentPlanetId);
+  }catch(e){ console.error('saveAIImage failed:', e); }
+}
+
+// Cargar planetas recientes
+async function loadRecentPlanets(limit = 12) {
+  const { data, error } = await sb
+    .from('planets')
+    .select('id, code, name, score, vals, created_at, views')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data || [];
+}
+
+// Cargar un planeta por código
+async function loadPlanetByCode(code) {
+  const { data, error } = await sb
+    .from('planets')
+    .select('*, creatures(*)')
+    .eq('code', code)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+// Incrementar vistas
+async function incrementViews(code) {
+  await sb.rpc('increment_views', { planet_code: code }).catch(() => {});
+}
+
+// ═══════════════════════════════════════════════════════
+// DATOS
+// ═══════════════════════════════════════════════════════
+const PRESETS={
+  "Tierra":       {Ca:41,Fe:56,Si:282,P:1.0,Mg:23,Cu:60,S:350,Ni:84,V:120,O2:21,CO2:0.04,H2S:0,H2O:71,Temp:15,pH:7.2,pressure:1.0,gravity:1.0},
+  "Europa":       {Ca:15,Fe:10,Si:50, P:0.2,Mg:50,Cu:40,S:2000,Ni:50,V:200,O2:2, CO2:0.5,H2S:0.5,H2O:100,Temp:-5,pH:8.5,pressure:0.5,gravity:0.13},
+  "Volcánico":    {Ca:30,Fe:40,Si:200,P:0.5,Mg:20,Cu:200,S:15000,Ni:200,V:500,O2:5,CO2:5,H2S:8,H2O:30,Temp:70,pH:3.5,pressure:2.0,gravity:0.9},
+  "Glacial":      {Ca:10,Fe:20,Si:250,P:0.1,Mg:15,Cu:20,S:100,Ni:20,V:50,O2:22,CO2:0.03,H2S:0,H2O:80,Temp:-40,pH:6.5,pressure:0.8,gravity:0.7},
+  "Sulfúrico":    {Ca:5, Fe:30,Si:180,P:0.2,Mg:10,Cu:50,S:20000,Ni:100,V:300,O2:0.5,CO2:2,H2S:9,H2O:20,Temp:50,pH:2.5,pressure:3.0,gravity:1.1},
+  "Carbonífero":  {Ca:55,Fe:35,Si:275,P:0.8,Mg:23,Cu:60,S:500,Ni:80,V:100,O2:30,CO2:0.1,H2S:0,H2O:45,Temp:28,pH:6.5,pressure:1.2,gravity:1.0},
+  "Titán":        {Ca:5, Fe:8, Si:100,P:0.1,Mg:8, Cu:10,S:500,Ni:10,V:20,O2:0,CO2:0.1,H2S:0.1,H2O:0,Temp:-179,pH:7.0,pressure:1.5,gravity:0.14},
+  "Marte Arcaico":{Ca:20,Fe:80,Si:310,P:0.3,Mg:30,Cu:10,S:5000,Ni:30,V:80,O2:0.1,CO2:95,H2S:0,H2O:15,Temp:-20,pH:7.0,pressure:0.8,gravity:0.38},
+  "Oceánico":     {Ca:25,Fe:15,Si:30, P:0.5,Mg:60,Cu:80,S:3000,Ni:60,V:200,O2:8,CO2:1,H2S:0.3,H2O:100,Temp:10,pH:8.0,pressure:2.0,gravity:0.9},
+};
+
+// ── Exoplanetas reales con datos NASA/confirmados ────────
+// Fuentes: NASA Exoplanet Archive, publicaciones científicas
+const EXOPLANETS = {
+  "Kepler-442b": {
+    Ca:58,Fe:65,Si:295,P:1.4,Mg:28,Cu:75,S:750,Ni:95,V:145,
+    O2:24,CO2:0.06,H2S:0,H2O:62,Temp:18,pH:7.1,pressure:1.25,gravity:1.34,
+    info:{
+      star:"K-type (K5V)",distance:"1206 ly",radius:"1.34 R⊕",mass:"~2.3 M⊕",
+      year:2015,esi:0.84,zone:"Habitable zone",discovery:"Kepler Space Telescope",
+      note:"One of the most Earth-like exoplanets known. Rocky super-Earth in the habitable zone of its K-type star."
+    }
+  },
+  "TRAPPIST-1e": {
+    Ca:42,Fe:58,Si:270,P:1.1,Mg:22,Cu:55,S:400,Ni:80,V:110,
+    O2:20,CO2:0.05,H2S:0,H2O:68,Temp:12,pH:7.3,pressure:0.95,gravity:0.93,
+    info:{
+      star:"Ultra-cool red dwarf (M8V)",distance:"39 ly",radius:"0.92 R⊕",mass:"0.77 M⊕",
+      year:2017,esi:0.85,zone:"Habitable zone",discovery:"TRAPPIST telescope + Spitzer",
+      note:"Best candidate for liquid water. Tidally locked — one side always faces its star."
+    }
+  },
+  "TRAPPIST-1d": {
+    Ca:38,Fe:52,Si:260,P:0.9,Mg:20,Cu:50,S:380,Ni:72,V:95,
+    O2:15,CO2:0.08,H2S:0,H2O:55,Temp:28,pH:7.0,pressure:0.85,gravity:0.77,
+    info:{
+      star:"Ultra-cool red dwarf (M8V)",distance:"39 ly",radius:"0.77 R⊕",mass:"0.41 M⊕",
+      year:2017,esi:0.89,zone:"Inner habitable zone",discovery:"TRAPPIST/Spitzer",
+      note:"Smallest and lightest of TRAPPIST-1 planets. Receives slightly more stellar flux than Earth."
+    }
+  },
+  "Proxima Cen b": {
+    Ca:44,Fe:60,Si:280,P:1.2,Mg:24,Cu:62,S:420,Ni:86,V:118,
+    O2:18,CO2:0.04,H2S:0,H2O:45,Temp:8,pH:7.2,pressure:1.1,gravity:1.1,
+    info:{
+      star:"Red dwarf (M5.5Ve)",distance:"4.24 ly",radius:"~1.1 R⊕ (est.)",mass:"1.07 M⊕",
+      year:2016,esi:0.87,zone:"Habitable zone",discovery:"ESO HARPS spectrograph",
+      note:"Nearest exoplanet to Earth. Tidally locked. Subject to intense stellar flares from Proxima Centauri."
+    }
+  },
+  "Kepler-452b": {
+    Ca:48,Fe:62,Si:290,P:1.3,Mg:26,Cu:68,S:680,Ni:92,V:138,
+    O2:22,CO2:0.05,H2S:0,H2O:58,Temp:22,pH:7.1,pressure:1.6,gravity:1.87,
+    info:{
+      star:"G-type (G2V) — similar to Sun",distance:"1400 ly",radius:"1.63 R⊕",mass:"~5 M⊕ (est.)",
+      year:2015,esi:0.83,zone:"Habitable zone",discovery:"Kepler Space Telescope",
+      note:"Called 'Earth's older cousin'. Orbits a Sun-like star but is 60% larger than Earth."
+    }
+  },
+  "Kepler-186f": {
+    Ca:35,Fe:48,Si:255,P:0.8,Mg:18,Cu:45,S:320,Ni:65,V:88,
+    O2:16,CO2:0.06,H2S:0,H2O:40,Temp:5,pH:6.9,pressure:0.75,gravity:0.85,
+    info:{
+      star:"Red dwarf (M1V)",distance:"492 ly",radius:"1.17 R⊕",mass:"~1.4 M⊕ (est.)",
+      year:2014,esi:0.61,zone:"Outer habitable zone",discovery:"Kepler Space Telescope",
+      note:"First Earth-size exoplanet confirmed in the habitable zone. Cooler than Earth due to dim star."
+    }
+  },
+  "GJ 1061 d": {
+    Ca:40,Fe:55,Si:272,P:1.0,Mg:21,Cu:58,S:390,Ni:78,V:105,
+    O2:19,CO2:0.04,H2S:0,H2O:52,Temp:15,pH:7.0,pressure:1.0,gravity:1.18,
+    info:{
+      star:"Red dwarf (M5.1V)",distance:"12 ly",radius:"~1.16 R⊕ (est.)",mass:"1.64 M⊕",
+      year:2019,esi:0.86,zone:"Habitable zone",discovery:"HARPS spectrograph",
+      note:"One of the closest potentially habitable planets. Part of a 3-planet system."
+    }
+  },
+  "TOI-700 d": {
+    Ca:43,Fe:57,Si:278,P:1.1,Mg:22,Cu:60,S:410,Ni:82,V:112,
+    O2:21,CO2:0.04,H2S:0,H2O:60,Temp:10,pH:7.1,pressure:1.05,gravity:1.05,
+    info:{
+      star:"Red dwarf (M2V)",distance:"101.4 ly",radius:"1.01 R⊕",mass:"~1 M⊕ (est.)",
+      year:2020,esi:0.82,zone:"Habitable zone",discovery:"TESS Space Telescope",
+      note:"Earth-size planet in the habitable zone discovered by TESS. One of the most promising TESS finds."
+    }
+  },
+  "Venus-like": {
+    Ca:30,Fe:45,Si:240,P:0.5,Mg:18,Cu:40,S:8000,Ni:60,V:90,
+    O2:0.003,CO2:96.5,H2S:0.2,H2O:0.002,Temp:464,pH:1.0,pressure:92.0,gravity:0.904,
+    info:{
+      star:"G-type (G2V)",distance:"0 ly (Solar System)",radius:"0.949 R⊕",mass:"0.815 M⊕",
+      year:0,esi:0.44,zone:"Inner edge",discovery:"Known since antiquity",
+      note:"Venus parameters — runaway greenhouse effect. Shows what Earth-size planets can become without the right conditions."
+    }
+  },
+  "Kepler-62f": {
+    Ca:36,Fe:50,Si:260,P:0.9,Mg:19,Cu:48,S:340,Ni:68,V:92,
+    O2:17,CO2:0.07,H2S:0,H2O:75,Temp:2,pH:7.0,pressure:0.90,gravity:0.89,
+    info:{
+      star:"K-type (K2V)",distance:"1200 ly",radius:"1.41 R⊕",mass:"~2.8 M⊕ (est.)",
+      year:2013,esi:0.67,zone:"Outer habitable zone",discovery:"Kepler Space Telescope",
+      note:"Possibly a water world or covered in global ocean. Cold but potentially habitable."
+    }
+  },
+};
+
+
+const SLIDERS=[
+  {sym:"Ca",  label:"Calcio",    unit:"K ppm",min:0,  max:100, step:1,  def:41,  g:"Suelo",    col:"#4ADE80"},
+  {sym:"Fe",  label:"Hierro",   unit:"K ppm",min:0,  max:100, step:1,  def:56,  g:"Suelo",    col:"#F87171"},
+  {sym:"Si",  label:"Silicio",  unit:"K ppm",min:0,  max:350, step:5,  def:282, g:"Suelo",    col:"#60A5FA"},
+  {sym:"P",   label:"Fósforo",  unit:"K ppm",min:0,  max:5,   step:0.1,def:1.0, g:"Suelo",    col:"#FBBF24"},
+  {sym:"Mg",  label:"Magnesio", unit:"K ppm",min:0,  max:60,  step:1,  def:23,  g:"Suelo",    col:"#4ADE80"},
+  {sym:"Cu",  label:"Cobre",   unit:"ppm",  min:0,  max:300, step:1,  def:60,  g:"Suelo",    col:"#60A5FA"},
+  {sym:"S",   label:"Azufre",  unit:"ppm",  min:0,  max:25000,step:100,def:350,g:"Suelo",    col:"#FBBF24"},
+  {sym:"Ni",  label:"Níquel",  unit:"ppm",  min:0,  max:500, step:1,  def:84,  g:"Suelo",    col:"#94A3B8"},
+  {sym:"V",   label:"Vanadio", unit:"ppm",  min:0,  max:1000,step:5,  def:120, g:"Suelo",    col:"#A78BFA"},
+  {sym:"O2",  label:"Oxígeno", unit:"%",    min:0,  max:35,  step:0.5,def:21,  g:"Atmósfera",col:"#00D4AA"},
+  {sym:"CO2", label:"CO₂",     unit:"%",    min:0,  max:20,  step:0.1,def:0.04,g:"Atmósfera",col:"#FBBF24"},
+  {sym:"H2S", label:"H₂S",     unit:"%",    min:0,  max:10,  step:0.1,def:0,   g:"Atmósfera",col:"#F87171"},
+  {sym:"H2O", label:"Agua",    unit:"% sup",min:0,  max:100, step:1,  def:71,  g:"Entorno",  col:"#60A5FA"},
+  {sym:"Temp",label:"Temp",    unit:"°C",   min:-200,max:200,step:1,  def:15,  g:"Entorno",  col:"#F87171"},
+  {sym:"pH",  label:"pH",      unit:"",     min:0,  max:14,  step:0.1,def:7.2, g:"Entorno",  col:"#A78BFA"},
+  {sym:"gravity",label:"Gravedad",unit:"g", min:0.01,max:5,  step:0.05,def:1.0,g:"Entorno",  col:"#4ADE80"},
+];
+let vals={};SLIDERS.forEach(s=>vals[s.sym]=s.def);
+let currentTab='planet';
+let numCreatures=3;
+let lastCreatures=[];
+
+// ═══════════════════════════════════════════════════════
+// MOTOR CIENTÍFICO
+// ═══════════════════════════════════════════════════════
+function calcScore(v){
+  let s=0;
+  if(v.Temp>=-20&&v.Temp<=50&&v.H2O>0)s+=0.25*Math.min(v.H2O/50,1);
+  if(v.O2>=15)s+=0.20;else if(v.O2>=5)s+=0.12;else if(v.CO2>=1||v.H2S>=1)s+=0.06;
+  if(v.Ca>=5)s+=0.08;if(v.P>=0.3)s+=0.07;if(v.Fe>=5)s+=0.05;if(v.Mg>=10)s+=0.05;
+  if(v.Temp>=-20&&v.Temp<=50)s+=0.15;else if(v.Temp>=-80&&v.Temp<=100)s+=0.07;
+  if(v.pH>=5.5&&v.pH<=9)s+=0.07;else if(v.pH>=2&&v.pH<=12)s+=0.03;
+  if(v.gravity>=0.3&&v.gravity<=3)s+=0.04;
+  return Math.min(s,1.0);
+}
+function rng(seed,n){return((Math.sin(seed*9301+n*49297+233)%1)+1)%1;}
+function generateCreatureSeed(v,i){
+  const keys=["Ca","Fe","Si","P","Mg","Cu","O2","H2S","Temp","pH"];
+  return Math.abs(keys.reduce((a,k,j)=>a+(v[k]||0)*(j+1),i*1000))%99999;
+}
+
+// ═══════════════════════════════════════════════════════
+// MOTOR DE HABILIDADES EMERGENTES
+// Sistema científico + imaginativo de capacidades
+// basadas en la composición mineral y habitabilidad
+// ═══════════════════════════════════════════════════════
+function generateAbilities(v, seed, sc){
+  const {Ca,Fe,Si,P,Mg,Cu,Mn,Mo,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
+  const r=(n)=>rng(seed,n);
+  const abilities=[];
+
+  // ── SENTIDOS ────────────────────────────────────────
+
+  // Visión
+  if(O2>15&&Ca>20&&sc>0.5){
+    const eyes=sc>0.75?
+      (r(10)>0.5?"Dos ojos con visión estereoscópica (percepción de profundidad)":"Cuatro ojos independientes (campo visual 300°)"):
+      (r(10)>0.5?"Ojos compuestos (miles de lentes — detección de movimiento)":"Un ojo central — visión panorámica simple");
+    abilities.push({cat:"👁 Visión",name:eyes,col:"#60A5FA",
+      detail:"Fotorreceptores basados en rodopsina-Fe. Detecta 380–750nm."});
+  }
+  if(O2<3&&H2S>1){
+    abilities.push({cat:"👁 Visión",name:"Quimiorreceptores ópticos (sin ojos)",col:"#FBBF24",
+      detail:"Proteínas sensibles a gradientes químicos en lugar de fotones. Detecta H₂S, O₂ y CO₂ a distancia."});
+  }
+  if(Temp<-20){
+    abilities.push({cat:"👁 Visión",name:"Visión infrarroja — detección de calor",col:"#F87171",
+      detail:"Pit organs con membranas sensibles a radiación IR. Caza en oscuridad total por gradiente térmico."});
+  }
+  if(Si>150&&H2O>10){
+    abilities.push({cat:"👁 Visión",name:"Visión UV — percibe ultravioleta",col:"#A78BFA",
+      detail:"Cristalino de SiO₂ transparente al UV. Ve patrones fluorescentes invisibles para otros."});
+  }
+  if(Mg>30&&CO2>1){
+    abilities.push({cat:"👁 Visión",name:"Fotosíntesis cutánea — piel como sensor de luz",col:"#4ADE80",
+      detail:"Clorofila dérmicae. Toda la superficie corporal detecta dirección e intensidad lumínica."});
+  }
+
+  // Audición / Vibración
+  if(Ca>25&&O2>10&&sc>0.4){
+    const ears=gravity>1.5?"Sistema de línea lateral (vibración en suelo denso)":
+               H2O>40?"Audición subacuática — detección 0.01–200kHz":
+               "Audición aérea — rango 20Hz–20kHz";
+    abilities.push({cat:"👂 Audición",name:ears,col:"#FBBF24",
+      detail:"Células ciliadas Ca-dependientes en membrana basilar. Ca²⁺ regula la transducción mecano-eléctrica."});
+  }
+  if(gravity>1.8||Temp<-30){
+    abilities.push({cat:"👂 Audición",name:"Sismorreceptores — percibe terremotos y vibraciones sísmicas",col:"#F87171",
+      detail:"Órganos de Johnston hipersensibles conectados al sustrato. Detecta movimientos de 0.001mm en roca."});
+  }
+  if(H2O>60&&Fe>20){
+    abilities.push({cat:"👂 Audición",name:"Ecolocalización activa — sonares biológicos",col:"#60A5FA",
+      detail:"Genera pulsos ultrasónicos 40–120kHz. Mapea entorno 3D con resolución milimétrica en agua."});
+  }
+
+  // Olfato / Gusto / Quimio
+  if(S>500||H2S>0.5){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Olfato sulfúrico ultra-sensible",col:"#FBBF24",
+      detail:"Detecta H₂S a concentraciones de 1 parte por billón. Navega por gradientes de azufre en la oscuridad."});
+  }
+  if(Mo>=0.5&&Ni>20){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Detección de metales pesados",col:"#94A3B8",
+      detail:"Metaloreceptores con proteínas similares a metalotioneínas. Detecta Fe, Ni, Mo, Cu disueltos."});
+  }
+  if(sc>0.6&&O2>10){
+    abilities.push({cat:"👃 Quimiorrecepción",name:"Feromonas moleculares complejas",col:"#A78BFA",
+      detail:"Sistema de comunicación química con más de 200 compuestos. Transmite identidad, estado reproductivo y alertas."});
+  }
+
+  // Tacto / Presión
+  if(gravity>1.2||H2O>50){
+    abilities.push({cat:"✋ Tacto",name:"Mecanorreceptores de alta resolución",col:"#4ADE80",
+      detail:"Corpúsculos de Pacini Ca-sensibles. Resolución táctil de 0.5mm. Detecta presiones de 0.01 Pa."});
+  }
+  if(H2O>70&&sc>0.4){
+    abilities.push({cat:"✋ Tacto",name:"Línea lateral — percepción de corrientes de fluido",col:"#60A5FA",
+      detail:"Canal lleno de linfa conecta al exterior. Detecta perturbaciones hidrodinámicas a 10m de distancia."});
+  }
+
+  // ── HABILIDADES FÍSICAS ESPECIALES ─────────────────
+
+  if(Fe>25&&V>100){
+    abilities.push({cat:"⚡ Electricidad",name:"Electrorrecepción pasiva — detecta campos eléctricos",col:"#FBBF24",
+      detail:"Ampollas de Lorenzini con V-proteínas. Detecta campos eléctricos de 5 nanovoltios/cm. Localiza presas ocultas."});
+  }
+  if(Fe>40&&V>200){
+    abilities.push({cat:"⚡ Electricidad",name:"Electrolocomotción activa — genera pulsos eléctricos",col:"#FBBF24",
+      detail:"Órgano eléctrico de 500-6,000 células eléctricas. Genera 600V para defensa, caza y comunicación."});
+  }
+  if(Fe>30&&Ni>50){
+    abilities.push({cat:"🧲 Magnetismo",name:"Magnetorrecepción — percibe el campo magnético planetario",col:"#F87171",
+      detail:"Cristales de magnetita Fe₃O₄ en tejido nervioso. Navegación geomagnética de precisión GPS sin satélites."});
+  }
+  if(H2S>3||Temp>70){
+    abilities.push({cat:"🛡 Resistencia",name:"Resistencia extrema a toxinas sulfurosas",col:"#FBBF24",
+      detail:"Metalotioneínas y citocromos modificados metabolizan H₂S como sustrato energético en vez de veneno."});
+  }
+  if(Temp<-30){
+    abilities.push({cat:"🛡 Resistencia",name:"Criobiosis — suspensión animada en frío extremo",col:"#60A5FA",
+      detail:"Trehalosa reemplaza agua intracelular. Metabolismo se detiene a -60°C y se reactiva al calentarse. Inmortalidad criogénica."});
+  }
+  if(Temp>80){
+    abilities.push({cat:"🛡 Resistencia",name:"Termoestabilidad proteica a 120°C",col:"#F87171",
+      detail:"Proteínas con puentes disulfuro adicionales. ADN protegido por histonas termoestables. Vive en lava volcánica."});
+  }
+  if(pH<3){
+    abilities.push({cat:"🛡 Resistencia",name:"Resistencia a pH extremadamente ácido",col:"#A78BFA",
+      detail:"Membrana celular reforzada con hopanoides. Bombas de protones extraordinariamente potentes. Vive en H₂SO₄ puro."});
+  }
+  if(gravity>2){
+    abilities.push({cat:"🛡 Resistencia",name:"Exoesqueleto hiperdensificado (alta gravedad)",col:"#94A3B8",
+      detail:"Estructura ósea o quitinosa 10× más densa que la terrestre. Músculos en proporción — cuerpo muy compacto y bajo."});
+  }
+  if(P>1&&Ca>30&&sc>0.6){
+    abilities.push({cat:"🔄 Regeneración",name:"Regeneración de tejidos y miembros",col:"#4ADE80",
+      detail:"Células madre Ca-P distribuidas en todo el cuerpo. Reconstruye extremidades en 30-90 días. Órganos en 2 semanas."});
+  }
+  if(Cu>100&&O2<10){
+    abilities.push({cat:"🎨 Camuflaje",name:"Camuflaje cromático activo (cambio de color)",col:"#60A5FA",
+      detail:"Cromatóforos Cu-basados controlados neuralmente. 256 patrones de color. Invisibilidad total en <0.3 segundos."});
+  }
+  if(Mg>30&&CO2>1&&O2>5){
+    abilities.push({cat:"🌿 Fotosíntesis",name:"Fotosíntesis dérmico — energía solar corporal",col:"#4ADE80",
+      detail:"Cloroplastos simbióntes en piel. Genera hasta 40% de su energía del sol. Sin necesidad de comer en períodos de luz."});
+  }
+  if(H2O>80&&sc<0.4&&O2<5){
+    abilities.push({cat:"💧 Agua",name:"Hidrolocalización — percepción 3D del agua",col:"#60A5FA",
+      detail:"Sensores de presión osmótica en toda la membrana. Mapea corrientes, temperatura y salinidad simultáneamente."});
+  }
+  if(Si>200&&H2O>30){
+    abilities.push({cat:"💎 Silicio",name:"Biomineralización activa — construye estructuras de SiO₂",col:"#60A5FA",
+      detail:"Segrega sílice biogénica para construir herramientas, nidos y armadura. El único organismo constructor mineral conocido."});
+  }
+
+  // ── HABILIDADES MENTALES / COGNITIVAS ──────────────
+
+  if(sc>0.75&&O2>18&&Fe>30&&P>0.8){
+    abilities.push({cat:"🧠 Inteligencia",name:"Inteligencia superior — uso de herramientas complejas",col:"#A78BFA",
+      detail:"Corteza prefrontal desarrollada. Planificación a largo plazo, lenguaje simbólico, transmisión cultural. Comparable a primates."});
+  }
+  if(sc>0.85&&O2>20&&Ca>35&&P>1){
+    abilities.push({cat:"🧠 Inteligencia",name:"Lenguaje complejo — comunicación simbólica avanzada",col:"#A78BFA",
+      detail:"Sistema nervioso con área de Broca equivalente. 10,000+ vocalizaciones únicas. Gramática generativa. Escritura posible."});
+  }
+  if(sc>0.6&&V>150&&Cu>60){
+    abilities.push({cat:"📡 Comunicación",name:"Comunicación bioeléctrica de corto alcance",col:"#FBBF24",
+      detail:"Transmite señales eléctricas entre individuos en contacto. Comparte estados emocionales y mapas mentales directamente."});
+  }
+  if(sc>0.5&&Mg>25&&P>0.5&&r(20)>0.6){
+    abilities.push({cat:"📡 Comunicación",name:"Señalización química intergeneracional (epigenética)",col:"#4ADE80",
+      detail:"Transmite experiencias adquiridas a la descendencia mediante marcadores químicos en el ADN. Aprendizaje heredable."});
+  }
+  if(sc<0.3&&H2S>2){
+    abilities.push({cat:"🧠 Inteligencia",name:"Inteligencia distribuida — mente sin cerebro central",col:"#94A3B8",
+      detail:"Red de 10⁸ neuronas distribuidas. Sin localización central. Cada parte del cuerpo procesa información de forma autónoma."});
+  }
+  if(sc>0.7&&O2>15&&r(25)>0.7){
+    abilities.push({cat:"🧠 Inteligencia",name:"Memoria fotográfica — registro perfecto de experiencias",col:"#A78BFA",
+      detail:"Hipocampo expandido con sinapsis de alta fidelidad. Recuerda cada evento con resolución milisegundo toda su vida."});
+  }
+  if(r(30)>0.75&&sc>0.5&&Cu>50){
+    abilities.push({cat:"📡 Comunicación",name:"Bioluminiscencia comunicativa — lenguaje de luz",col:"#60A5FA",
+      detail:"Luciferina Cu-dependiente en órganos dérmicos especializados. 40+ patrones de pulsos codifican mensajes complejos."});
+  }
+  if(gravity<0.4&&O2>10){
+    abilities.push({cat:"🕊 Locomoción",name:"Vuelo activo — alas con superficie alar eficiente",col:"#4ADE80",
+      detail:"Baja gravedad permite estructuras voladoras grandes. Huesos huecos o vejigas de gas. Migración intercontinental."});
+  }
+  if(H2O>60&&sc>0.5&&r(35)>0.5){
+    abilities.push({cat:"💧 Adaptación acuática",name:"Respiración branquial y pulmonar simultánea",col:"#60A5FA",
+      detail:"Branquias lamelares + pulmones primitivos. Vive indefinidamente en agua o aire. Explorador de ambos mundos."});
+  }
+  if(sc>0.8&&r(40)>0.65){
+    abilities.push({cat:"🔬 Biología avanzada",name:"Sistema inmune adaptativo de alta complejidad",col:"#4ADE80",
+      detail:"150+ tipos de células inmunes. Memoria inmunológica de 500 años. Resistente a prácticamente cualquier patógeno conocido."});
+  }
+
+  // Habilidades raras / especulativas (solo en condiciones muy específicas)
+  if(V>300&&Fe>50&&Temp>30&&Temp<60&&sc>0.6){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Metabolismo de vanadio — sangre verde metálica",col:"#4ADE80",
+      detail:"V³⁺ en vanádocitos circulantes. 100× más concentrado que el agua de mar. Rol en catálisis oxidativa único."});
+  }
+  if(Ni>150&&CO2>5&&O2<2){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Metabolismo de níquel — cofactor F₄₃₀",col:"#94A3B8",
+      detail:"Ni en el centro de la enzima metil-CoM reductasa. Produce CH₄ como subproducto energético. Vive sin O₂."});
+  }
+  if(S>10000&&H2S>5&&Temp>40){
+    abilities.push({cat:"⚗ Bioquímica rara",name:"Sulfuro como disolvente metabólico",col:"#FBBF24",
+      detail:"Enzimas estables en H₂S. Usa ciclo de azufre en vez de ciclo de Krebs. Desconocido en la Tierra."});
+  }
+  if(sc>0.9&&r(45)>0.8){
+    abilities.push({cat:"🌌 Especulativo",name:"Percepción cuántica — coherencia cuántica neuronal",col:"#A78BFA",
+      detail:"Hipótesis Penrose-Hameroff. Microtúbulos en neuronas mantienen superposición cuántica. Procesamiento de información exponencial."});
+  }
+
+  return abilities.slice(0, 12); // máximo 12 habilidades por criatura
+}
+
+function makeCreature(v,seed){
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
+  const sc=calcScore(v);
+  let skeleton,skCol;
+  if(Ca>=30&&P>=0.5&&Mg>=5&&Temp>=-50&&Temp<=55&&gravity<=2){skeleton="Endoesqueleto calcico";skCol="#FBBF24";}
+  else if(Si>=80&&H2O>=5){skeleton="Exoesqueleto silíceo";skCol="#60A5FA";}
+  else if(Ca>=20&&pH>=7.5&&CO2>=0.01){skeleton="Exoesqueleto calcáreo";skCol="#4ADE80";}
+  else if(S>5000){skeleton="Exoesqueleto sulfúrico";skCol="#F87171";}
+  else{skeleton="Hidrostático/Quitina";skCol="#94A3B8";}
+  let blood,bCol;
+  if(Fe>=30&&O2>=2){blood="Hemoglobina (roja)";bCol="#F87171";}
+  else if(Cu>=60&&Fe<25){blood="Hemocianina (azul)";bCol="#60A5FA";}
+  else if(V>=200&&H2O>20){blood="Vanadina (verde)";bCol="#4ADE80";}
+  else if(H2S>1&&O2<8){blood="Hb-H₂S gigante";bCol="#FBBF24";}
+  else if(Fe>=10&&Fe<30){blood="Hemeritrina (violeta)";bCol="#A78BFA";}
+  else{blood="Difusión directa";bCol="#94A3B8";}
+  let meta,metaCol;
+  if(O2>=15&&Fe>=1){meta="Aeróbico eficiente";metaCol="#00D4AA";}
+  else if(Mg>=12&&O2>=3&&CO2>=0.005){meta="Fotosíntesis";metaCol="#4ADE80";}
+  else if(H2S>=1&&S>=100){meta="Quimiosíntesis H₂S";metaCol="#FBBF24";}
+  else if(O2<0.1&&CO2>=0.1&&Ni>=20){meta="Metanogénesis";metaCol="#94A3B8";}
+  else{meta="Fermentación";metaCol="#94A3B8";}
+  let nervous,nCol;
+  if(O2>=15&&Ca>=25&&Fe>=20){nervous="Cerebro centralizado";nCol="#A78BFA";}
+  else if(Ca>=10&&O2>=5){nervous="Sistema gangliado";nCol="#60A5FA";}
+  else{nervous="Red difusa";nCol="#94A3B8";}
+  let thermo,tCol;
+  if(O2>=18&&Temp>=-50&&Temp<=55){thermo="Homeotermo";tCol="#F87171";}
+  else if(Temp<=-10){thermo="Crioprotección AFP";tCol="#60A5FA";}
+  else if(Temp>=80){thermo="Termoestable";tCol="#FBBF24";}
+  else{thermo="Poiquilotermo";tCol="#4ADE80";}
+  let loco;
+  if(gravity<0.3)loco="Flotación/vuelo";
+  else if(H2O>50)loco="Natación";
+  else if(gravity>2)loco="Rastrero";
+  else if(O2>15&&sc>0.6)loco="Cuadrúpedo";
+  else loco="Ondulatorio";
+  const baseSize=Math.max(0.001,sc*100*(gravity<0.5?8:1)*(O2/21)*Math.max(0.1,Ca/41));
+  let size;
+  if(baseSize>10000)size="Megafauna (>10t)";
+  else if(baseSize>500)size="Grande (100kg–10t)";
+  else if(baseSize>10)size="Mediano (10–100kg)";
+  else if(baseSize>0.1)size="Pequeño (<10kg)";
+  else size="Microscópico";
+  const genera=["Astrobiota","Xenovita","Cosmozoa","Abiogenus","Exobiota","Lithovita","Chemovita","Thermozoa","Cryptovita","Halobiota","Pyrovita","Glaciovita","Silicovita","Ferrobiota","Cuprovita","Riftovita","Magnovita","Vanadovita","Sulfovita","Glaciozoa"];
+  const species=["stellaris","extremophilus","mineralis","novus","alienus","profundus","thermalis","glacialis","sulfuricus","magneticus","siliceus","cupriferus","vanadicus","ferrophilus","calcarius","lucidus","cogitans","volans","chemicus","sapiens"];
+  const genus=genera[Math.floor(rng(seed,3)*genera.length)];
+  const sp=species[Math.floor(rng(seed,4)*species.length)];
+  const complexity=sc>0.75?"vertebrado":sc>0.55?"invertebrado":sc>0.35?"simple":sc>0.15?"colonial":"unicelular";
+  const orgCol=bCol;
+
+  // Generar habilidades emergentes
+  const abilities=generateAbilities(v,seed,sc);
+
+  // Descripción para imagen IA — vista anatómica completa para estudio + base 3D
+  const topAbilities=abilities.slice(0,3).map(a=>a.name).join(', ');
+
+  // Mapear locomoción a postura corporal para que la IA muestre el cuerpo completo
+  const bodyPlan = loco.toLowerCase().includes('vuelo')||loco.toLowerCase().includes('fly')?'winged body, wings spread'
+    : loco.toLowerCase().includes('nado')||loco.toLowerCase().includes('swim')?'streamlined aquatic body, fins visible'
+    : loco.toLowerCase().includes('repta')||loco.toLowerCase().includes('crawl')?'elongated multi-limbed body'
+    : complexity==='vertebrado'?'full quadruped or bipedal anatomy'
+    : complexity==='invertebrado'?'segmented body with visible appendages'
+    : 'complete organism body';
+
+  // PROMPT estilo "model sheet" — cuerpo entero, neutral, anatómicamente claro
+  const imgPrompt=`Full body anatomical reference sheet of ${genus} ${sp}, a ${complexity} alien creature, `
+    +`${bodyPlan}, ${skeleton.toLowerCase()}, ${blood.toLowerCase()}, ${meta.toLowerCase()} metabolism, `
+    +`featuring ${topAbilities}, `
+    +`ENTIRE BODY VISIBLE head to limbs, full figure centered, neutral T-pose, `
+    +`side profile and front view, orthographic character turnaround, `
+    +`plain neutral light grey studio background, soft even studio lighting no harsh shadows, `
+    +`clear anatomical detail, scientifically coherent xenobiology, creature concept design sheet, `
+    +`subtle bioluminescent markings, sharp focus, 8k ultra detailed, no text labels`;
+
+  return {latinName:`${genus} ${sp}`,complexity,skeleton,skCol,blood,bCol,meta,metaCol,nervous,nCol,thermo,tCol,loco,size,orgCol,seed,sc,abilities,imgPrompt};
+}
+
+function planetCode(v){
+  const keys=["Ca","Fe","Si","P","Mg","Cu","S","O2","CO2","H2S","H2O","Temp","pH","gravity"];
+  let h=0;keys.forEach((k,i)=>{const n=Math.round((v[k]||0)*100);h=(h^(n*(i+1)*2654435761))>>>0;});
+  const b=h.toString(36).toUpperCase().padStart(8,"0");
+  const pfx=v.H2O>50?"OCN":v.H2S>3?"VLC":v.Temp<-30?"GLC":v.O2>20?"TER":"XEN";
+  return`BP-${pfx}-${b.slice(0,3)}-${b.slice(3,6)}-${b.slice(6,8)}`;
+}
+function planetImgPrompt(v){
+  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Si,Mg,S,pressure,gravity}=v;
+  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
+  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
+  const isIron=Fe>55&&!sulf;
+
+  // Atmosphere
+  const atm=sulf
+    ?'thick yellow sulfuric acid clouds, toxic atmosphere with orange-yellow haze'
+    :CO2>8?'dense rusty orange CO₂ atmosphere, thick clouds'
+    :O2>18?'clear thin blue atmosphere, wispy white clouds'
+    :cold?'near-vacuum dark blue-black atmosphere with thin haze'
+    :'translucent blue-grey haze atmosphere';
+
+  // Surface
+  const surf=sulf
+    ?'volcanic sulfur yellow plains, orange lava flows, black basalt mountains'
+    :vCold?'deep frozen dark world, black ice plains, nitrogen frost, barely lit surface'
+    :cold?'grey-blue icy tundra, frozen methane lakes, nitrogen geysers'
+    :hot?'glowing red lava rivers, black volcanic mountains, ash clouds'
+    :isIron?'rusty red iron oxide desert, wind-carved canyons, ochre dust dunes'
+    :hasLife?'alien blue-green vegetation, dark ocean, white sandy beaches, rolling hills'
+    :Ca>45?'pale tan limestone plains, white chalk cliffs, crystal formations'
+    :'grey rocky terrain, ancient craters, dark mountain ridges';
+
+  // Features
+  const ft=[];
+  if(H2O>40&&!sulf&&!hot) ft.push('vast dark alien ocean reflecting the star');
+  if(H2O>15&&cold)         ft.push('frozen polar caps, ice sheets');
+  if(H2S>3||hot)           ft.push('volcanic geysers, steam vents');
+  if(hasLife)              ft.push('alien bioluminescent forests, glowing organisms');
+  if(cold&&H2O>20)         ft.push('nitrogen ice geysers like Triton');
+  if(pressure>5)           ft.push('crushed thick atmosphere visible as orange band on limb');
+
+  // Star and lighting — key for SpaceEngine look
+  const star=Temp<-50?'distant small dim red star, low on horizon, dramatic long shadows'
+    :Temp>80?'blazingly close white star, intense harsh shadows'
+    :'yellow-white star, god rays through atmosphere';
+
+  const style='SpaceEngine screenshot style, photorealistic planetary rendering, '
+    +'cinematic volumetric atmosphere, physically based rendering PBR, '
+    +'subsurface scattering terrain, specular water reflections, '
+    +'lens flare, bloom effect, 8K ultra-detailed, no text, no watermark';
+
+  return`${surf}, ${atm}, ${star}${ft.length?', '+ft.join(', '):''}, alien planet from orbit, ${style}`;
+}
+
+// ── Surface landscape prompt (SpaceEngine ground-level) ─
+function surfaceImgPrompt(v){
+  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Mg,S,pressure}=v;
+  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
+  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
+  const isIron=Fe>55&&!sulf;
+
+  const sky=sulf
+    ?'yellow-orange sulfuric sky, thick acid clouds, eerie toxic glow'
+    :vCold?'pitch-black near-vacuum sky filled with stars and nebula, giant blue planet visible overhead'
+    :cold?'dark blue-grey sky, thin atmosphere, stars partially visible, faint aurora'
+    :hot?'orange-red glowing sky, volcanic ash clouds, ember glow horizon'
+    :isIron?'dusty pink-orange Martian sky, thin haze, distant dust storm'
+    :hasLife?'clear azure-blue sky, white cumulus clouds, warm sunlight'
+    :'hazy grey-blue sky, thin cloud layer';
+
+  const terrain=sulf
+    ?'yellow sulfur plains with black volcanic rocks, orange lava pools reflecting sky'
+    :vCold?'dark frozen rocky terrain, black ice plains, white nitrogen frost, faint reflective patches like image from Triton'
+    :cold?'golden sandy snow dunes meeting dark liquid methane ocean, like Titan, warm sunset glow'
+    :hot?'black volcanic basalt, glowing lava cracks, dark mountains'
+    :isIron?'red iron oxide desert, wind-eroded rock formations, fine rust-colored sand'
+    :hasLife?'alien landscape with blue-green vegetation, rocky outcrops, distant mountains'
+    :'grey rocky plains, ancient weathered boulders, dust';
+
+  const mood=vCold
+    ?'mysterious, dark, vast, lonely, barely lit by distant star'
+    :cold?'golden hour, warm light on cold landscape, dramatic contrast, SpaceEngine Titan screenshot'
+    :hot?'hellish, dramatic, volcanic eruption in background'
+    :hasLife?'serene, beautiful, hopeful, afternoon sunlight'
+    :'desolate, ancient, epic scale';
+
+  const style='SpaceEngine ground-level screenshot, photorealistic planetary surface, '
+    +'physically-based rendering, cinematic atmosphere scattering, '
+    +'specular highlights on liquid surfaces, detailed micro-texture terrain, '
+    +'realistic rock materials, volumetric clouds, sun bloom and lens flare, '
+    +'8K ultra-detailed, no text, no watermark, no UI';
+
+  return`${terrain}, ${sky}, ${mood}, first-person ground view alien planet, ${style}`;
+}
+
+
+// ─── Caché global de imágenes IA ─────────────────────
+// key = cacheKey (ej: seed de criatura), value = URL generada
+const imgCache = {};
+
+function makeAIImg(prompt, w, h, containerId, cacheKey, saveKind, creatureName){
+  const el=document.getElementById(containerId);if(!el)return;
+  const seed=Math.floor(Math.random()*99999);
+  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
+
+  // Guardar en caché si se proporcionó key
+  if(cacheKey !== undefined) imgCache[cacheKey] = {url, w, h};
+
+  // Guardar la URL permanentemente en el planeta (si está guardado)
+  if(saveKind) saveAIImage(saveKind, url, creatureName);
+
+  el.innerHTML=`
+    <div id="${containerId}-loader" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3);border-radius:inherit;">
+      <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid #00D4AA;border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <div style="font-size:9px;color:var(--dim);">${lang==='en'?'Generating AI image…':'Generando imagen IA…'}</div>
+    </div>
+    <img src="${url}" style="width:100%;height:100%;object-fit:cover;display:none;border-radius:inherit;"
+      onload="this.style.display='block';const l=document.getElementById('${containerId}-loader');if(l)l.style.display='none';"
+      onerror="const l=document.getElementById('${containerId}-loader');if(l)l.innerHTML='<div style=\\'font-size:10px;color:var(--dim);text-align:center;padding:16px;\\'>${lang==='en'?'Connect to internet for AI images':'Conecta internet para imágenes IA'}</div>';"/>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// THREE.JS PLANET — SHADERS CIENTÍFICOS
+// ═══════════════════════════════════════════════════════
+let threeState={};
+let planetTime=0;
+
+function getShaderUniforms(v){
+  const hasSulf=(v.H2S>2||v.S>5000)?1.0:0.0;
+  const hasOcean=v.H2O>15?1.0:0.0;
+  const isCold=v.Temp<-20?1.0:0.0;
+  const isHot=v.Temp>50?1.0:0.0;
+  const hasLife=(v.O2>10&&v.Mg>10&&v.P>0.3)?1.0:0.0;
+  const ironContent=v.Fe/100.0;
+  // Atmosphere color
+  let atmR=0.3,atmG=0.6,atmB=1.0;
+  if(hasSulf>0.5){atmR=0.9;atmG=0.8;atmB=0.1;}
+  else if(v.CO2>5){atmR=0.9;atmG=0.5;atmB=0.2;}
+  else if(v.O2<2){atmR=0.3;atmG=0.3;atmB=0.35;}
+  const atmDensity=v.pressure>0?Math.min(v.pressure*0.7,1.2):0.1;
+  const cloudCoverage=v.H2O>60?0.7:v.H2O>30?0.5:v.H2O>10?0.3:0.05;
+  return {hasSulf,hasOcean,isCold,isHot,hasLife,ironContent,
+    atmR,atmG,atmB,atmDensity,cloudCoverage,
+    waterCoverage:v.H2O/100.0,planetTemp:v.Temp,
+    oxygenLevel:v.O2,h2sLevel:v.H2S};
+}
+
+function initThree(canvasId){
+  const c=document.getElementById(canvasId);
+  if(!c||!window.THREE)return;
+  const T=window.THREE;
+
+  // Usar el tamaño real del contenedor padre
+  const container = c.parentElement;
+  const W = container.clientWidth  || 700;
+  const H = container.clientHeight || 500;
+  c.width=W; c.height=H;
+
+  const scene=new T.Scene();
+  const cam=new T.PerspectiveCamera(40,W/H,0.1,1000);
+  cam.position.set(0,0,3.2);
+
+  const renderer=new T.WebGLRenderer({canvas:c,antialias:true,alpha:false});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,3));
+  renderer.setClearColor(0x000000,1);
+  renderer.toneMapping=T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.2;
+
+  // ── ResizeObserver — redimensiona automáticamente ──
+  const ro = new ResizeObserver(()=>{
+    const nW = container.clientWidth;
+    const nH = container.clientHeight;
+    if(nW>0 && nH>0){
+      renderer.setSize(nW, nH);
+      cam.aspect = nW/nH;
+      cam.updateProjectionMatrix();
+    }
+  });
+  ro.observe(container);
+
+  // Guardar cleanup del observer
+  if(!threeState.cleanupFns) threeState.cleanupFns=[];
+  threeState.cleanupFns.push(()=>ro.disconnect());
+
+  // ── STARS (enhanced) ──
+  const starCount=3000;
+  const starPositions=new Float32Array(starCount*3);
+  const starColors=new Float32Array(starCount*3);
+  const starSizes=new Float32Array(starCount);
+  for(let i=0;i<starCount;i++){
+    const theta=Math.random()*Math.PI*2;
+    const phi=Math.acos(2*Math.random()-1);
+    const r=80+Math.random()*20;
+    starPositions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    starPositions[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+    starPositions[i*3+2]=r*Math.cos(phi);
+    // Star colors: white, blue-white, yellow
+    const colorType=Math.random();
+    if(colorType<0.6){starColors[i*3]=1;starColors[i*3+1]=1;starColors[i*3+2]=1;}
+    else if(colorType<0.8){starColors[i*3]=0.7;starColors[i*3+1]=0.85;starColors[i*3+2]=1;}
+    else{starColors[i*3]=1;starColors[i*3+1]=0.95;starColors[i*3+2]=0.7;}
+    starSizes[i]=Math.random()<0.05?2.5:Math.random()<0.15?1.5:0.8;
+  }
+  const starGeo=new T.BufferGeometry();
+  starGeo.setAttribute('position',new T.Float32BufferAttribute(starPositions,3));
+  starGeo.setAttribute('color',new T.Float32BufferAttribute(starColors,3));
+  starGeo.setAttribute('size',new T.Float32BufferAttribute(starSizes,1));
+  const starMat=new T.PointsMaterial({size:0.8,vertexColors:true,transparent:true,opacity:0.9,sizeAttenuation:true});
+  scene.add(new T.Points(starGeo,starMat));
+
+  // ── SUN LIGHT ──
+  const sunDir=new T.Vector3(2.5,1.0,2.0).normalize();
+  const sunLight=new T.DirectionalLight(0xFFF8E8,2.2);
+  sunLight.position.copy(sunDir).multiplyScalar(10);
+  scene.add(sunLight);
+  scene.add(new T.AmbientLight(0x050810,1.0));
+
+  // Sun glare
+  const sunGlareGeo=new T.SphereGeometry(0.12,16,16);
+  const sunGlareMat=new T.MeshBasicMaterial({color:0xFFF5C0,transparent:true,opacity:0.9});
+  const sunGlare=new T.Mesh(sunGlareGeo,sunGlareMat);
+  sunGlare.position.copy(sunDir).multiplyScalar(60);
+  scene.add(sunGlare);
+
+  // ── PLANET GROUP ──
+  const grp=new T.Group();
+  scene.add(grp);
+  const axialTilt=23.5*Math.PI/180;
+  grp.rotation.z=axialTilt;
+
+  // Read shaders
+  const planetVS=document.getElementById('planet-vert').textContent;
+  const planetFS=document.getElementById('planet-frag').textContent
+    .replace('vec3 ironDust,','')
+    .replace('vec3 ironDust = vec3(0.62, 0.25, 0.10);','');
+
+  // Fix: inject ironDust declaration
+  const planetFSFixed=planetFS.replace(
+    'void main(){',
+    'vec3 ironDust=vec3(0.62,0.25,0.10);\nvoid main(){'
+  );
+
+  const u=getShaderUniforms(vals);
+
+  const planetMat=new T.ShaderMaterial({
+    vertexShader:planetVS,
+    fragmentShader:planetFSFixed,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      time:{value:0},
+      hasSulfur:{value:u.hasSulf},
+      hasOcean:{value:u.hasOcean},
+      isCold:{value:u.isCold},
+      isHot:{value:u.isHot},
+      hasLife:{value:u.hasLife},
+      ironContent:{value:u.ironContent},
+      calciumContent:{value:vals.Ca/100},
+      oxygenLevel:{value:u.oxygenLevel},
+      h2sLevel:{value:u.h2sLevel},
+      waterCoverage:{value:u.waterCoverage},
+      planetTemp:{value:u.planetTemp},
+    }
+  });
+
+  const planet=new T.Mesh(new T.SphereGeometry(1,192,192),planetMat);
+  grp.add(planet);
+
+  // ── CLOUDS ──
+  const cloudVS=document.getElementById('cloud-vert').textContent;
+  const cloudFS=document.getElementById('cloud-frag').textContent;
+  const cloudMat=new T.ShaderMaterial({
+    vertexShader:cloudVS,
+    fragmentShader:cloudFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      cloudCoverage:{value:u.cloudCoverage},
+      time:{value:0},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.FrontSide,
+  });
+  const clouds=new T.Mesh(new T.SphereGeometry(1.018,128,128),cloudMat);
+  if(vals.H2O>5||vals.CO2>5)grp.add(clouds);
+
+  // ── ATMOSPHERE ──
+  const atmVS=document.getElementById('atm-vert').textContent;
+  const atmFS=document.getElementById('atm-frag').textContent;
+  const atmMat=new T.ShaderMaterial({
+    vertexShader:atmVS,
+    fragmentShader:atmFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      atmColor:{value:new T.Vector3(u.atmR,u.atmG,u.atmB)},
+      atmDensity:{value:u.atmDensity},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.FrontSide,
+    blending:T.AdditiveBlending,
+  });
+  const atmMesh=new T.Mesh(new T.SphereGeometry(1.08,64,64),atmMat);
+  if(vals.pressure>0.05)grp.add(atmMesh);
+
+  // Outer atmosphere glow (backside)
+  const outerAtmMat=new T.ShaderMaterial({
+    vertexShader:atmVS,
+    fragmentShader:atmFS,
+    uniforms:{
+      sunDirection:{value:sunDir},
+      atmColor:{value:new T.Vector3(u.atmR,u.atmG,u.atmB)},
+      atmDensity:{value:u.atmDensity*0.4},
+    },
+    transparent:true,
+    depthWrite:false,
+    side:T.BackSide,
+    blending:T.AdditiveBlending,
+  });
+  const outerAtm=new T.Mesh(new T.SphereGeometry(1.18,32,32),outerAtmMat);
+  if(vals.pressure>0.1)scene.add(outerAtm);
+
+  // ── INTERACTION ──
+  let drag=false,prev={x:0,y:0},zoom=3.2,animId;
+  const dn=e=>{drag=true;prev={x:e.clientX,y:e.clientY};};
+  const up=()=>drag=false;
+  const mv=e=>{if(!drag)return;
+    grp.rotation.y+=(e.clientX-prev.x)*.006;
+    const newX=grp.rotation.x+(e.clientY-prev.y)*.004;
+    grp.rotation.x=Math.max(-1.2,Math.min(1.2,newX));
+    prev={x:e.clientX,y:e.clientY};
+  };
+  const wh=e=>{zoom=Math.max(1.6,Math.min(8,zoom+e.deltaY*.004));cam.position.z=zoom;e.preventDefault();};
+  // Touch
+  let touchPrev={x:0,y:0};
+  const td=e=>{drag=true;touchPrev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const tm=e=>{if(!drag)return;grp.rotation.y+=(e.touches[0].clientX-touchPrev.x)*.006;touchPrev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const tu=()=>drag=false;
+  c.addEventListener('mousedown',dn);window.addEventListener('mouseup',up);window.addEventListener('mousemove',mv);
+  c.addEventListener('wheel',wh,{passive:false});
+  c.addEventListener('touchstart',td,{passive:true});c.addEventListener('touchmove',tm,{passive:true});c.addEventListener('touchend',tu);
+
+  function anim(){
+    animId=requestAnimationFrame(anim);
+    planetTime+=0.016;
+    if(!drag)grp.rotation.y+=0.0015;
+    planetMat.uniforms.time.value=planetTime;
+    cloudMat.uniforms.time.value=planetTime;
+    renderer.render(scene,cam);
+  }
+  anim();
+
+  threeState={
+    planetMat,cloudMat,atmMat,outerAtmMat,clouds,atmMesh,outerAtm,grp,scene,sunDir,T,renderer,cam,
+    update:(v)=>{
+      const u2=getShaderUniforms(v);
+      planetMat.uniforms.hasSulfur.value=u2.hasSulf;
+      planetMat.uniforms.hasOcean.value=u2.hasOcean;
+      planetMat.uniforms.isCold.value=u2.isCold;
+      planetMat.uniforms.isHot.value=u2.isHot;
+      planetMat.uniforms.hasLife.value=u2.hasLife;
+      planetMat.uniforms.ironContent.value=u2.ironContent;
+      planetMat.uniforms.calciumContent.value=v.Ca/100;
+      planetMat.uniforms.oxygenLevel.value=u2.oxygenLevel;
+      planetMat.uniforms.h2sLevel.value=u2.h2sLevel;
+      planetMat.uniforms.waterCoverage.value=u2.waterCoverage;
+      planetMat.uniforms.planetTemp.value=u2.planetTemp;
+      cloudMat.uniforms.cloudCoverage.value=u2.cloudCoverage;
+      const ac=new T.Vector3(u2.atmR,u2.atmG,u2.atmB);
+      atmMat.uniforms.atmColor.value=ac;
+      atmMat.uniforms.atmDensity.value=u2.atmDensity;
+      outerAtmMat.uniforms.atmColor.value=ac;
+      outerAtmMat.uniforms.atmDensity.value=u2.atmDensity*0.4;
+    },
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      c.removeEventListener('mousedown',dn);window.removeEventListener('mouseup',up);window.removeEventListener('mousemove',mv);
+      c.removeEventListener('wheel',wh);renderer.dispose();
+    }
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER TABS
+// ═══════════════════════════════════════════════════════
+const TABS=[
+  {id:'planet',   label:'🌍 Planeta'},
+  {id:'creatures',label:'🦎 Criaturas'},
+  {id:'ecosystem',label:'🕸 Ecosistema'},
+  {id:'gallery',  label:'🎨 Galería IA'},
+];
+
+function buildTabBtns(){
+  const tabIds=['planet','creatures','ecosystem','gallery','minerals','myplanets','validation','phenomena','surface'];
+  document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
+}
+
+function switchTab(tab){
+  currentTab=tab;buildTabBtns();
+  if(threeState.cleanup){threeState.cleanup();threeState={};}
+  if(surfaceState.cleanup){surfaceState.cleanup();surfaceState={};}
+  renderMain();
+}
+
+function renderMain(){
+  const el=document.getElementById('main');
+  if(currentTab==='planet')          renderPlanet(el);
+  else if(currentTab==='creatures')  renderCreatures(el);
+  else if(currentTab==='ecosystem')  renderEcosystem(el);
+  else if(currentTab==='gallery')    renderGallery(el);
+  else if(currentTab==='minerals')   renderMinerals(el);
+  else if(currentTab==='myplanets')  renderMyPlanets(el);
+  else if(currentTab==='validation') renderValidation(el);
+  else if(currentTab==='phenomena')  renderPhenomena(el);
+  else if(currentTab==='surface')    renderSurface(el);
+}
+
+// ─── PLANET TAB ──────────────────────────────────────
+function renderPlanet(el){
+  const E = lang==='en';
+
+  el.innerHTML=`
+<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+  <!-- ══ FILA SUPERIOR — 3 columnas redimensionables ══ -->
+  <div id="planet-row" style="display:flex;flex:1;min-height:0;overflow:hidden;">
+
+    <!-- COLUMNA 1 — Sliders -->
+    <div id="col-left" class="scroll" style="width:210px;min-width:140px;max-width:340px;
+      flex-shrink:0;border-right:1px solid rgba(255,255,255,0.06);
+      padding:14px 12px;background:#070C14;overflow-y:auto;box-sizing:border-box;">
+
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.30);
+        margin-bottom:12px;letter-spacing:.14em;text-transform:uppercase;">
+        ${E?'Planet Composition':'Composición del Planeta'}
+      </div>
+
+      <!-- Presets locales -->
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px;">
+        ${Object.keys(PRESETS).map(name=>`
+          <button onclick="applyPresetDash('${name}')"
+            style="font-size:8px;padding:3px 9px;border-radius:3px;cursor:pointer;
+              border:0.5px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);
+              color:rgba(255,255,255,0.45);transition:all .15s;font-family:inherit;"
+            onmouseover="this.style.background='rgba(255,255,255,0.10)';this.style.color='rgba(255,255,255,0.90)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='rgba(255,255,255,0.45)'">
+            ${name}
+          </button>`).join('')}
+      </div>
+
+      <!-- Exoplanetas NASA -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.12em;color:rgba(0,212,170,0.50);white-space:nowrap;">
+            🔭 NASA EXOPLANETS
+          </div>
+          <div style="flex:1;height:0.5px;background:rgba(0,212,170,0.15);"></div>
+          <button onclick="loadNASALive()" id="nasa-live-btn"
+            style="font-size:7px;padding:2px 6px;border-radius:3px;cursor:pointer;
+              border:0.5px solid rgba(0,212,170,0.30);background:rgba(0,212,170,0.06);
+              color:rgba(0,212,170,0.70);font-family:inherit;transition:all .15s;"
+            onmouseover="this.style.background='rgba(0,212,170,0.15)';this.style.color='rgba(0,212,170,1)'"
+            onmouseout="this.style.background='rgba(0,212,170,0.06)';this.style.color='rgba(0,212,170,0.70)'">
+            ⟳ Top 10
+          </button>
+        </div>
+
+        <!-- BUSCADOR EN VIVO -->
+        <div style="position:relative;margin-bottom:6px;">
+          <input type="text" id="nasa-search" autocomplete="off"
+            placeholder="${E?'Search 5,900+ real exoplanets…':'Buscar 5,900+ exoplanetas reales…'}"
+            oninput="nasaSearchInput(this.value)"
+            onfocus="if(this.value.length>=2)nasaSearchInput(this.value)"
+            style="width:100%;font-size:9px;padding:6px 26px 6px 9px;border-radius:5px;
+              background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.25);
+              color:rgba(255,255,255,0.85);font-family:inherit;outline:none;box-sizing:border-box;"/>
+          <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);
+            font-size:10px;color:rgba(0,212,170,0.5);pointer-events:none;" id="nasa-search-ico">🔍</span>
+          <!-- Resultados desplegables -->
+          <div id="nasa-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;
+            margin-top:3px;max-height:240px;overflow-y:auto;background:#0a0f18;
+            border:0.5px solid rgba(0,212,170,0.30);border-radius:6px;
+            box-shadow:0 8px 24px rgba(0,0,0,0.6);"></div>
+        </div>
+
+        <!-- Presets rápidos de exoplanetas conocidos -->
+        <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">
+          ${Object.keys(EXOPLANETS).slice(0,6).map(name=>`
+            <button onclick="loadExoplanet('${name}')"
+              style="font-size:7.5px;padding:2px 8px;border-radius:3px;cursor:pointer;
+                border:0.5px solid rgba(0,212,170,0.18);background:rgba(0,212,170,0.04);
+                color:rgba(0,212,170,0.60);transition:all .15s;font-family:inherit;"
+              onmouseover="this.style.background='rgba(0,212,170,0.12)';this.style.color='rgba(0,212,170,1)'"
+              onmouseout="this.style.background='rgba(0,212,170,0.04)';this.style.color='rgba(0,212,170,0.60)'">
+              ${name}
+            </button>`).join('')}
+        </div>
+        <div id="exo-info" style="display:none;background:rgba(0,212,170,0.04);border:0.5px solid rgba(0,212,170,0.18);
+          border-radius:5px;padding:7px 8px;font-size:8px;color:rgba(0,212,170,0.65);line-height:1.7;">
+        </div>
+      </div>
+
+      <!-- Sliders por grupo -->
+      ${(()=>{
+        const groups={};
+        SLIDERS.forEach(s=>{if(!groups[s.g])groups[s.g]=[];groups[s.g].push(s);});
+        const groupLabels={
+          Suelo:E?'SOIL (ppm × 1000)':'SUELO (ppm × 1000)',
+          Atmósfera:E?'ATMOSPHERE (%)':'ATMÓSFERA (%)',
+          Entorno:E?'PHYSICAL CONDITIONS':'CONDICIONES FÍSICAS',
+        };
+        return Object.entries(groups).map(([g,ms])=>`
+          <div style="margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+                color:rgba(255,255,255,0.22);white-space:nowrap;">${groupLabels[g]||g}</div>
+              <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+            </div>
+            ${ms.map(m=>{
+              const dec=m.step<1?(m.step<0.01?4:2):0;
+              return`
+              <div style="margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                  <div style="display:flex;gap:5px;align-items:baseline;">
+                    <span style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.68);
+                      font-family:'JetBrains Mono',monospace;">${m.sym}</span>
+                    <span style="font-size:7.5px;color:rgba(255,255,255,0.20);">${m.label}</span>
+                  </div>
+                  <span id="vl-${m.sym}" style="font-size:8.5px;color:rgba(255,255,255,0.55);
+                    font-family:'JetBrains Mono',monospace;">${vals[m.sym].toFixed(dec)}</span>
+                </div>
+                <input type="range" min="${m.min}" max="${m.max}" step="${m.step}"
+                  value="${vals[m.sym]}" id="sl-${m.sym}"
+                  oninput="setValDash('${m.sym}',parseFloat(this.value))"
+                  style="width:100%;height:3px;cursor:pointer;border-radius:2px;
+                    outline:none;-webkit-appearance:none;appearance:none;
+                    background:rgba(255,255,255,0.08);"/>
+              </div>`;
+            }).join('')}
+          </div>`).join('');
+      })()}
+      <style>
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 0 0 2px rgba(255,255,255,0.10);}
+        input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 0 3px rgba(255,255,255,0.22);}
+        input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#fff;border:none;cursor:pointer;}
+      </style>
+    </div>
+
+    <!-- DRAG HANDLE izquierdo -->
+    <div id="drag-left" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;
+      position:relative;z-index:10;transition:background .15s;"
+      onmouseover="this.style.background='rgba(0,212,170,0.25)'"
+      onmouseout="if(!window._dragging)this.style.background='transparent'"
+      onmousedown="startDrag(event,'left')">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        width:1px;height:32px;background:rgba(255,255,255,0.12);border-radius:1px;"></div>
+    </div>
+
+    <!-- COLUMNA 2 — Globo 3D -->
+    <div id="col-center" style="flex:1;position:relative;background:#000;overflow:hidden;">
+      <canvas id="planet3d" style="width:100%;height:100%;display:block;"></canvas>
+
+      <!-- HUD top-left -->
+      <div class="hud-overlay" style="top:10px;left:12px;">
+        <div class="hud-data" style="font-size:9px;">
+          <span class="hud-label">${t('codeId')} </span>
+          <span id="hud-code" style="color:rgba(0,212,170,0.8);">${planetCode(vals)}</span><br>
+          <span class="hud-label">T° </span><span id="hud-temp">${vals.Temp>0?'+':''}${vals.Temp}°C</span><br>
+          <span class="hud-label">P </span><span id="hud-pres">${vals.pressure||1} atm</span><br>
+          <span class="hud-label">G </span><span id="hud-grav">${vals.gravity}g</span>
+        </div>
+      </div>
+
+      <!-- HUD bottom-left: minerales -->
+      <div class="hud-overlay" style="bottom:38px;left:12px;">
+        <div class="hud-data" style="font-size:9px;">
+          <span class="hud-label">Ca </span>${vals.Ca}K &nbsp;<span class="hud-label">Fe </span>${vals.Fe}K<br>
+          <span class="hud-label">Si </span>${vals.Si}K &nbsp;<span class="hud-label">Mg </span>${vals.Mg}K<br>
+          <span class="hud-label">O₂ </span>${vals.O2}% &nbsp;<span class="hud-label">H₂O </span>${vals.H2O}%
+        </div>
+      </div>
+
+      <!-- Bottom bar -->
+      <div style="position:absolute;bottom:8px;left:12px;font-size:7.5px;
+        color:rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;">
+        ${t('rotate')}
+      </div>
+      <div style="position:absolute;bottom:8px;right:12px;">
+        <a href="nature-connections.html" target="_blank"
+          style="font-size:9px;color:rgba(0,212,170,0.7);text-decoration:none;
+          font-family:'JetBrains Mono',monospace;background:rgba(0,212,170,0.08);
+          border:0.5px solid rgba(0,212,170,0.30);padding:3px 10px;border-radius:4px;"
+          onmouseover="this.style.background='rgba(0,212,170,0.16)'"
+          onmouseout="this.style.background='rgba(0,212,170,0.08)'">
+          ${t('natureLink')}
+        </a>
+      </div>
+    </div>
+
+    <!-- DRAG HANDLE derecho -->
+    <div id="drag-right" style="width:5px;flex-shrink:0;cursor:col-resize;background:transparent;
+      position:relative;z-index:10;transition:background .15s;"
+      onmouseover="this.style.background='rgba(0,212,170,0.25)'"
+      onmouseout="if(!window._dragging)this.style.background='transparent'"
+      onmousedown="startDrag(event,'right')">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        width:1px;height:32px;background:rgba(255,255,255,0.12);border-radius:1px;"></div>
+    </div>
+
+    <!-- COLUMNA 3 — Panel derecho -->
+    <div id="col-right" style="width:200px;min-width:160px;max-width:360px;flex-shrink:0;
+      background:#070C14;display:flex;flex-direction:column;overflow:hidden;">
+
+      <!-- Scroll area -->
+      <div class="scroll" style="flex:1;padding:12px 11px;min-height:0;">
+
+        <!-- BIOCOMPAT score -->
+        <div id="right-biocompat" style="margin-bottom:12px;"></div>
+
+        <!-- Análogos terrestres -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('analogsTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-analogs"></div>
+        </div>
+
+        <!-- Ciclos minerales -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('cyclesTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-cycles"></div>
+        </div>
+
+        <!-- Parámetros estelares -->
+        <div style="margin-bottom:4px;">
+          <div style="font-size:7px;font-weight:700;letter-spacing:.14em;
+            color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:7px;
+            display:flex;align-items:center;gap:6px;">
+            ${t('stellarTitle')}
+            <div style="flex:1;height:0.5px;background:rgba(255,255,255,0.05);"></div>
+          </div>
+          <div id="right-stellar"></div>
+        </div>
+      </div>
+
+      <!-- Botón crear — siempre visible -->
+      <div style="flex:0 0 auto;padding:10px 11px;
+        border-top:0.5px solid rgba(255,255,255,0.06);background:#070C14;">
+        <button onclick="createPlanet()" class="btn btn-teal"
+          style="width:100%;font-size:10px;font-weight:700;padding:9px;">
+          ✦ ${E?'Create Planet':'Crear Planeta'}
+        </button>
+      </div>
+    </div>
+
+  </div><!-- fin fila superior -->
+
+  <!-- ══ FILA INFERIOR — Rasgos emergentes dinámicos ══ -->
+  <div id="bottom-panel" style="flex:0 0 auto;border-top:1px solid rgba(255,255,255,0.06);
+    background:rgba(4,8,16,0.98);padding:8px 16px;overflow-y:auto;max-height:32%;min-height:120px;">
+  </div>
+
+</div>`;
+
+  setTimeout(()=>{
+    initThree('planet3d');
+    SLIDERS.forEach(m=>{
+      const sl=document.getElementById('sl-'+m.sym);
+      if(sl){
+        const pct=Math.round((vals[m.sym]-m.min)/(m.max-m.min)*100);
+        sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+      }
+    });
+  }, 60);
+  updatePlanetPanel();
+}
+
+// ─── Actualiza panel derecho + franja inferior en tiempo real ──
+function updatePlanetPanel(){
+  const E      = lang==='en';
+  const score  = calcScore(vals);
+  const sc     = Math.round(score*100);
+  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+  const cr0    = makeCreatureI18n(vals, generateCreatureSeed(vals,0));
+  const code   = planetCode(vals);
+
+  // ── 1. HUD del globo (sin tocar canvas) ────────────
+  const safe=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
+  safe('hud-code', code);
+  safe('hud-temp', (vals.Temp>0?'+':'')+vals.Temp+'°C');
+  safe('hud-pres', (vals.pressure||1)+' atm');
+  safe('hud-grav', vals.gravity+'g');
+
+  // ── 2. Tags ─────────────────────────────────────────
+  const tags=[];
+  if(vals.O2>15)               tags.push({l:E?'With O₂':'Con O₂',       c:'#00D4AA'});
+  if(vals.H2O>50)              tags.push({l:E?'Oceanic':'Oceánico',      c:'#60A5FA'});
+  if(vals.H2S>2||vals.S>5000)  tags.push({l:E?'Sulfuric':'Sulfúrico',    c:'#FBBF24'});
+  if(vals.Temp<-20)            tags.push({l:E?'Glacial':'Glacial',       c:'#60A5FA'});
+  if(vals.Ca>30&&vals.CO2>0.05)tags.push({l:E?'Calcareous':'Calcáreo',   c:'#4ADE80'});
+  if(vals.CO2>5)               tags.push({l:E?'High CO₂':'CO₂ alto',    c:'#F87171'});
+  if(vals.Fe>55)               tags.push({l:E?'Iron-rich':'Ferroso',     c:'#F87171'});
+  if(vals.Temp>50)             tags.push({l:E?'Volcanic':'Volcánico',    c:'#F87171'});
+
+  // ── 3. BIOCOMPAT score (columna derecha top) ────────
+  const bc=document.getElementById('right-biocompat');
+  if(bc) bc.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="position:relative;width:56px;height:56px;flex-shrink:0;">
+        <svg viewBox="0 0 56 56" width="56" height="56" style="transform:rotate(-90deg);">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
+          <circle cx="28" cy="28" r="22" fill="none" stroke="${scoreCol}" stroke-width="5"
+            stroke-dasharray="${Math.round(sc*1.382)} 138"
+            stroke-linecap="round" style="transition:stroke-dasharray .4s ease;"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;">
+          <div style="font-size:14px;font-weight:900;color:${scoreCol};
+            font-family:'JetBrains Mono',monospace;line-height:1;">${sc}</div>
+          <div style="font-size:5px;color:${scoreCol};letter-spacing:.05em;opacity:.7;">BIOCOMPAT</div>
+        </div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,0.80);
+          margin-bottom:5px;line-height:1.4;">
+          ${score>=0.8?(E?'High probability of complex life.':'Alta probabilidad de vida compleja.')
+           :score>=0.6?(E?'Moderate conditions.':'Condiciones moderadas.')
+           :score>=0.4?(E?'Marginal — extremophiles.':'Marginal — extremófilos.')
+           :score>=0.2?(E?'Extreme — minimal life.':'Entorno extremo.')
+           :(E?'Uninhabitable.':'Inhabitable.')}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">
+          ${tags.slice(0,4).map(tg=>`
+            <span style="font-size:7px;padding:1px 6px;border-radius:99px;
+              background:${tg.c}12;border:0.5px solid ${tg.c}35;
+              color:${tg.c};font-weight:600;">${tg.l}</span>`).join('')
+          ||`<span style="font-size:8px;color:rgba(255,255,255,0.18);">—</span>`}
+        </div>
+      </div>
+    </div>`;
+
+  // ── 4. Análogos terrestres ───────────────────────────
+  const an=document.getElementById('right-analogs');
+  if(an){
+    const analogs=[
+      {cond:vals.O2>15&&vals.Ca>20,  n:'Homo sapiens',         d:E?'High Ca+O₂':'Alta Ca+O₂',    c:'#F87171'},
+      {cond:vals.H2S>1&&vals.O2<5,   n:'Riftia pachyptila',    d:E?'H₂S vent':'Fumarola H₂S',    c:'#FBBF24'},
+      {cond:vals.Temp<=-20,          n:'Dissostichus mawsoni', d:E?'AFP antifreeze':'AFP antárt.',c:'#60A5FA'},
+      {cond:vals.Si>100&&vals.H2O>10,n:'Thalassiosira sp.',    d:E?'Siliceous diatom':'Diatomea', c:'#A78BFA'},
+      {cond:vals.V>200&&vals.H2O>20, n:'Ascidia ceratodes',    d:E?'V → green blood':'Vanadina',  c:'#4ADE80'},
+      {cond:vals.Cu>60&&vals.Fe<20,  n:'Octopus vulgaris',     d:E?'Cu → blue blood':'Cu azul',   c:'#60A5FA'},
+      {cond:vals.pH<3,               n:'Picrophilus torridus', d:'pH 2',                           c:'#F87171'},
+      {cond:vals.Temp>80,            n:'Pyrolobus fumarii',    d:'121°C',                          c:'#FBBF24'},
+    ].filter(a=>a.cond).slice(0,5);
+    an.innerHTML = analogs.length
+      ? analogs.map(a=>`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <div style="width:5px;height:5px;border-radius:50%;flex-shrink:0;
+            background:${a.c};box-shadow:0 0 3px ${a.c};"></div>
+          <div>
+            <div style="font-size:8.5px;font-style:italic;color:rgba(255,255,255,0.65);
+              font-weight:600;">${a.n}</div>
+            <div style="font-size:7.5px;color:rgba(255,255,255,0.28);">${a.d}</div>
+          </div>
+        </div>`).join('')
+      : `<div style="font-size:8px;color:rgba(255,255,255,0.18);">${t('noAnalogs')}</div>`;
+  }
+
+  // ── 5. Ciclos minerales ──────────────────────────────
+  const cy=document.getElementById('right-cycles');
+  if(cy) cy.innerHTML=[
+    {n:t('cycles')[0],a:true,              c:'#4ADE80'},
+    {n:t('cycles')[1],a:vals.O2>0&&vals.H2O>0,c:'#60A5FA'},
+    {n:t('cycles')[2],a:vals.P>=0.1,       c:'#FBBF24'},
+    {n:t('cycles')[3],a:vals.Fe>=10,        c:'#F87171'},
+    {n:t('cycles')[4],a:vals.Ca>=10,        c:'#FBBF24'},
+    {n:t('cycles')[5],a:vals.H2S>0.1||vals.S>500,c:'#A78BFA'},
+    {n:t('cycles')[6],a:vals.V>100,         c:'#4ADE80'},
+  ].map(({n,a,c})=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div style="width:5px;height:5px;border-radius:50%;flex-shrink:0;
+        background:${a?c:'rgba(255,255,255,0.08)'};
+        ${a?`box-shadow:0 0 3px ${c};`:''}"></div>
+      <span style="font-size:8.5px;color:${a?'rgba(255,255,255,0.62)':'rgba(255,255,255,0.20)'};">
+        ${n}</span>
+      ${a?`<span style="font-size:7px;color:rgba(255,255,255,0.22);margin-left:auto;">●</span>`:''}
+    </div>`).join('');
+
+  // ── 6. Parámetros estelares ──────────────────────────
+  const st=document.getElementById('right-stellar');
+  if(st) st.innerHTML=[
+    {l:t('stellarType'),   v:vals.Temp>50?'M-dwarf':vals.O2>15?'G2V (Sol)':'K-type'},
+    {l:t('habitableZone'), v:vals.Temp>=-20&&vals.Temp<=50?(E?'Yes ✓':'Sí ✓'):(E?'No ✗':'No ✗')},
+    {l:t('atmosphere'),    v:vals.pressure>0.5?t('dense'):vals.pressure>0.1?t('thin'):t('noAtm')},
+    {l:t('magnetosphere'), v:vals.Fe>30?t('strong'):vals.Fe>10?t('weak'):t('noField')},
+  ].map(({l,v})=>`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+      <span style="font-size:8px;color:rgba(255,255,255,0.28);">${l}</span>
+      <span style="font-size:8.5px;font-weight:600;color:rgba(255,255,255,0.62);
+        font-family:'JetBrains Mono',monospace;">${v}</span>
+    </div>`).join('');
+
+  // ── 7. FRANJA INFERIOR — Rasgos emergentes ───────────
+  const bp=document.getElementById('bottom-panel');
+  if(!bp) return;
+
+  // Confianza
+  const skConf=vals.Ca>=30&&vals.P>=0.5?0.97:vals.Si>=80?0.94:vals.H2S>2?0.91:0.82;
+  const blConf=vals.Fe>=30&&vals.O2>=2?0.97:vals.Cu>=60?0.95:vals.V>=200?0.93:0.88;
+  const mtConf=vals.O2>=15?0.97:vals.H2S>=1?0.94:vals.Mg>=12?0.91:0.85;
+  const nvConf=vals.O2>=15&&vals.Ca>=25?0.97:vals.Ca>=10?0.91:0.78;
+  const thConf=vals.O2>=18?0.95:vals.Temp<=-10?0.93:vals.Temp>=80?0.90:0.87;
+  const szConf=0.90;
+
+  // Detalles científicos
+  const skDetail=cr0.skeleton.toLowerCase().includes('calcic')||cr0.skeleton.toLowerCase().includes('endos')
+    ?'Ca₁₀(PO₄)₆(OH)₂'
+    :cr0.skeleton.toLowerCase().includes('silic')
+    ?'SiO₂ amorfo, diatomeas'
+    :cr0.skeleton.toLowerCase().includes('sulfur')
+    ?'FeS₂ exoesqueleto'
+    :'Hidrostático / Quitina';
+  const blDetail=cr0.blood.toLowerCase().includes('roja')||cr0.blood.toLowerCase().includes('red')
+    ?(E?'Fe²⁺ in heme group':'Fe²⁺ en grupo hemo')
+    :cr0.blood.toLowerCase().includes('cyan')
+    ?(E?'Cu²⁺ hemocyanin':'Cu²⁺ hemocianina')
+    :cr0.blood.toLowerCase().includes('vanad')
+    ?(E?'V³⁺ vanadocytes':'V³⁺ vanadocitos')
+    :(E?'No circulatory fluid':'Sin fluido circ.');
+  const mtDetail=cr0.meta.toLowerCase().includes('aerob')
+    ?(E?'36 ATP/glucose':'36 ATP/glucosa')
+    :cr0.meta.toLowerCase().includes('foto')||cr0.meta.toLowerCase().includes('photo')
+    ?(E?'Mg-chlorophyll + CO₂':'Clorofila-Mg + CO₂')
+    :cr0.meta.toLowerCase().includes('quimio')||cr0.meta.toLowerCase().includes('chemo')
+    ?(E?'H₂S → sulfate + E':'H₂S → sulfato + E')
+    :(E?'Anaerobic ferm.':'Fermentación anaeróbica');
+  const nvDetail=cr0.nervous.toLowerCase().includes('cerebro')||cr0.nervous.toLowerCase().includes('brain')
+    ?(E?'~86 billion neurons':'~86 mil millones neur.')
+    :cr0.nervous.toLowerCase().includes('ganglio')
+    ?(E?'Distributed ganglia':'Ganglios distribuidos')
+    :(E?'Diffuse network':'Red difusa');
+  const thDetail=cr0.thermo.toLowerCase().includes('homeo')
+    ?(E?'Constant internal T°':'T° interna constante')
+    :cr0.thermo.toLowerCase().includes('crio')
+    ?(E?'AFP antifreeze':'AFP anticongelantes')
+    :cr0.thermo.toLowerCase().includes('termo')||cr0.thermo.toLowerCase().includes('thermo')
+    ?(E?'Proteins >100°C':'Proteínas >100°C')
+    :(E?'T° = environment':'Temperatura = ambiente');
+
+  // ═══ GENERADOR PROCEDURAL DE SER VIVO (Opción B) ═══
+  const {O2,H2S,Ca,Fe,Si,Mg,P,Cu,V,H2O,Temp,pH,S,CO2}=vals;
+  const lifeProfile = generateLifeProfile(vals, cr0, sc);
+  const lifeDesc = lifeProfile.text;
+  const lifeName = lifeProfile.name;
+  const lifeCommon = lifeProfile.common;
+
+  const traits=[
+    {cat:E?'SKELETON':'ESQUELETO',       v:cr0.skeleton, detail:skDetail, conf:skConf},
+    {cat:E?'CIRCULATORY':'CIRCULATORIO', v:cr0.blood,    detail:blDetail, conf:blConf},
+    {cat:E?'METABOLISM':'METABOLISMO',   v:cr0.meta,     detail:mtDetail, conf:mtConf},
+    {cat:E?'NERVOUS':'NERVIOSO',         v:cr0.nervous,  detail:nvDetail, conf:nvConf},
+    {cat:E?'THERMOREG.':'TERMORREGUL.',  v:cr0.thermo,   detail:thDetail, conf:thConf},
+    {cat:E?'SIZE':'TAMAÑO',             v:cr0.size,     detail:cr0.loco, conf:szConf},
+  ];
+
+  bp.innerHTML=`
+    <div>
+      <!-- RASGOS EMERGENTES -->
+      <div style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+        color:rgba(255,255,255,0.28);text-transform:uppercase;margin-bottom:8px;">
+        ${E?'Emerging traits — updates in real time':'Rasgos emergentes — tiempo real'}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px;">
+        ${traits.map(tr=>`
+          <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.07);
+            border-radius:5px;padding:6px 7px;">
+            <div style="font-size:6.5px;font-weight:700;letter-spacing:.10em;
+              color:rgba(255,255,255,0.25);text-transform:uppercase;margin-bottom:3px;">
+              ${tr.cat}
+            </div>
+            <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.78);
+              margin-bottom:2px;line-height:1.3;">${tr.v.split(' ').slice(0,2).join(' ')}</div>
+            <div style="font-size:7.5px;color:rgba(255,255,255,0.28);
+              margin-bottom:5px;line-height:1.4;">${tr.detail}</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <div style="flex:1;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;">
+                <div style="height:100%;width:${Math.round(tr.conf*100)}%;
+                  background:rgba(255,255,255,0.35);border-radius:1px;
+                  transition:width .3s ease;"></div>
+              </div>
+              <span style="font-size:6.5px;color:rgba(255,255,255,0.30);
+                font-family:'JetBrains Mono',monospace;">
+                ${tr.conf.toFixed(2)}
+              </span>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <!-- SER VIVO PROBABLE — fluido, a todo el ancho, debajo de los rasgos -->
+      <div style="border-top:0.5px solid rgba(255,255,255,0.06);padding-top:12px;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="font-size:7.5px;font-weight:700;letter-spacing:.12em;
+            color:rgba(255,255,255,0.28);text-transform:uppercase;">
+            🧬 ${E?'Probable life':'Ser vivo probable'}
+          </span>
+          <span style="font-size:11px;font-style:italic;font-weight:700;
+            color:rgba(0,212,170,0.85);">${lifeName}</span>
+          <span style="font-size:8px;color:rgba(255,255,255,0.35);">
+            ${E?'"'+lifeCommon+'"':'«'+lifeCommon+'»'}
+          </span>
+        </div>
+        <div style="font-size:9.5px;color:rgba(255,255,255,0.52);line-height:1.85;">
+          ${lifeDesc}
+        </div>
+        <button onclick="requestFullDescription()"
+          style="margin-top:12px;padding:6px 16px;border-radius:5px;cursor:pointer;
+            font-family:inherit;border:0.5px solid rgba(251,191,36,0.30);
+            background:rgba(251,191,36,0.06);color:rgba(251,191,36,0.80);
+            font-size:8px;font-weight:700;letter-spacing:.04em;transition:all .2s;
+            display:inline-flex;align-items:center;gap:5px;"
+          onmouseover="this.style.background='rgba(251,191,36,0.12)';this.style.color='rgba(251,191,36,1)'"
+          onmouseout="this.style.background='rgba(251,191,36,0.06)';this.style.color='rgba(251,191,36,0.80)'">
+          🔒 ${E?'Full AI description (Premium)':'Descripción completa por IA (Premium)'}
+        </button>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// GENERADOR PROCEDURAL DE SER VIVO (Opción B)
+// Nombre científico + anatomía + supervivencia, sin IA
+// ═══════════════════════════════════════════════════════
+function generateLifeProfile(v, cr, sc){
+  const E = lang==='en';
+  const {O2,H2S,Ca,Fe,Si,Mg,P,Cu,V,H2O,Temp,pH,S,CO2,gravity,pressure}=v;
+
+  // ── Determinar arquetipo dominante ──
+  const sulf = H2S>4||S>10000;
+  const vCold= Temp<-50;
+  const cold = Temp<-15;
+  const hot  = Temp>60;
+  const iron = Fe>55;
+  const silic= Si>150;
+  const alkaline = pH>10;
+  const acidic   = pH<4;
+  const highO2   = O2>25;
+  const lowO2    = O2<5;
+  const ideal    = O2>=18&&O2<=30&&Ca>20&&P>0.5&&Temp>=-10&&Temp<=40;
+
+  // ── Generar nombre científico latino ──
+  const genusRoots = [];
+  if(iron)  genusRoots.push('Ferro');
+  if(silic) genusRoots.push('Silici');
+  if(Ca>45) genusRoots.push('Calci');
+  if(Cu>80) genusRoots.push('Cupro');
+  if(sulf)  genusRoots.push('Sulfo');
+  if(V>200) genusRoots.push('Vanado');
+  if(genusRoots.length===0) genusRoots.push(Mg>30?'Magno':'Terra');
+  const genusSuffix = silic||Ca>45?'calix':iron?'thorax':sulf?'derm':vCold?'pod':'forma';
+  const genus = genusRoots[0] + genusSuffix;
+
+  const speciesRoots = [];
+  if(vCold) speciesRoots.push('cryo');
+  else if(cold) speciesRoots.push('frigo');
+  else if(hot)  speciesRoots.push('pyro');
+  if(alkaline) speciesRoots.push('basal');
+  else if(acidic) speciesRoots.push('acid');
+  if(highO2) speciesRoots.push('oxy');
+  else if(lowO2) speciesRoots.push('hypox');
+  if(speciesRoots.length===0) speciesRoots.push('vulgar');
+  const species = speciesRoots.join('') + 'is';
+
+  const sciName = genus + ' ' + species;
+
+  // ── Nombre común ──
+  let common;
+  if(iron&&vCold)      common = E?'Iron Chalice':'Cáliz de Hierro';
+  else if(silic&&cold) common = E?'Frost Armor':'Coraza de Escarcha';
+  else if(sulf)        common = E?'Sulfur Wraith':'Espectro de Azufre';
+  else if(hot)         common = E?'Ember Crawler':'Reptador de Brasas';
+  else if(vCold)       common = E?'Deep Frost Dweller':'Morador del Hielo Profundo';
+  else if(Cu>80)       common = E?'Azure Strider':'Caminante Azul';
+  else if(ideal)       common = E?'Verdant Walker':'Caminante Verde';
+  else                 common = E?'Rock Forager':'Forrajeador de Roca';
+
+  // ── Tamaño estimado ──
+  const sizeCm = gravity<0.5?'80-150 cm':gravity>2?'15-35 cm':'40-80 cm';
+  const massKg = gravity<0.5?'5-12 kg':gravity>2?'2-6 kg':'8-20 kg';
+
+  // ── ATP eficiencia según O2 ──
+  const atp = highO2?'48-52 ATP/'+(E?'glucose':'glucosa'):O2>15?'36 ATP/'+(E?'glucose':'glucosa'):lowO2?'2 ATP ('+(E?'fermentation':'fermentación')+')':'18 ATP';
+
+  // ── Construir descripción multi-párrafo ──
+  const parts = [];
+
+  // Párrafo 1 — Identidad y tamaño
+  parts.push(E
+    ? `<b>${sciName}</b> is a ${sizeCm} bilateral organism (${massKg}) adapted to this world's ${sc}% habitability. Its ${cr.skeleton.toLowerCase()} and ${cr.blood.toLowerCase()} define a body built for these exact conditions.`
+    : `<b>${sciName}</b> es un organismo bilateral de ${sizeCm} (${massKg}) adaptado al ${sc}% de habitabilidad de este mundo. Su ${cr.skeleton.toLowerCase()} y ${cr.blood.toLowerCase()} definen un cuerpo construido para estas condiciones exactas.`);
+
+  // Párrafo 2 — Esqueleto/protección según química
+  if(silic||alkaline){
+    parts.push(E
+      ? `Its exoskeleton is biogenic silica (SiO₂)${iron?' impregnated with iron oxides':''}, nearly inert at pH ${pH} where calcium carbonate would dissolve. Trapped gas cavities act as biological aerogel insulation.`
+      : `Su exoesqueleto es sílice biogénica (SiO₂)${iron?' impregnada de óxidos de hierro':''}, casi inerte a pH ${pH} donde el carbonato cálcico se disolvería. Cavidades de gas atrapadas actúan como aislante de aerogel biológico.`);
+  } else if(Ca>20&&P>0.5){
+    parts.push(E
+      ? `A calcic endoskeleton of hydroxyapatite Ca₁₀(PO₄)₆(OH)₂ provides internal support, allowing larger body size and faster locomotion than exoskeletal designs.`
+      : `Un endoesqueleto calcico de hidroxiapatita Ca₁₀(PO₄)₆(OH)₂ provee soporte interno, permitiendo mayor tamaño corporal y locomoción más rápida que los diseños de exoesqueleto.`);
+  }
+
+  // Párrafo 3 — Sangre y respiración
+  let bloodDesc;
+  if(cr.blood.toLowerCase().includes('cyan')||Cu>80){
+    bloodDesc = E
+      ? `Blue hemocyanin blood (Cu²⁺-based) transports oxygen efficiently at low temperatures${cold?', remaining functional where iron-based blood would fail':''}.`
+      : `Sangre azul de hemocianina (base Cu²⁺) transporta oxígeno eficientemente a baja temperatura${cold?', funcionando donde la sangre de hierro fallaría':''}.`;
+  } else if(cr.blood.toLowerCase().includes('vanad')||V>200){
+    bloodDesc = E
+      ? `Green vanadium-based blood (V³⁺ vanadocytes) — extremely rare, exploiting the abundant vanadium (${V} ppm) in this environment.`
+      : `Sangre verde basada en vanadio (vanadocitos V³⁺) — extremadamente rara, aprovechando el vanadio abundante (${V} ppm) en este entorno.`;
+  } else {
+    bloodDesc = E
+      ? `Iron-based hemoglobin with ${cold?'4× higher O₂ affinity to compensate slow molecular diffusion in cold':'high O₂ binding capacity'}${H2S>1?', plus modified histidines that block toxic H₂S from binding the heme iron':''}.`
+      : `Hemoglobina de hierro con ${cold?'afinidad por O₂ 4× mayor para compensar la difusión lenta en frío':'alta capacidad de unión de O₂'}${H2S>1?', más histidinas modificadas que bloquean el H₂S tóxico del hierro del hemo':''}.`;
+  }
+  parts.push(bloodDesc);
+
+  // Párrafo 4 — Metabolismo
+  parts.push(E
+    ? `Metabolism: ${cr.meta.toLowerCase()} yielding ${atp}.${highO2?` With ${O2}% O₂ available, mitochondria reach exceptional efficiency, fueling thermoregulation against ${Temp}°C.`:''}${H2S>3?` Gut sulfur-oxidases convert absorbed H₂S to sulfate for extra energy.`:''}`
+    : `Metabolismo: ${cr.meta.toLowerCase()} produciendo ${atp}.${highO2?` Con ${O2}% de O₂ disponible, las mitocondrias alcanzan eficiencia excepcional, alimentando la termorregulación frente a ${Temp}°C.`:''}${H2S>3?` Sulfuro-oxidasas intestinales convierten el H₂S absorbido en sulfato para energía adicional.`:''}`);
+
+  // Párrafo 5 — Termorregulación / supervivencia clave
+  if(vCold){
+    parts.push(E
+      ? `Survival at ${Temp}°C relies on four-layer cryoprotection: AFP-III antifreeze proteins, endogenous glycerol lowering intracellular freezing to -78°C, cold-activated heat-shock proteins, and bound (non-freezable) water at 58%.`
+      : `La supervivencia a ${Temp}°C depende de crioprotección de 4 capas: proteínas anticongelantes AFP-III, glicerol endógeno bajando la congelación intracelular a -78°C, proteínas de choque activadas por frío, y agua ligada (no congelable) al 58%.`);
+  } else if(hot){
+    parts.push(E
+      ? `At ${Temp}°C, thermostable proteins with extra disulfide bonds and modified DNA-repair enzymes prevent denaturation. Membranes use saturated branched lipids that stay stable above 100°C.`
+      : `A ${Temp}°C, proteínas termoestables con enlaces disulfuro adicionales y enzimas de reparación de ADN modificadas previenen la desnaturalización. Las membranas usan lípidos ramificados saturados estables por encima de 100°C.`);
+  } else if(cr.thermo.toLowerCase().includes('homeo')){
+    parts.push(E
+      ? `Homeothermic — maintains constant internal temperature via insulating ${cr.teg?cr.teg.toLowerCase():'integument'} and metabolic heat, allowing activity across day-night cycles.`
+      : `Homeotermo — mantiene temperatura interna constante mediante ${cr.teg?cr.teg.toLowerCase():'tegumento'} aislante y calor metabólico, permitiendo actividad en todo el ciclo día-noche.`);
+  }
+
+  // Párrafo 6 — Comportamiento y reproducción
+  const repro = sc>0.6
+    ? (E?`Sexual reproduction enables genetic diversity. `:`La reproducción sexual permite diversidad genética. `)
+    : (E?`Reproduces via resilient amniotic eggs with insulating shells. `:`Se reproduce por huevos amnióticos resistentes con cáscaras aislantes. `);
+  const behav = cr.nervous.toLowerCase().includes('cerebro')||cr.nervous.toLowerCase().includes('brain')
+    ? (E?`A centralized brain supports territorial behavior, episodic memory and short-term planning.`:`Un cerebro centralizado soporta comportamiento territorial, memoria episódica y planificación a corto plazo.`)
+    : (E?`A distributed nervous system drives reflexive, stimulus-driven behavior.`:`Un sistema nervioso distribuido genera comportamiento reflejo, guiado por estímulos.`);
+  parts.push(repro + behav);
+
+  // Párrafo 7 — Por qué sobrevive (síntesis)
+  parts.push(E
+    ? `<i>Why it thrives:</i> conditions lethal to unadapted life are its advantages — ${highO2?`the ${O2}% O₂ that would oxidatively poison others fuels its metabolism; `:''}${iron?`the ${Fe}K ppm iron that intoxicates conventional blood builds its armor; `:''}${alkaline?`the pH ${pH} that dissolves carbonate skeletons doesn't touch its silica shell; `:''}${H2S>3?`the H₂S that poisons most respiration is an energy source. `:''}Habitability ${sc}% means: perfect for ${genus}.`
+    : `<i>Por qué prospera:</i> las condiciones letales para vida no adaptada son sus ventajas — ${highO2?`el ${O2}% de O₂ que envenenaría a otros por oxidación alimenta su metabolismo; `:''}${iron?`el hierro de ${Fe}K ppm que intoxica la sangre convencional construye su armadura; `:''}${alkaline?`el pH ${pH} que disuelve esqueletos de carbonato no afecta su coraza de sílice; `:''}${H2S>3?`el H₂S que envenena la mayoría de respiraciones es fuente de energía. `:''}Habitabilidad ${sc}%: perfecto para ${genus}.`);
+
+  return {
+    name: sciName,
+    common: common,
+    text: parts.join(' '),
+  };
+}
+
+// ── Botón Premium (Opción A futura) ──────────────────
+function requestFullDescription(){
+  const E = lang==='en';
+  alert(E
+    ? '🔒 Full AI-generated creature descriptions (detailed anatomy, metabolism, behavior, and scientific reasoning by Claude AI) are a Premium feature.\n\nUpgrade to BioPlanet Pro to unlock unlimited AI descriptions.'
+    : '🔒 Las descripciones completas generadas por IA (anatomía detallada, metabolismo, comportamiento y razonamiento científico por Claude AI) son una función Premium.\n\nActualiza a BioPlanet Pro para desbloquear descripciones IA ilimitadas.');
+}
+
+// ── RayMarching HD — modo Premium futuro ──────────────
+function surfRayMarch(){
+  const E = lang==='en';
+  alert(E
+    ? '🔒 RayMarching HD is a Premium feature.\n\nThis cinematic terrain renderer uses Signed Distance Fields and fractional Brownian motion to generate infinitely detailed landscapes with zero geometry — the same technique used in high-end space simulators.\n\nUpgrade to BioPlanet Pro to unlock RayMarching HD surface rendering.'
+    : '🔒 RayMarching HD es una función Premium.\n\nEste renderizador de terreno cinematográfico usa Campos de Distancia con Signo (SDF) y movimiento browniano fraccional para generar paisajes infinitamente detallados con cero geometría — la misma técnica de los simuladores espaciales de alta gama.\n\nActualiza a BioPlanet Pro para desbloquear el renderizado de superficie RayMarching HD.');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RAYMARCHING HD SHADER — listo para activar en versión Premium
+   ───────────────────────────────────────────────────────────────
+   Técnica: SDF + función seno + fBm con derivadas analíticas
+   (Stanislav Petrov / Inigo Quilez). Cero geometría, 8 octavas.
+   Para activar: reemplazar el cuerpo de surfRayMarch() por initRayMarch()
+   que cree un canvas WebGL con este fragment shader.
+
+   const RAYMARCH_FS = `
+   precision highp float;
+   uniform vec2 uRes; uniform vec3 uCam; uniform vec2 uRot;
+   uniform float uAmp,uFreq,uErosion,uFog,uSunAlt,uSeaLevel;
+   uniform vec3 uColLow,uColMid,uColHigh,uColSnow,uWaterCol,uSkyCol,uSunCol;
+   uniform float uHasWater,uHasSnow;
+   #define MAX_STEPS 160
+   #define MAX_DIST 220.0
+   #define SURF_DIST 0.0015
+   vec3 hash3(vec2 p){vec3 q=vec3(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)),dot(p,vec2(419.2,371.9)));return fract(sin(q)*43758.5453);}
+   vec3 noised(vec2 x){vec2 p=floor(x),f=fract(x);vec2 u=f*f*f*(f*(f*6.-15.)+10.);vec2 du=30.*f*f*(f*(f-2.)+1.);
+     float a=hash3(p).x,b=hash3(p+vec2(1,0)).x,c=hash3(p+vec2(0,1)).x,d=hash3(p+vec2(1,1)).x;
+     float k0=a,k1=b-a,k2=c-a,k4=a-b-c+d;return vec3(k0+k1*u.x+k2*u.y+k4*u.x*u.y,du*(vec2(k1,k2)+k4*u.yx));}
+   float terrainH(vec2 p){float a=.5,f=uFreq,sum=0.;vec2 g=vec2(0);mat2 m=mat2(.8,.6,-.6,.8);
+     for(int i=0;i<8;i++){vec3 n=noised(p*f);float s=sin(p.x*f*.5)*sin(p.y*f*.5)*.15;g+=n.yz;
+       sum+=a*(n.x+s)/(1.+uErosion*dot(g,g));a*=.5;f*=2.;p=m*p;}return sum*uAmp*8.;}
+   float map(vec3 p){return p.y-terrainH(p.xz*.05);}
+   // ... raymarch loop + lighting (ver raymarch-prototype.html)
+   `;
+   ═══════════════════════════════════════════════════════════════ */
+
+// ─── Aplica preset ────────────────────────────────────
+function applyPresetDash(name){
+  const p=PRESETS[name];
+  Object.entries(p).forEach(([sym,v])=>{
+    vals[sym]=v;
+    const sl=document.getElementById('sl-'+sym);
+    if(sl){
+      sl.value=v;
+      const m=SLIDERS.find(s=>s.sym===sym);
+      if(m){const pct=Math.round((v-m.min)/(m.max-m.min)*100);sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;}
+    }
+    const m=SLIDERS.find(s=>s.sym===sym);
+    const vl=document.getElementById('vl-'+sym);
+    if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  });
+  if(threeState.update) threeState.update(vals);
+  // Re-renderizar panel completo para actualizar HUD, score, análogos
+  if(currentTab==='planet') renderMain();
+  // Sincronizar con el árbol taxonómico (si está abierto)
+  syncTaxTree();
+}
+
+// ─── setVal para dashboard ────────────────────────────
+function setValDash(sym,v){
+  vals[sym]=v;
+  Object.keys(imgCache).forEach(k=>{if(!isNaN(k))delete imgCache[k];});
+  const m=SLIDERS.find(s=>s.sym===sym);
+  const vl=document.getElementById('vl-'+sym);
+  if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  // Actualizar gradiente del slider
+  const sl=document.getElementById('sl-'+sym);
+  if(sl&&m){const pct=Math.round((v-m.min)/(m.max-m.min)*100);sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;}
+  if(threeState.update) threeState.update(vals);
+  // Actualizar panel derecho en tiempo real sin re-renderizar el globo
+  updatePlanetPanel();
+  // Sincronizar con el árbol taxonómico (si está abierto)
+  syncTaxTree();
+}
+
+// ─── CREATURES TAB ────────────────────────────────────
+function renderCreatures(el){
+  const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+  lastCreatures=creatures;const code=planetCode(vals);
+  el.innerHTML=`
+    <div style="padding:18px 20px;overflow-y:auto;height:100%;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div><div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('creaturesTitle')} ${code}</div><div style="font-size:11px;color:var(--muted);">${t('creaturesDesc')}</div></div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">Criaturas:</span>${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
+        ${creatures.map((cr,i)=>{const imgId=`cr-img-${i}`;
+          // Comprobar si ya hay imagen generada en caché
+          const cached=imgCache[cr.seed];
+          const imgContent=cached
+            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;cursor:zoom-in;" loading="lazy" onclick="openCreatureLightbox('${cached.url}','${cr.latinName.replace(/'/g,"\\'")}')"/>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',768,768,'${imgId}',${cr.seed},'creature','${cr.latinName.replace(/'/g,"\\'")}')" class="btn btn-teal" style="font-size:10px;">🎨 ${lang==='en'?'Generate anatomy view':'Generar vista anatómica'}</button>`;
+          return`
+          <div class="card" style="animation:fadeIn .4s ease both;animation-delay:${i*.08}s;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${cr.orgCol},transparent);"></div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+              <div><div style="font-size:12px;font-weight:700;color:${cr.orgCol};margin-bottom:2px;font-style:italic;">${cr.latinName}</div><div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;">${code} · #${i+1}</div></div>
+              <span class="tag" style="background:${cr.metaCol}18;color:${cr.metaCol};">${cr.meta}</span>
+            </div>
+            <div id="${imgId}" style="height:240px;border-radius:8px;overflow:hidden;margin-bottom:6px;background:radial-gradient(circle at 50% 40%, #1a1d28, var(--bg3));position:relative;display:flex;align-items:center;justify-content:center;">
+              ${imgContent}
+            </div>
+            <!-- Botón 3D -->
+            <button onclick="show3DCreature(${i})" style="width:100%;margin-bottom:10px;padding:6px;border-radius:7px;border:0.5px solid ${cr.orgCol}50;background:${cr.orgCol}10;color:${cr.orgCol};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;"
+              onmouseover="this.style.background='${cr.orgCol}22'" onmouseout="this.style.background='${cr.orgCol}10'">
+              🔬 ${lang==='en'?'View in 3D':'Ver en 3D'} <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${cr.orgCol}30;margin-left:4px;">PRO</span>
+            </button>
+            <!-- Rasgos base -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
+              ${[{l:"Esqueleto",v:cr.skeleton,c:cr.skCol},{l:"Sangre",v:cr.blood,c:cr.bCol},{l:"Nervioso",v:cr.nervous,c:cr.nCol},{l:"Termoreg.",v:cr.thermo,c:cr.tCol},{l:"Locomoción",v:cr.loco,c:"#60A5FA"},{l:"Tamaño",v:cr.size,c:"#94A3B8"}].map(({l,v,c})=>`<div style="background:${c}10;border:0.5px solid ${c}30;border-radius:5px;padding:5px 7px;"><div style="font-size:8px;color:var(--muted);margin-bottom:1px;">${l}</div><div style="font-size:9px;color:${c};font-weight:600;">${v}</div></div>`).join('')}
+            </div>
+            <!-- Habilidades emergentes -->
+            ${cr.abilities&&cr.abilities.length>0?`
+            <div style="border-top:0.5px solid var(--border);padding-top:10px;margin-bottom:8px;">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">✨ ${lang==='en'?'Emerging abilities':'Habilidades emergentes'}</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                ${cr.abilities.map(ab=>`
+                  <div style="background:${ab.col}0D;border:0.5px solid ${ab.col}35;border-radius:7px;padding:7px 10px;cursor:pointer;"
+                    onclick="this.querySelector('.ab-detail').style.display=this.querySelector('.ab-detail').style.display==='none'?'block':'none'">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:11px;">${ab.cat.split(' ')[0]}</span>
+                      <div style="flex:1;">
+                        <div style="font-size:10px;font-weight:600;color:${ab.col};">${ab.name}</div>
+                        <div style="font-size:8px;color:var(--muted);margin-top:1px;">${ab.cat.split(' ').slice(1).join(' ')}</div>
+                      </div>
+                      <span style="font-size:9px;color:${ab.col};opacity:.5;">▾</span>
+                    </div>
+                    <div class="ab-detail" style="display:none;margin-top:6px;font-size:9px;color:#8A9AB8;line-height:1.6;border-top:0.5px solid ${ab.col}25;padding-top:5px;">
+                      ${ab.detail}
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>`:''}
+            <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;border-top:0.5px solid var(--border);padding-top:6px;">${cr.complexity} · Semilla: ${cr.seed.toString(36).toUpperCase()} · Score: ${Math.round(cr.sc*100)}% · ${cr.abilities?.length||0} habilidades</div>
+            <!-- Análogos terrestres con similitud -->
+            ${(()=>{
+              const matches = findBestEarthMatches(cr, vals, 3);
+              const best = matches[0];
+              if(!best || best.similarity < 20) return '';
+              const simCol = best.similarity>=70?'#00D4AA':best.similarity>=50?'#FBBF24':'#94A3B8';
+              return`
+              <div style="margin-top:8px;background:${simCol}08;border:0.5px solid ${simCol}30;border-radius:8px;padding:8px 10px;">
+                <div style="font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:${simCol};margin-bottom:6px;">
+                  🌍 ${lang==='en'?'Closest Earth analogs':'Análogos terrestres más cercanos'}
+                </div>
+                ${matches.filter(m=>m.similarity>=15).map((m,mi)=>`
+                  <div style="display:flex;align-items:center;gap:6px;${mi>0?'margin-top:5px;padding-top:5px;border-top:0.5px solid rgba(255,255,255,0.05);':''}">
+                    <span style="font-size:16px;">${m.emoji}</span>
+                    <div style="flex:1;">
+                      <div style="display:flex;align-items:center;gap:5px;">
+                        <span style="font-size:10px;font-style:italic;color:var(--text);font-weight:${mi===0?'700':'400'};">${m.name}</span>
+                        <span style="font-size:8px;color:var(--muted);">(${m.common_es})</span>
+                      </div>
+                      <!-- Barra de similitud -->
+                      <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
+                        <div style="flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;">
+                          <div style="height:100%;width:${m.similarity}%;background:${m.similarity>=70?'#00D4AA':m.similarity>=50?'#FBBF24':'#94A3B8'};border-radius:2px;transition:width .5s;"></div>
+                        </div>
+                        <span style="font-size:9px;font-weight:700;color:${m.similarity>=70?'#00D4AA':m.similarity>=50?'#FBBF24':'#94A3B8'};font-family:'JetBrains Mono',monospace;width:32px;">${m.similarity}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  ${mi===0&&m.similarity>=50?`<div style="margin-top:5px;font-size:9px;color:var(--muted);line-height:1.5;font-style:italic;">"${m.fun_fact}"</div>`:''}
+                `).join('')}
+                ${best.similarity>=80?`
+                  <div style="margin-top:6px;padding-top:6px;border-top:0.5px solid ${simCol}30;font-size:9px;color:${simCol};font-weight:600;">
+                    ✦ ${lang==='en'?'High similarity with real Earth life — evolutionary engine is scientifically accurate':'Alta similitud con vida terrestre real — el motor evolutivo es científicamente preciso'}
+                  </div>`
+                :best.similarity>=60?`
+                  <div style="margin-top:6px;padding-top:6px;border-top:0.5px solid rgba(251,191,36,0.3);font-size:9px;color:#FBBF24;">
+                    ◈ ${lang==='en'?'Moderate similarity — shares convergent evolutionary lineage':'Similitud moderada — comparte linaje evolutivo convergente'}
+                  </div>`:``}
+              </div>`;
+            })()}
+          </div>`;}).join('')}
+      </div>
+    </div>`;
+}
+
+// ─── ECOSYSTEM TAB ────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// MOTOR DE DEPREDACIÓN
+// Basado en: Lotka-Volterra, Gause (1934),
+// Principio de Exclusión Competitiva,
+// Teoría de Nicho Ecológico
+// ═══════════════════════════════════════════════════════
+
+function calcPredationScore(cr, v){
+  let score = 0;
+  const {O2, Ca, Fe, P, Mg, H2O, Temp, gravity, H2S, Cu, S, Si} = v;
+
+  // ── Inteligencia (factor más importante — como los humanos) ──
+  if(cr.nervous==="Cerebro centralizado")           score += 40;
+  else if(cr.nervous==="Sistema gangliado")          score += 22;
+  else                                               score += 5;
+
+  // ── Tamaño ──
+  if(cr.size==="Megafauna (>10t)")                  score += 28;
+  else if(cr.size==="Grande (100kg–10t)")            score += 22;
+  else if(cr.size==="Mediano (10–100kg)")            score += 15;
+  else if(cr.size==="Pequeño (<10kg)")               score += 7;
+  else                                               score += 1;
+
+  // ── Metabolismo (energía disponible para cazar) ──
+  if(cr.meta==="Aeróbico eficiente")                score += 18;
+  else if(cr.meta==="Quimiosíntesis H₂S")           score += 10;
+  else if(cr.meta==="Fotosíntesis")                 score += 3; // productores, no cazadores
+  else if(cr.meta==="Metanogénesis")                score += 2;
+  else                                               score += 5;
+
+  // ── Locomoción ──
+  if(cr.loco==="Flotación/vuelo")                   score += 14;
+  else if(cr.loco==="Cuadrúpedo")                   score += 12;
+  else if(cr.loco==="Natación")                     score += 10;
+  else if(cr.loco==="Ondulatorio")                  score += 6;
+  else                                               score += 3;
+
+  // ── Habilidades especiales de caza ──
+  if(cr.abilities){
+    cr.abilities.forEach(ab=>{
+      if(ab.name.includes("Inteligencia superior"))        score += 20;
+      if(ab.name.includes("Lenguaje complejo"))            score += 15;
+      if(ab.name.includes("electr"))                       score += 14;
+      if(ab.name.includes("Ecolocalización"))              score += 12;
+      if(ab.name.includes("infrarroja"))                   score += 11;
+      if(ab.name.includes("magneto") || ab.name.includes("Magneto")) score += 8;
+      if(ab.name.includes("Camuflaje"))                    score += 10;
+      if(ab.name.includes("Regeneración"))                 score += 7;
+      if(ab.name.includes("Memoria fotográfica"))          score += 8;
+      if(ab.name.includes("visión UV"))                    score += 6;
+      if(ab.name.includes("Sismo"))                        score += 5;
+      if(ab.name.includes("Línea lateral"))                score += 6;
+      if(ab.name.includes("simbólica") || ab.name.includes("herramientas")) score += 18;
+    });
+  }
+
+  // ── Termorregulación ──
+  if(cr.thermo==="Homeotermo")                      score += 8;
+  else if(cr.thermo==="Termoestable")               score += 6;
+  else                                               score += 2;
+
+  return Math.round(score);
+}
+
+function assignTrophicRole(predScore, maxScore, minScore, cr){
+  const range = maxScore - minScore || 1;
+  const rel = (predScore - minScore) / range;
+
+  if(cr.meta==="Fotosíntesis" || cr.meta==="Quimiosíntesis H₂S" || cr.meta==="Metanogénesis"){
+    if(rel < 0.3) return {role:"Productor primario",    tier:1, col:"#4ADE80", icon:"🌿"};
+  }
+  if(rel >= 0.85) return {role:"Depredador Ápex",       tier:5, col:"#F87171", icon:"👑"};
+  if(rel >= 0.65) return {role:"Carnívoro secundario",  tier:4, col:"#FBBF24", icon:"🦁"};
+  if(rel >= 0.40) return {role:"Omnívoro oportunista",  tier:3, col:"#60A5FA", icon:"🦊"};
+  if(rel >= 0.20) return {role:"Herbívoro primario",    tier:2, col:"#4ADE80", icon:"🦌"};
+  return               {role:"Productor/descomponedor", tier:1, col:"#A78BFA", icon:"🍄"};
+}
+
+function simulateDualApex(apex1, apex2, score, v){
+  // Diferencia de puntaje de depredación
+  const diff = Math.abs(apex1.predScore - apex2.predScore);
+  const totalResources = score * 100;
+  const sc1 = apex1.predScore;
+  const sc2 = apex2.predScore;
+
+  // Factor inteligencia
+  const int1 = apex1.cr.nervous==="Cerebro centralizado"?3:apex1.cr.nervous==="Sistema gangliado"?2:1;
+  const int2 = apex2.cr.nervous==="Cerebro centralizado"?3:apex2.cr.nervous==="Sistema gangliado"?2:1;
+
+  // Factor hábitat
+  const hab1 = apex1.cr.loco==="Natación"?"acuático":apex1.cr.loco==="Flotación/vuelo"?"aéreo":"terrestre";
+  const hab2 = apex2.cr.loco==="Natación"?"acuático":apex2.cr.loco==="Flotación/vuelo"?"aéreo":"terrestre";
+  const differentHabitat = hab1 !== hab2;
+
+  // Determinar escenario
+  let scenario, outcome, timeline, details, evolutionEffect;
+
+  if(differentHabitat && diff < 20){
+    scenario = "Partición de nicho";
+    outcome  = "COEXISTENCIA ESTABLE";
+    timeline = "Permanente";
+    details  = `${apex1.cr.latinName} domina el hábitat ${hab1} mientras ${apex2.cr.latinName} domina el ${hab2}. Al no competir por las mismas presas ni territorio, ambas especies coexisten indefinidamente. Este es el mecanismo que permite que tiburones y águilas coexistan en la Tierra.`;
+    evolutionEffect = `Baja presión evolutiva mutua. Ambas especies evolucionan principalmente en respuesta a sus presas, no entre sí. Diversificación moderada en ~10,000 generaciones.`;
+  } else if(int1 >= 3 && int2 < 3){
+    scenario = "Dominancia intelectual";
+    outcome  = `${apex1.cr.latinName.toUpperCase()} DOMINA`;
+    timeline = "500–2,000 generaciones";
+    details  = `La inteligencia superior de ${apex1.cr.latinName} le permite usar herramientas, estrategias colectivas y modificar el entorno para desventaja de ${apex2.cr.latinName}. Exactamente como Homo sapiens eliminó o redujo poblaciones de todos sus competidores ápex (leones de cueva, osos de cara corta). La inteligencia no necesita fuerza — necesita planificación.`;
+    evolutionEffect = `${apex2.cr.latinName} experimenta presión evolutiva extrema: evoluciona comportamientos de evasión, nocturno, migración. O se extingue. En 10,000 generaciones puede surgir una subespecie secundaria adaptada.`;
+  } else if(int2 >= 3 && int1 < 3){
+    scenario = "Dominancia intelectual";
+    outcome  = `${apex2.cr.latinName.toUpperCase()} DOMINA`;
+    timeline = "500–2,000 generaciones";
+    details  = `La inteligencia superior de ${apex2.cr.latinName} le permite dominar el ecosistema completo. ${apex1.cr.latinName}, a pesar de su tamaño o fuerza, no puede competir contra la planificación estratégica y uso de herramientas. La fuerza bruta pierde ante la mente.`;
+    evolutionEffect = `Presión evolutiva intensa sobre ${apex1.cr.latinName}. Puede evolucionar inteligencia cooperativa (cardúmenes, manadas) como respuesta adaptativa.`;
+  } else if(diff < 10 && totalResources > 60){
+    scenario = "Carrera armamentística evolutiva";
+    outcome  = "COEXISTENCIA DINÁMICA";
+    timeline = "Indefinido — ciclos de 1,000–5,000 generaciones";
+    details  = `Dos depredadores casi iguales en un planeta rico. Ninguno puede eliminar al otro eficientemente. Se inicia una carrera armamentística: cuando uno evoluciona mejor visión, el otro evoluciona mejor camuflaje. Cuando uno gana velocidad, el otro gana resistencia. Este mecanismo acelera la evolución de ambas especies exponencialmente. Resultado: las dos criaturas más avanzadas del universo conocido.`;
+    evolutionEffect = `Aceleración evolutiva 10–50×. En 50,000 generaciones pueden surgir capacidades cognitivas, tecnológicas o bioquímicas completamente nuevas en ambas líneas.`;
+  } else if(diff < 10 && totalResources <= 60){
+    scenario = "Exclusión competitiva (Gause)";
+    outcome  = "UNA SE EXTINGUE";
+    timeline = "200–800 generaciones";
+    details  = `Recursos insuficientes para dos ápex iguales. El Principio de Exclusión Competitiva de Gause (1934) predice que dos especies en idéntico nicho no pueden coexistir. Pequeñas ventajas aleatorias se amplifican: la especie con 1% de ventaja reproduce 1% más eficientemente. En pocas generaciones, esa ventaja se vuelve insuperable. La perdedora se extingue o se refugia en un nicho marginal.`;
+    evolutionEffect = `La especie ganadora sufre una explosión adaptativa al quedar sola como ápex. Diversificación rápida en múltiples subespecies que ocupan los nichos vacíos.`;
+  } else if(diff >= 20){
+    scenario = "Jerarquía clara";
+    outcome  = `${sc1>sc2?apex1.cr.latinName:apex2.cr.latinName} ES EL ÁPEX REAL`;
+    timeline = "Estable";
+    const winner = sc1>sc2?apex1:apex2;
+    const loser  = sc1>sc2?apex2:apex1;
+    details  = `Diferencia suficiente para que ${winner.cr.latinName} (score ${winner.predScore}) domine a ${loser.cr.latinName} (score ${loser.predScore}). ${loser.cr.latinName} ocupa el nivel de carnívoro secundario — sigue siendo un depredador formidable, pero reconoce y evita al ápex real. Coexistencia estable con jerarquía clara.`;
+    evolutionEffect = `${loser.cr.latinName} evoluciona comportamientos de evasión y cacería de presas que el ápex no explota. Especialización en nicho secundario en ~5,000 generaciones.`;
+  } else {
+    scenario = "Equilibrio inestable";
+    outcome  = "IMPREDECIBLE";
+    timeline = "Variable — puede cambiar en cualquier momento";
+    details  = `Dos depredadores similares en un planeta de recursos medios. El sistema es caóticamente sensible: una sequía, una enfermedad, un cambio climático — cualquier perturbación puede romper el equilibrio hacia cualquiera de los 4 escenarios anteriores. El ecosistema vive en el filo de la navaja.`;
+    evolutionEffect = `Alta variabilidad evolutiva. Cualquier mutación ventajosa puede desencadenar un cambio de dominancia en pocas generaciones.`;
+  }
+
+  return {scenario, outcome, timeline, details, evolutionEffect, differentHabitat, hab1, hab2};
+}
+
+function renderEcosystem(el){
+  const score = calcScore(vals);
+  const creatures = Array.from({length:Math.max(numCreatures,2)},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+
+  // Calcular score de depredación para cada criatura
+  const scores = creatures.map(cr=>calcPredationScore(cr,vals));
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+
+  // Asignar rol trófico
+  const creaturesWithRoles = creatures.map((cr,i)=>({
+    cr, predScore:scores[i],
+    ...assignTrophicRole(scores[i], maxScore, minScore, cr)
+  }));
+
+  // Ordenar por score (ápex primero)
+  const sorted = [...creaturesWithRoles].sort((a,b)=>b.predScore-a.predScore);
+
+  // Identificar ápex (pueden ser 1 o 2)
+  const apexCreatures = sorted.filter(c=>c.tier===5);
+  const hasDoubleApex = apexCreatures.length >= 2;
+  const dualApexResult = hasDoubleApex ? simulateDualApex(apexCreatures[0], apexCreatures[1], score, vals) : null;
+
+  // Pirámide de biomasa (Lotka-Volterra simplificado)
+  const producers   = score>0.5?100:score>0.3?55:20;
+  const herbivores  = Math.round(producers * 0.12);
+  const carnivores  = Math.round(herbivores * 0.10);
+  const apex        = Math.round(carnivores * 0.08);
+  const decomp      = Math.round(producers * 0.8);
+
+  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">${lang==='en'?'Food Web & Predation Theory':'Red Trófica y Teoría de Depredación'}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${lang==='en'?'Based on Lotka-Volterra · Gause principle · Ecological Niche Theory':'Basado en Lotka-Volterra · Principio de Gause · Teoría de Nicho Ecológico'}</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+    <!-- Jerarquía de depredación -->
+    <div class="card">
+      <div class="label">${lang==='en'?'Predation hierarchy — Trophic Score':'Jerarquía de depredación — Score Trófico'}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${sorted.map((c,i)=>{
+          const barW = Math.round((c.predScore/Math.max(maxScore,1))*100);
+          const isApex = c.tier===5;
+          return`
+          <div style="background:${c.col}0D;border:0.5px solid ${c.col}${isApex?'60':'25'};border-radius:8px;padding:10px 12px;${isApex?`box-shadow:0 0 12px ${c.col}30;`:''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:16px;">${c.icon}</span>
+              <div style="flex:1;">
+                <div style="font-size:11px;font-style:italic;font-weight:700;color:${c.col};">${c.cr.latinName}</div>
+                <div style="font-size:9px;color:var(--muted);">${c.role}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:16px;font-weight:800;color:${c.col};font-family:'JetBrains Mono',monospace;">${c.predScore}</div>
+                <div style="font-size:8px;color:var(--muted);">score</div>
+              </div>
+            </div>
+            <!-- Barra de score -->
+            <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:6px;">
+              <div style="height:100%;width:${barW}%;background:${c.col};border-radius:2px;box-shadow:0 0 6px ${c.col}60;transition:width .5s;"></div>
+            </div>
+            <!-- Factores clave -->
+            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.nervous}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.size}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.loco}</span>
+              ${c.cr.abilities?.slice(0,1).map(ab=>`<span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${ab.col}15;color:${ab.col};">✨ ${ab.name.split(' ').slice(0,2).join(' ')}</span>`).join('')||''}
+            </div>
+            ${isApex?`<div style="margin-top:6px;font-size:8px;color:${c.col};font-weight:600;letter-spacing:.06em;">▲ ${lang==='en'?'APEX PREDATOR':'DEPREDADOR ÁPEX'}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Columna derecha -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <!-- Pirámide de biomasa -->
+      <div class="card">
+        <div class="label">${lang==='en'?'Biomass pyramid (Eltonian)':'Pirámide de biomasa (Eltonian)'}</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;">
+          ${[
+            {label:`Ápex (${apex} ind)`,     w:15,  col:"#F87171", icon:"👑"},
+            {label:`Carnívoros (${carnivores})`,w:28, col:"#FBBF24", icon:"🦁"},
+            {label:`Herbívoros (${herbivores})`,w:50, col:"#60A5FA", icon:"🦌"},
+            {label:`Productores (${producers})`,w:80, col:"#4ADE80", icon:"🌿"},
+            {label:`Descomp. (${decomp})`,    w:65,  col:"#A78BFA", icon:"🍄"},
+          ].map(({label,w,col,icon})=>`
+            <div style="display:flex;align-items:center;gap:8px;width:100%;">
+              <div style="width:${w}%;background:${col}25;border:0.5px solid ${col}50;border-radius:4px;padding:3px 8px;text-align:center;font-size:9px;color:${col};transition:width .5s;white-space:nowrap;overflow:hidden;">${icon} ${label}</div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:9px;color:var(--dim);margin-top:6px;line-height:1.6;">
+          ${lang==='en'
+            ?`10% rule: only 10% of energy passes between levels. Producers: ${producers*10} energy units → Apex: ${Math.round(producers*0.01)} units.`
+            :`Regla del 10%: solo el 10% de energía pasa de un nivel al siguiente. Productores: ${producers*10} unidades energéticas → Ápex: ${Math.round(producers*0.01)} unidades.`}
+        </div>
+      </div>
+
+      <!-- Estado del ecosistema -->
+      <div class="card">
+        <div class="label">${lang==='en'?'Ecosystem status':'Estado del ecosistema'}</div>
+        ${[
+          {l:lang==='en'?'Habitability score':'Score habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
+          {l:lang==='en'?'Temperature':'Temperatura',v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+          {l:lang==='en'?'Mineral cycles':'Ciclos minerales',v:[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.Mg>=10&&'Mg',vals.H2S>0.1&&'S'].filter(Boolean).join(', ')||(lang==='en'?'none':'ninguno'),c:'#4ADE80'},
+          {l:lang==='en'?'Apex predators':'Depredadores ápex',v:`${apexCreatures.length}`,c:apexCreatures.length>=2?'#F87171':apexCreatures.length===1?'#FBBF24':'#94A3B8'},
+          {l:lang==='en'?'Trophic stability':'Estabilidad trófica',v:score>=0.7?(lang==='en'?'High':'Alta'):score>=0.4?(lang==='en'?'Medium':'Media'):(lang==='en'?'Fragile':'Frágil'),c:score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171'},
+        ].map(({l,v,c})=>`
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
+            <span style="font-size:10px;color:var(--muted);">${l}</span>
+            <span style="font-size:10px;font-weight:600;color:${c};">${v}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- ESCENARIO DOBLE ÁPEX -->
+  ${hasDoubleApex && dualApexResult ? `
+  <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.3);border-radius:14px;padding:18px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="font-size:24px;">⚔️</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#F87171;">${lang==='en'?'Two Apex Predators Detected':'Dos Depredadores Ápex Detectados'}</div>
+        <div style="font-size:10px;color:var(--muted);">${lang==='en'?'Competitive Exclusion Principle — Gause (1934)':'Principio de Exclusión Competitiva — Gause (1934)'}</div>
+      </div>
+      <div style="margin-left:auto;text-align:right;">
+        <div style="font-size:11px;font-weight:700;color:#F87171;">${dualApexResult.outcome}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.timeline}</div>
+      </div>
+    </div>
+
+    <!-- Combate de scores -->
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:14px;">
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[0].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[0].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[0].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[0].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab1}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:22px;">⚔</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">VS</div>
+      </div>
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[1].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[1].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[1].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[1].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab2}</div>
+      </div>
+    </div>
+
+    <!-- Escenario y resultado -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Scientific scenario':'Escenario científico'}</div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:8px;">${dualApexResult.scenario}</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.details}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Long-term evolutionary effect':'Efecto evolutivo a largo plazo'}</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.evolutionEffect}</div>
+        <div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);">
+          <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Habitats:':'Hábitats:'}</div>
+          <div style="font-size:10px;color:#60A5FA;">
+            ${dualApexResult.differentHabitat
+              ?`✓ ${lang==='en'?'Different':'Distintos'} — ${dualApexResult.hab1} vs ${dualApexResult.hab2}`
+              :`✗ ${lang==='en'?'Identical':'Idénticos'} — ${dualApexResult.hab1} ${lang==='en'?'shared':'compartido'}`}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escala de tiempo evolutivo -->
+    <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">${lang==='en'?'Evolutionary timeline':'Línea de tiempo evolutiva'}</div>
+      <div style="display:flex;gap:0;position:relative;">
+        <div style="position:absolute;top:10px;left:0;right:0;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;"></div>
+        ${[
+          {t:"0",           label:lang==='en'?'Current state':'Estado actual',    desc:lang==='en'?'Two apex compete':'Dos ápex compiten'},
+          {t:"100–500 gen", label:lang==='en'?'Peak tension':'Tensión máxima',    desc:lang==='en'?'Resources split':'Recursos se dividen'},
+          {t:"500–2K gen",  label:lang==='en'?'Tipping point':'Punto de inflexión',desc:lang==='en'?'Scenario determined':'Escenario se determina'},
+          {t:"10K+ gen",    label:lang==='en'?'New equilibrium':'Equilibrio nuevo', desc:lang==='en'?'Ecosystem stabilized':'Ecosistema estabilizado'},
+        ].map((pt,i,arr)=>`
+          <div style="flex:1;position:relative;padding-top:22px;text-align:center;">
+            <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#F87171;box-shadow:0 0 8px rgba(248,113,113,0.6);z-index:1;"></div>
+            <div style="font-size:8px;color:#F87171;font-weight:600;margin-bottom:2px;">${pt.t}</div>
+            <div style="font-size:9px;color:var(--text);font-weight:600;">${pt.label}</div>
+            <div style="font-size:8px;color:var(--muted);">${pt.desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  ` : apexCreatures.length===1 ? `
+  <div style="background:rgba(251,191,36,0.06);border:0.5px solid rgba(251,191,36,0.3);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">👑</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;">${lang==='en'?'One apex predator — Stable ecosystem':'Un depredador ápex — Ecosistema estable'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+          <i>${apexCreatures[0].cr.latinName}</i> (score ${apexCreatures[0].predScore}) domina la cadena trófica.
+          Ninguna otra especie compite por su posición. Análogo a los grandes felinos en sabanas aisladas.
+        </div>
+      </div>
+    </div>
+  </div>
+  ` : `
+  <div style="background:rgba(148,163,184,0.06);border:0.5px solid rgba(148,163,184,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--muted);">${lang==='en'?'No clear apex predators — producer/decomposer ecosystem. Add more creatures or improve habitability.':'Sin depredadores ápex claros — ecosistema de productores/descomponedores. Añade más criaturas o mejora la habitabilidad.'}</div>
+  </div>
+  `}
+
+  <!-- Red de interacciones -->
+  <div class="card">
+    <div class="label">${lang==='en'?'Trophic interaction network':'Red de interacciones tróficas'}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+      ${sorted.map(c=>`
+        <div style="background:${c.col}08;border:0.5px solid ${c.col}25;border-radius:8px;padding:10px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:14px;">${c.icon}</span>
+            <div>
+              <div style="font-size:9px;font-style:italic;color:${c.col};font-weight:600;">${c.cr.latinName.split(' ')[0]}</div>
+              <div style="font-size:8px;color:var(--muted);">${c.role}</div>
+            </div>
+          </div>
+          ${sorted.filter(other=>other.cr.latinName!==c.cr.latinName&&other.predScore<c.predScore).slice(0,2).map(prey=>`
+            <div style="font-size:8px;color:var(--muted);display:flex;align-items:center;gap:3px;">
+              <span style="color:${c.col};">→</span> ${lang==='en'?'hunts':'caza a'} <i style="color:${prey.col};">${prey.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+          ${sorted.filter(other=>other.predScore>c.predScore).slice(0,1).map(pred=>`
+            <div style="font-size:8px;color:#F87171;display:flex;align-items:center;gap:3px;margin-top:2px;">
+              <span>←</span> ${lang==='en'?'hunted by':'cazado por'} <i>${pred.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>
+  </div>
+
+</div>`;
+}
+
+// ─── GALLERY TAB ──────────────────────────────────────
+function renderGallery(el){
+  const E = lang==='en';
+  const creatures = Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('galTitle')}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${t('galDesc')}</div>
+
+  <!-- Fila superior: 2 imágenes principales -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div>
+      <div class="label">${t('orbitalView')}</div>
+      <div id="gal-planet" style="height:220px;border-radius:10px;overflow:hidden;
+        background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+        <button onclick="makeAIImg('${planetImgPrompt(vals).replace(/'/g,"\\'")}',600,400,'gal-planet')"
+          class="btn btn-teal">🌍 ${t('genPlanet')}</button>
+      </div>
+    </div>
+    <div>
+      <div class="label">${t('surfaceView')}</div>
+      <div id="gal-surface" style="height:220px;border-radius:10px;overflow:hidden;
+        background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center;">
+        <button onclick="makeAIImg(surfaceImgPrompt(vals),600,400,'gal-surface',undefined,'surface')"
+          class="btn btn-teal">🏔 ${E?'Generate surface':'Generar superficie'}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DESCRIPCIÓN CIENTÍFICA DEL PLANETA ── -->
+  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;
+    padding:16px;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;">
+          🔭 ${E?'Scientific Planet Description':'Descripción Científica del Planeta'}
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          ${E?'AI-generated based on mineral parameters':'Generada por IA basada en parámetros minerales'}
+        </div>
+      </div>
+      <button onclick="generatePlanetDescription()"
+        class="btn btn-teal" style="font-size:10px;padding:6px 14px;flex-shrink:0;">
+        ✦ ${E?'Generate description':'Generar descripción'}
+      </button>
+    </div>
+    <div id="planet-desc-result" style="font-size:10px;color:var(--muted);line-height:1.8;
+      min-height:60px;display:flex;align-items:center;justify-content:center;">
+      <span style="color:var(--dim);font-style:italic;">
+        ${E?'Click "Generate description" to analyze this planet with AI…':'Haz clic en "Generar descripción" para analizar este planeta con IA…'}
+      </span>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD DE IMAGEN → PARÁMETROS ── -->
+  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;
+    padding:16px;margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">
+      📸 ${E?'Upload Planet Image → Extract Parameters':'Subir Imagen de Planeta → Extraer Parámetros'}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:12px;">
+      ${E?'Upload any planet image and AI will analyze it to estimate mineralogy, atmosphere and temperature, then apply them to the sliders.':'Sube cualquier imagen de planeta y la IA la analizará para estimar mineralogía, atmósfera y temperatura, y los aplicará a los sliders.'}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">
+      <!-- Upload zone -->
+      <div>
+        <div id="upload-zone" onclick="document.getElementById('img-upload').click()"
+          style="height:160px;border:1.5px dashed rgba(255,255,255,0.15);border-radius:8px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:8px;cursor:pointer;transition:all .2s;background:rgba(255,255,255,0.02);"
+          ondragover="event.preventDefault();this.style.borderColor='var(--teal)'"
+          ondragleave="this.style.borderColor='rgba(255,255,255,0.15)'"
+          ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';handleImageDrop(event)">
+          <div style="font-size:28px;">🌍</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.5;">
+            ${E?'Click or drag & drop<br>any planet image':'Haz clic o arrastra<br>una imagen de planeta'}
+          </div>
+          <div style="font-size:9px;color:var(--dim);">JPG, PNG, WEBP</div>
+        </div>
+        <input type="file" id="img-upload" accept="image/*" style="display:none;"
+          onchange="handleImageUpload(this)">
+        <!-- Preview -->
+        <div id="upload-preview" style="display:none;margin-top:8px;">
+          <img id="preview-img" style="width:100%;height:120px;object-fit:cover;
+            border-radius:6px;border:0.5px solid var(--border);">
+        </div>
+      </div>
+      <!-- Resultado análisis -->
+      <div id="upload-result" style="min-height:160px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:9px;color:var(--dim);font-style:italic;
+          display:flex;align-items:center;justify-content:center;height:160px;">
+          ${E?'Analysis will appear here after uploading an image.':'El análisis aparecerá aquí después de subir una imagen.'}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Criaturas -->
+  <div class="label" style="margin-bottom:10px;">${t('creatureArt')}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">
+    ${creatures.map((cr,i)=>{
+      const imgId=`gal-cr-${i}`;
+      const cached=imgCache[cr.seed];
+      return`
+      <div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:0.5px solid var(--border);">
+        <div id="${imgId}" style="height:160px;background:var(--bg3);position:relative;
+          display:flex;align-items:center;justify-content:center;">
+          ${cached
+            ?`<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"/>`
+            :`<button onclick="makeAIImg('${cr.imgPrompt.replace(/'/g,"\\'")}',400,300,'${imgId}',${cr.seed})"
+                class="btn btn-teal" style="font-size:10px;">
+                🎨 ${E?'Generate':'Generar'}
+              </button>`}
+        </div>
+        <div style="padding:8px 10px;">
+          <div style="font-size:10px;font-style:italic;color:${cr.orgCol};font-weight:600;">${cr.latinName}</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:2px;">${cr.complexity} · ${cr.meta}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+</div>`;
+}
+
+// ─── Genera descripción científica del planeta con IA ─
+async function generatePlanetDescription(){
+  const E = lang==='en';
+  const el = document.getElementById('planet-desc-result');
+  if(!el) return;
+
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--muted);">
+    <div style="width:18px;height:18px;border:2px solid rgba(0,212,170,0.3);
+      border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <span style="font-size:10px;">${E?'Analyzing planet with AI…':'Analizando planeta con IA…'}</span>
+  </div>`;
+
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,pressure,gravity}=vals;
+  const score=Math.round(calcScore(vals)*100);
+
+  const prompt=E?`You are a planetary scientist. Analyze this alien planet with these parameters and write a vivid, scientifically-grounded description. Include: type of precipitation (rain, snow, or exotic minerals that fall), probability of meteorite impacts, seasonal cycles, geological activity, sky color and atmosphere, unique phenomena, and any other fascinating scientific facts. Be specific, use real chemistry and physics. Write 5-6 engaging paragraphs.
+
+Planet parameters:
+- Calcium: ${Ca}K ppm, Iron: ${Fe}K ppm, Silicon: ${Si}K ppm, Phosphorus: ${P}K ppm
+- Magnesium: ${Mg}K ppm, Copper: ${Cu} ppm, Sulfur: ${S} ppm, Nickel: ${Ni} ppm, Vanadium: ${V} ppm
+- O₂: ${O2}%, CO₂: ${CO2}%, H₂S: ${H2S}%, H₂O surface: ${H2O}%
+- Temperature: ${Temp}°C, pH: ${pH}, Pressure: ${pressure} atm, Gravity: ${gravity}g
+- Habitability score: ${score}/100
+
+Focus on: what falls from the sky, meteorite risk, volcanic activity, seasons, unique phenomena.`
+  :`Eres un científico planetario. Analiza este planeta alienígena con estos parámetros y escribe una descripción vívida y científicamente fundamentada. Incluye: tipo de precipitación (lluvia, nieve, o minerales exóticos que caen), probabilidad de impactos de meteoritos, ciclos estacionales, actividad geológica, color del cielo y atmósfera, fenómenos únicos y otros datos científicos fascinantes. Sé específico, usa química y física real. Escribe 5-6 párrafos atractivos.
+
+Parámetros del planeta:
+- Calcio: ${Ca}K ppm, Hierro: ${Fe}K ppm, Silicio: ${Si}K ppm, Fósforo: ${P}K ppm
+- Magnesio: ${Mg}K ppm, Cobre: ${Cu} ppm, Azufre: ${S} ppm, Níquel: ${Ni} ppm, Vanadio: ${V} ppm
+- O₂: ${O2}%, CO₂: ${CO2}%, H₂S: ${H2S}%, H₂O superficie: ${H2O}%
+- Temperatura: ${Temp}°C, pH: ${pH}, Presión: ${pressure} atm, Gravedad: ${gravity}g
+- Score de habitabilidad: ${score}/100
+
+Enfócate en: qué cae del cielo, riesgo de meteoritos, actividad volcánica, estaciones, fenómenos únicos.`;
+
+  try{
+    const res = await fetch('/api/claude',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const data = await res.json();
+
+    // Manejo de límite de uso (429)
+    if(res.status===429){
+      el.innerHTML=`<div style="font-size:10px;color:#FBBF24;line-height:1.7;">
+        ⏳ ${E?(data.detail||'AI usage limit reached. Please wait a moment.'):(data.reason==='global_limit'?'Capacidad diaria de IA alcanzada. Intenta mañana.':'Límite de uso de IA alcanzado. Espera unos minutos e intenta de nuevo.')}
+      </div>`;
+      return;
+    }
+    const text = data.content?.[0]?.text||'';
+
+    // Formatear párrafos
+    const paragraphs = text.split('\n').filter(p=>p.trim().length>0);
+    el.innerHTML=`
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${paragraphs.map(p=>`
+          <p style="font-size:10px;color:rgba(255,255,255,0.70);
+            line-height:1.8;margin:0;">${p}</p>`).join('')}
+      </div>`;
+  } catch(err){
+    el.innerHTML=`<div style="font-size:10px;color:#F87171;">
+      ${E?'Could not connect to AI. Check your internet connection.':'No se pudo conectar con la IA. Verifica tu conexión.'}
+    </div>`;
+  }
+}
+
+// ─── Upload imagen → análisis con Claude Vision ───────
+function handleImageDrop(e){
+  const file = e.dataTransfer?.files?.[0];
+  if(file && file.type.startsWith('image/')) processUploadedImage(file);
+}
+
+function handleImageUpload(input){
+  const file = input.files?.[0];
+  if(file) processUploadedImage(file);
+}
+
+function processUploadedImage(file){
+  const E = lang==='en';
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    const base64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/jpeg';
+
+    // Mostrar preview
+    const prev = document.getElementById('upload-preview');
+    const img  = document.getElementById('preview-img');
+    if(prev&&img){ prev.style.display='block'; img.src=e.target.result; }
+
+    // Zona upload feedback
+    const zone = document.getElementById('upload-zone');
+    if(zone) zone.style.borderColor = 'var(--teal)';
+
+    // Resultado
+    const res = document.getElementById('upload-result');
+    if(!res) return;
+    res.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--muted);height:100%;justify-content:center;">
+      <div style="width:18px;height:18px;border:2px solid rgba(0,212,170,0.3);
+        border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <span style="font-size:10px;">${E?'Analyzing image with AI…':'Analizando imagen con IA…'}</span>
+    </div>`;
+
+    const prompt=E?`You are a planetary geologist analyzing an image of a planet. Based on the visual appearance (colors, surface texture, atmosphere, clouds, terrain), estimate the following parameters. Respond ONLY with valid JSON, no other text:
+{
+  "description": "2-sentence visual description of what you see",
+  "Ca": number (calcium ppm x1000, 1-200),
+  "Fe": number (iron ppm x1000, 1-200),
+  "Si": number (silicon ppm x1000, 50-400),
+  "P": number (phosphorus ppm x1000, 0.1-5),
+  "Mg": number (magnesium ppm x1000, 1-100),
+  "Cu": number (copper ppm, 1-300),
+  "S": number (sulfur ppm, 10-50000),
+  "O2": number (oxygen %, 0-35),
+  "CO2": number (CO2 %, 0-96),
+  "H2S": number (H2S %, 0-10),
+  "H2O": number (water surface %, 0-100),
+  "Temp": number (temperature °C, -200 to 500),
+  "pH": number (pH, 0-14),
+  "pressure": number (atmospheric pressure atm, 0.001-100),
+  "gravity": number (gravity g, 0.1-5),
+  "reasoning": "Brief scientific reasoning for your estimates based on the visual colors and features"
+}`
+    :`Eres un geólogo planetario analizando una imagen de un planeta. Basándote en la apariencia visual (colores, textura superficial, atmósfera, nubes, terreno), estima los siguientes parámetros. Responde SOLO con JSON válido, sin otro texto:
+{
+  "description": "Descripción visual de 2 frases de lo que ves",
+  "Ca": número (calcio ppm x1000, 1-200),
+  "Fe": número (hierro ppm x1000, 1-200),
+  "Si": número (silicio ppm x1000, 50-400),
+  "P": número (fósforo ppm x1000, 0.1-5),
+  "Mg": número (magnesio ppm x1000, 1-100),
+  "Cu": número (cobre ppm, 1-300),
+  "S": número (azufre ppm, 10-50000),
+  "O2": número (oxígeno %, 0-35),
+  "CO2": número (CO2 %, 0-96),
+  "H2S": número (H2S %, 0-10),
+  "H2O": número (agua superficie %, 0-100),
+  "Temp": número (temperatura °C, -200 a 500),
+  "pH": número (pH, 0-14),
+  "pressure": número (presión atmosférica atm, 0.001-100),
+  "gravity": número (gravedad g, 0.1-5),
+  "reasoning": "Razonamiento científico breve para tus estimaciones basado en los colores y características visuales"
+}`;
+
+    try{
+      const response = await fetch('/api/claude',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:1000,
+          messages:[{
+            role:'user',
+            content:[
+              {type:'image', source:{type:'base64', media_type:mediaType, data:base64}},
+              {type:'text', text:prompt}
+            ]
+          }]
+        })
+      });
+
+      const data = await response.json();
+      const raw  = data.content?.[0]?.text||'{}';
+      let parsed;
+      try{
+        const clean = raw.replace(/```json|```/g,'').trim();
+        parsed = JSON.parse(clean);
+      } catch(e){
+        parsed = {};
+      }
+
+      if(!parsed.Ca && !parsed.Fe){
+        res.innerHTML=`<div style="font-size:10px;color:#F87171;">
+          ${E?'Could not parse planet parameters from image.':'No se pudieron extraer parámetros de la imagen.'}
+        </div>`;
+        return;
+      }
+
+      // Mostrar resultado con botón de aplicar
+      const paramKeys=['Ca','Fe','Si','P','Mg','Cu','S','O2','CO2','H2S','H2O','Temp','pH','pressure','gravity'];
+      window._pendingParams = parsed;
+
+      res.innerHTML=`
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <!-- Descripción visual -->
+          ${parsed.description?`
+          <div style="font-size:9px;color:rgba(255,255,255,0.55);line-height:1.6;
+            padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;font-style:italic;">
+            "${parsed.description}"
+          </div>`:''}
+
+          <!-- Parámetros estimados -->
+          <div style="font-size:8px;font-weight:700;letter-spacing:.10em;
+            color:rgba(255,255,255,0.30);text-transform:uppercase;margin-top:2px;">
+            ${E?'Estimated parameters:':'Parámetros estimados:'}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+            ${paramKeys.filter(k=>parsed[k]!==undefined).map(k=>`
+              <div style="display:flex;justify-content:space-between;padding:3px 6px;
+                background:rgba(255,255,255,0.025);border-radius:3px;">
+                <span style="font-size:8px;color:rgba(255,255,255,0.35);
+                  font-family:'JetBrains Mono',monospace;">${k}</span>
+                <span style="font-size:8px;color:rgba(255,255,255,0.70);
+                  font-family:'JetBrains Mono',monospace;font-weight:600;">
+                  ${typeof parsed[k]==='number'?parsed[k].toFixed(2):parsed[k]}
+                </span>
+              </div>`).join('')}
+          </div>
+
+          <!-- Razonamiento -->
+          ${parsed.reasoning?`
+          <div style="font-size:8.5px;color:rgba(255,255,255,0.40);line-height:1.6;
+            padding:7px;background:rgba(0,212,170,0.04);border:0.5px solid rgba(0,212,170,0.15);
+            border-radius:5px;">
+            🔬 ${parsed.reasoning}
+          </div>`:''}
+
+          <!-- Botón aplicar -->
+          <button onclick="applyImageParams()"
+            class="btn btn-teal" style="font-size:10px;font-weight:700;padding:8px;margin-top:4px;">
+            ⚡ ${E?'Apply parameters to sliders →':'Aplicar parámetros a los sliders →'}
+          </button>
+        </div>`;
+
+    } catch(err){
+      res.innerHTML=`<div style="font-size:10px;color:#F87171;">
+        ${E?'Error analyzing image. Check your connection.':'Error al analizar la imagen. Verifica tu conexión.'}
+      </div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── Aplica los parámetros extraídos de la imagen ─────
+function applyImageParams(){
+  const p = window._pendingParams;
+  if(!p) return;
+  const E = lang==='en';
+  const keys=['Ca','Fe','Si','P','Mg','Cu','S','Ni','V','O2','CO2','H2S','H2O','Temp','pH','pressure','gravity'];
+  keys.forEach(k=>{
+    if(p[k]!==undefined){
+      const m=SLIDERS.find(s=>s.sym===k);
+      if(!m) return;
+      const v=Math.max(m.min, Math.min(m.max, parseFloat(p[k])||0));
+      vals[k]=v;
+      const sl=document.getElementById('sl-'+k);
+      if(sl){
+        sl.value=v;
+        const pct=Math.round((v-m.min)/(m.max-m.min)*100);
+        sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+      }
+      const vl=document.getElementById('vl-'+k);
+      if(vl){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+    }
+  });
+  if(threeState.update) threeState.update(vals);
+  updatePlanetPanel();
+  // Feedback visual
+  const btn = document.querySelector('#upload-result button');
+  if(btn){
+    btn.textContent = E?'✓ Applied!':'✓ Aplicado!';
+    btn.style.background='rgba(0,212,170,0.2)';
+    setTimeout(()=>{
+      btn.textContent = E?'⚡ Apply parameters to sliders →':'⚡ Aplicar parámetros a los sliders →';
+      btn.style.background='';
+    }, 2000);
+  }
+}
+
+
+
+// ═══════════════════════════════════════════════════════
+// ACCIONES
+// ═══════════════════════════════════════════════════════
+function setVal(sym,v){
+  vals[sym]=v;
+  Object.keys(imgCache).forEach(k=>{if(!isNaN(k))delete imgCache[k];});
+  const m=SLIDERS.find(s=>s.sym===sym);
+  const vl=document.getElementById('vl-'+sym);
+  if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
+  if(threeState.update)threeState.update(vals);
+}
+function applyPreset(name){
+  // Limpiar caché de criaturas al cambiar preset
+  Object.keys(imgCache).forEach(k=>{ if(!isNaN(k)) delete imgCache[k]; });
+  const p=PRESETS[name];
+  Object.entries(p).forEach(([sym,v])=>{
+    vals[sym]=v;
+    const sl=document.querySelector(`input[oninput*="'${sym}'"]`);
+    if(sl)sl.value=v;
+    const m=SLIDERS.find(s=>s.sym===sym);
+    const vl=document.getElementById('vl-'+sym);
+    if(vl&&m){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=`${v.toFixed(dec)} ${m.unit}`;}
+  });
+  if(threeState.update)threeState.update(vals);
+}
+async function createPlanet(){
+  const code=planetCode(vals);
+  const score=calcScore(vals);
+  const scoreCol=score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+  const creatures=Array.from({length:numCreatures},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+  lastCreatures=creatures;
+
+  // Mostrar modal inmediatamente
+  document.getElementById('modal-code').textContent=code;
+  document.getElementById('modal-save-status').innerHTML=`
+    <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);">
+      <div style="width:10px;height:10px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      ${lang==='en'?'Saving to cloud…':'Guardando en la nube…'}
+    </div>`;
+  document.getElementById('modal-stats').innerHTML=[
+    {l:lang==='en'?'Habitability':'Habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
+    {l:lang==='en'?'Creatures':'Criaturas',v:`${creatures.length}`,c:'var(--teal)'},
+    {l:lang==='en'?'Temperature':'Temperatura',v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+    {l:'O₂',v:`${vals.O2}%`,c:vals.O2>15?'var(--teal)':'#F87171'},
+    {l:'H₂O',v:`${vals.H2O}%`,c:'#60A5FA'},
+    {l:lang==='en'?'Gravity':'Gravedad',v:`${vals.gravity}g`,c:'#A78BFA'},
+  ].map(({l,v,c})=>`<div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:9px;color:var(--muted);margin-bottom:3px;">${l}</div><div style="font-size:12px;font-weight:700;color:${c};">${v}</div></div>`).join('');
+  document.getElementById('modal-creatures').innerHTML=`
+    <div class="label">${lang==='en'?'Creatures of your planet':'Criaturas de tu planeta'}</div>
+    ${creatures.slice(0,3).map(c=>`
+      <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:7px;padding:7px 10px;margin-bottom:5px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:${c.orgCol};flex-shrink:0;box-shadow:0 0 5px ${c.orgCol};"></div>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-style:italic;color:${c.orgCol};font-weight:600;">${c.latinName}</div>
+          <div style="font-size:9px;color:var(--muted);">${c.complexity} · ${c.meta}</div>
+        </div>
+        <span style="font-size:9px;color:var(--muted);">${c.size}</span>
+      </div>`).join('')}`;
+  document.getElementById('modal-planet-img').innerHTML=`<button onclick="genModalImg()" class="btn btn-teal" style="font-size:11px;">🌍 ${lang==='en'?'Generate AI image of your planet':'Generar imagen IA de tu planeta'}</button>`;
+  document.getElementById('modal').style.display='flex';
+
+  // Guardar en Supabase en background
+  const result = await savePlanetToDB(vals, code, score, creatures);
+  const statusEl = document.getElementById('modal-save-status');
+  if(statusEl){
+    if(result.ok){
+      statusEl.innerHTML=`
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--teal);">
+          <span style="font-size:14px;">✓</span>
+          ${lang==='en'?'Saved to cloud · Permanent ID:':'Guardado en la nube · ID permanente:'}
+          <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--muted);">${result.id?.substring(0,8)}…</span>
+        </div>`;
+      showToast(lang==='en'?'✓ Planet saved to cloud':'✓ Planeta guardado en la nube', 'success');
+    } else {
+      statusEl.innerHTML=`<div style="font-size:9px;color:#F87171;">⚠ ${lang==='en'?'Could not save to cloud':'No se pudo guardar en la nube'}</div>`;
+      showToast(lang==='en'?'⚠ Could not save planet':'⚠ No se pudo guardar el planeta', 'error');
+    }
+  }
+}
+function genModalImg(){
+  const el=document.getElementById('modal-planet-img');
+  el.style.position='relative';
+  makeAIImg(planetImgPrompt(vals),500,300,'modal-planet-img',undefined,'planet');
+}
+function closeModal(){document.getElementById('modal').style.display='none';}
+function copyCode(){
+  const code=document.getElementById('modal-code').textContent;
+  navigator.clipboard?.writeText(code).then(()=>{const btn=event.target;const orig=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=orig,2000);});
+}
+
+// ─── Galería de planetas ──────────────────────────────
+async function shareToGallery(){
+  closeModal();
+  openGallery();
+}
+
+async function openGallery(){
+  document.getElementById('modal-gallery').style.display='flex';
+  const planets = await loadRecentPlanets(24);
+  renderGalleryGrid(planets);
+}
+
+function closeGallery(){
+  document.getElementById('modal-gallery').style.display='none';
+}
+
+function renderGalleryGrid(planets){
+  const grid = document.getElementById('gallery-grid');
+  if(!grid) return;
+  if(!planets || planets.length === 0){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--dim);">No hay planetas guardados aún. ¡Crea el primero!</div>`;
+    return;
+  }
+  grid.innerHTML = planets.map(p => {
+    const score = p.score || 0;
+    const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+    const v = p.vals || {};
+    const date = new Date(p.created_at).toLocaleDateString(lang==='en'?'en-US':'es-ES',{day:'numeric',month:'short'});
+    // Mini planeta SVG basado en vals
+    const planetCol = v.H2S>2?'#B8860B':v.Temp<-20?'#7AA0C4':v.Temp>50?'#C0441A':v.H2O>30?'#1D6B8C':'#4A7A4A';
+    return`
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .2s;"
+      onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'"
+      onclick="loadPlanetFromGallery('${p.code}')">
+      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+        <svg viewBox="0 0 60 60" width="60" height="60">
+          <circle cx="30" cy="30" r="24" fill="${planetCol}"/>
+          <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <ellipse cx="22" cy="22" rx="8" ry="5" fill="white" opacity="0.08"/>
+          ${v.H2O>25?`<ellipse cx="25" cy="35" rx="8" ry="5" fill="#1E90FF" opacity="0.4"/>`:'' }
+          ${v.Temp<-15?`<ellipse cx="30" cy="8" rx="10" ry="4" fill="white" opacity="0.5"/>`:'' }
+          <ellipse cx="30" cy="30" rx="24" ry="6" fill="none" stroke="${scoreCol}30" stroke-width="0.8" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+      <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--teal);text-align:center;margin-bottom:4px;letter-spacing:.05em;">${p.code}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:var(--dim);">${date}</div>
+        <div style="font-size:10px;font-weight:700;color:${scoreCol};">${Math.round(score*100)}%</div>
+      </div>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">
+        ${[
+          v.O2>15?{l:'O₂',c:'#00D4AA'}:null,
+          v.H2O>30?{l:'H₂O',c:'#60A5FA'}:null,
+          v.H2S>1?{l:'H₂S',c:'#FBBF24'}:null,
+          v.Temp<-20?{l:'❄',c:'#60A5FA'}:null,
+          v.Temp>50?{l:'🌋',c:'#F87171'}:null,
+        ].filter(Boolean).slice(0,3).map(t=>`
+          <span style="font-size:8px;padding:1px 5px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
+        `).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadPlanetFromGallery(code){
+  closeGallery();
+  const planet = await loadPlanetByCode(code);
+  if(!planet || !planet.vals){
+    alert(lang==='en'?`Could not load planet ${code}`:`No se pudo cargar el planeta ${code}`);
+    return;
+  }
+  // Aplicar valores del planeta cargado
+  Object.entries(planet.vals).forEach(([sym, v]) => {
+    if(vals[sym] !== undefined) vals[sym] = v;
+    const sl = document.querySelector(`input[oninput*="'${sym}'"]`);
+    if(sl) sl.value = v;
+    const m = SLIDERS.find(s => s.sym === sym);
+    const vl = document.getElementById('vl-'+sym);
+    if(vl && m){ const dec=m.step<1?(m.step<0.01?4:2):0; vl.textContent=`${parseFloat(v).toFixed(dec)} ${m.unit}`; }
+  });
+  if(threeState.update) threeState.update(vals);
+
+  // Restaurar el ID del planeta para que las nuevas imágenes IA se asocien a él
+  currentPlanetId = planet.id || null;
+  // Restaurar imágenes IA guardadas en caché visual
+  if(planet.ai_images){
+    window.loadedAImages = planet.ai_images;
+  }
+
+  // Notificación
+  showToast(lang==='en'?`✓ Planet ${code} loaded`:`✓ Planeta ${code} cargado`, 'success');
+}
+
+async function searchByCode(){
+  const query = document.getElementById('search-code-input')?.value?.trim();
+  if(!query || query.length < 3){ openGallery(); return; }
+  const { data } = await sb.from('planets').select('*').ilike('code', `%${query}%`).limit(12);
+  renderGalleryGrid(data || []);
+}
+
+// ═══════════════════════════════════════════════════════
+// IDIOMAS ES / EN
+// ═══════════════════════════════════════════════════════
+let lang = 'es';
+
+const T = {
+  es: {
+    tabs: ['🌍 Planeta','🦎 Criaturas','🕸 Ecosistema','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie'],
+    createBtn: '✦ Crear Planeta',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
+    traitLabels: ['Esqueleto','Sangre','Metabolismo','Nervioso','Termoreg.','Tamaño'],
+    analogsTitle: 'Análogos terrestres',
+    cyclesTitle: 'Ciclos minerales activos',
+    stellarTitle: 'Parámetros estelares',
+    creaturesTitle: 'Criaturas del planeta',
+    creaturesDesc: 'Motor evolutivo · Cada ser es científicamente coherente e irrepetible',
+    numCreatures: 'Criaturas:',
+    genImageBtn: '🎨 Generar imagen IA',
+    habitability: 'Habitabilidad',
+    temperature: 'Temperatura',
+    gravity: 'Gravedad',
+    atmosphere: 'Atmósfera',
+    magnetosphere: 'Magnetosfera',
+    habitableZone: 'Zona habitable',
+    stellarType: 'Tipo estelar',
+    active: 'activo',
+    extinct: '⚠ Riesgo de extinción',
+    ecoTitle: 'Equilibrio del Ecosistema',
+    ecoDesc: 'Dinámica de poblaciones basada en condiciones minerales',
+    galTitle: 'Galería IA · Imágenes Únicas',
+    galDesc: 'Imágenes generadas por IA · Cada una es irrepetible',
+    orbitalView: 'Vista orbital del planeta',
+    surfaceView: 'Superficie del planeta',
+    genPlanet: '🌍 Generar imagen del planeta',
+    genSurface: '🏔 Generar superficie',
+    genEco: '🦅 Generar ecosistema aéreo',
+    creatureArt: 'Arte conceptual de criaturas',
+    copyCode: '📋 Copiar código',
+    explore: 'Explorar',
+    modalTitle: '✦ Planeta Registrado ✦',
+    modalSub: 'Tu planeta es único en el universo',
+    modalNote: 'Este código identifica tu planeta — nadie más puede tenerlo igual',
+    genPlanetImg: '🌍 Generar imagen IA de tu planeta',
+    noAnalogs: 'Sin análogos conocidos',
+    rotate: 'Arrastra · Scroll zoom · Inclinación axial: 23.5°',
+    natureLink: '🕸 Ver Conexiones Naturales →',
+    habitable: 'HABITABLE', moderate: 'MODERADO', marginal: 'MARGINAL', extreme: 'EXTREMO', inhospitable: 'INHÓSPITO',
+    stable: '✓ Ecosistema estable', fragile: '⚠ Ecosistema frágil', collapse: '✗ Colapso probable',
+    bodyRef: 'CUERPO REF', codeId: 'CÓDIGO ID', tempMean: 'T° MEDIA', pressure: 'PRESIÓN',
+    dense: 'Densa', thin: 'Tenue', noAtm: 'Sin atmósfera',
+    strong: 'Fuerte', weak: 'Débil', noField: 'Sin campo',
+    yes: 'Sí ✓', no: 'No ✗',
+    complexity: {vertebrado:'vertebrado',invertebrado:'invertebrado',simple:'simple',colonial:'colonial',unicelular:'unicelular'},
+    skeleton: {calcico:'Endoesqueleto calcico',siliceo:'Exoesqueleto silíceo',calcareo:'Exoesqueleto calcáreo',sulfurico:'Exoesqueleto sulfúrico',hidrostatico:'Hidrostático/Quitina'},
+    blood: {hemoglobin:'Hemoglobina (roja)',hemocyanin:'Hemocianina (azul)',vanadin:'Vanadina (verde)',hbh2s:'Hb-H₂S gigante',hemerythrin:'Hemeritrina (violeta)',diffusion:'Difusión directa'},
+    meta: {aerobic:'Aeróbico eficiente',photo:'Fotosíntesis',chemo:'Quimiosíntesis H₂S',methano:'Metanogénesis',ferment:'Fermentación'},
+    nervous: {brain:'Cerebro centralizado',ganglio:'Sistema gangliado',diffuse:'Red difusa'},
+    thermo: {homeo:'Homeotermo',cryo:'Crioprotección AFP',thermo:'Termoestable',poikilo:'Poiquilotermo'},
+    loco: {float:'Flotación/vuelo',swim:'Natación',crawl:'Rastrero',quad:'Cuadrúpedo',wave:'Ondulatorio'},
+    size: {mega:'Megafauna (>10t)',big:'Grande (100kg–10t)',medium:'Mediano (10–100kg)',small:'Pequeño (<10kg)',micro:'Microscópico'},
+    pops: ['Productores primarios','Herbívoros','Carnívoros','Depredadores Ápex','Descomponedores','Quimioautos'],
+    cycles: ['Carbono','Nitrógeno','Fósforo','Hierro','Calcio','Azufre','Vanadio'],
+    connecting: 'Conecta internet para imágenes IA',
+    generating: 'Generando imagen IA…',
+    copied: '✓ Copiado',
+  },
+  en: {
+    tabs: ['🌍 Planet','🦎 Creatures','🕸 Ecosystem','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface'],
+    createBtn: 'Create Planet',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
+    traitLabels: ['Skeleton','Blood','Metabolism','Nervous','Thermoreg.','Size'],
+    analogsTitle: 'Earth analogs',
+    cyclesTitle: 'Active mineral cycles',
+    stellarTitle: 'Stellar parameters',
+    creaturesTitle: 'Planet creatures',
+    creaturesDesc: 'Evolutionary engine · Every being is scientifically coherent and unique',
+    numCreatures: 'Creatures:',
+    genImageBtn: '🎨 Generate AI image',
+    habitability: 'Habitability',
+    temperature: 'Temperature',
+    gravity: 'Gravity',
+    atmosphere: 'Atmosphere',
+    magnetosphere: 'Magnetosphere',
+    habitableZone: 'Habitable zone',
+    stellarType: 'Star type',
+    active: 'active',
+    extinct: '⚠ Extinction risk',
+    ecoTitle: 'Ecosystem Balance',
+    ecoDesc: 'Population dynamics based on mineral conditions',
+    galTitle: 'AI Gallery · Unique Images',
+    galDesc: 'AI generated images · Each one is unrepeatable',
+    orbitalView: 'Orbital view of planet',
+    surfaceView: 'Planet surface',
+    genPlanet: '🌍 Generate planet image',
+    genSurface: '🏔 Generate surface',
+    genEco: '🦅 Generate aerial ecosystem',
+    creatureArt: 'Creature concept art',
+    copyCode: '📋 Copy code',
+    explore: 'Explore',
+    modalTitle: '✦ Planet Registered ✦',
+    modalSub: 'Your planet has been registered',
+    modalNote: 'Reference code · Another explorer may have created a similar one',
+    genPlanetImg: '🌍 Generate AI image of your planet',
+    noAnalogs: 'No known analogs',
+    rotate: 'Drag to rotate · Scroll to zoom · Axial tilt: 23.5°',
+    natureLink: '🕸 View Nature Connections →',
+    habitable:'HABITABLE',moderate:'MODERATE',marginal:'MARGINAL',extreme:'EXTREME',inhospitable:'INHOSPITABLE',
+    stable:'✓ Stable ecosystem',fragile:'⚠ Fragile ecosystem',collapse:'✗ Collapse likely',
+    bodyRef:'REF BODY',codeId:'PLANET ID',tempMean:'MEAN TEMP',pressure:'PRESSURE',
+    dense:'Dense',thin:'Thin',noAtm:'No atmosphere',
+    strong:'Strong',weak:'Weak',noField:'No field',
+    yes:'Yes ✓',no:'No ✗',
+    pops:['Primary producers','Herbivores','Carnivores','Apex predators','Decomposers','Chemoautotrophs'],
+    cycles:['Carbon','Nitrogen','Phosphorus','Iron','Calcium','Sulfur','Vanadium'],
+    connecting:'Connect to internet for AI images',
+    generating:'Generating AI image…',
+    copied:'✓ Copied',
+    phenomenaTitle:'Natural Phenomena',
+    phenomenaDesc:'Unique phenomena generated from planetary mineral composition',
+    earthAnalogs:'Earth analog',
+    evolutionImpact:'Evolutionary impact on creatures',
+    frequency:'Frequency',
+    intensity:'Intensity',
+    affectedCreatures:'Affected traits',
+    createBtn: '✦ Create Planet',
+    presets: 'Presets',
+    sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
+    traitLabels: ['Skeleton','Blood','Metabolism','Nervous','Thermoreg.','Size'],
+    analogsTitle: 'Earth analogs',
+    cyclesTitle: 'Active mineral cycles',
+    stellarTitle: 'Stellar parameters',
+    creaturesTitle: 'Planet creatures',
+    creaturesDesc: 'Evolutionary engine · Every being is scientifically coherent and unique',
+    numCreatures: 'Creatures:',
+    genImageBtn: '🎨 Generate AI image',
+    habitability: 'Habitability',
+    temperature: 'Temperature',
+    gravity: 'Gravity',
+    atmosphere: 'Atmosphere',
+    magnetosphere: 'Magnetosphere',
+    habitableZone: 'Habitable zone',
+    stellarType: 'Star type',
+    active: 'active',
+    extinct: '⚠ Extinction risk',
+    ecoTitle: 'Ecosystem Balance',
+    ecoDesc: 'Population dynamics based on mineral conditions',
+    galTitle: 'AI Gallery · Unique Images',
+    galDesc: 'AI generated images · Each one is unrepeatable',
+    orbitalView: 'Orbital view of planet',
+    surfaceView: 'Planet surface',
+    genPlanet: '🌍 Generate planet image',
+    genSurface: '🏔 Generate surface',
+    genEco: '🦅 Generate aerial ecosystem',
+    creatureArt: 'Creature concept art',
+    copyCode: '📋 Copy code',
+    explore: 'Explore',
+    modalTitle: '✦ Planet Registered ✦',
+    modalSub: 'Your planet is unique in the universe',
+    modalNote: 'This code identifies your planet — no one else can have the exact same one',
+    genPlanetImg: '🌍 Generate AI image of your planet',
+    noAnalogs: 'No known analogs',
+    rotate: 'Drag to rotate · Scroll to zoom · Axial tilt: 23.5°',
+    natureLink: '🕸 View Nature Connections →',
+    habitable: 'HABITABLE', moderate: 'MODERATE', marginal: 'MARGINAL', extreme: 'EXTREME', inhospitable: 'INHOSPITABLE',
+    stable: '✓ Stable ecosystem', fragile: '⚠ Fragile ecosystem', collapse: '✗ Collapse likely',
+    bodyRef: 'REF BODY', codeId: 'PLANET ID', tempMean: 'MEAN TEMP', pressure: 'PRESSURE',
+    dense: 'Dense', thin: 'Thin', noAtm: 'No atmosphere',
+    strong: 'Strong', weak: 'Weak', noField: 'No field',
+    yes: 'Yes ✓', no: 'No ✗',
+    complexity: {vertebrado:'vertebrate',invertebrado:'invertebrate',simple:'simple',colonial:'colonial',unicelular:'unicellular'},
+    skeleton: {calcico:'Calcic endoskeleton',siliceo:'Siliceous exoskeleton',calcareo:'Calcareous exoskeleton',sulfurico:'Sulfuric exoskeleton',hidrostatico:'Hydrostatic/Chitin'},
+    blood: {hemoglobin:'Hemoglobin (red)',hemocyanin:'Hemocyanin (blue)',vanadin:'Vanadin (green)',hbh2s:'Giant Hb H₂S/O₂',hemerythrin:'Hemerythrin (violet)',diffusion:'Direct diffusion'},
+    meta: {aerobic:'Efficient aerobic',photo:'Photosynthesis',chemo:'H₂S Chemosynthesis',methano:'Methanogenesis',ferment:'Fermentation'},
+    nervous: {brain:'Centralized brain',ganglio:'Ganglionic system',diffuse:'Diffuse net'},
+    thermo: {homeo:'Homeotherm',cryo:'AFP Cryoprotection',thermo:'Thermostable',poikilo:'Poikilotherm'},
+    loco: {float:'Float/fly',swim:'Swimming',crawl:'Crawling',quad:'Quadruped',wave:'Undulation'},
+    size: {mega:'Megafauna (>10t)',big:'Large (100kg–10t)',medium:'Medium (10–100kg)',small:'Small (<10kg)',micro:'Microscopic'},
+    pops: ['Primary producers','Herbivores','Carnivores','Apex predators','Decomposers','Chemoautotrophs'],
+    cycles: ['Carbon','Nitrogen','Phosphorus','Iron','Calcium','Sulfur','Vanadium'],
+    connecting: 'Connect to internet for AI images',
+    generating: 'Generating AI image…',
+    copied: '✓ Copied',
+  }
+};
+
+function t(key){ return T[lang][key] || T.es[key] || key; }
+
+function toggleLang(){
+  lang = lang === 'es' ? 'en' : 'es';
+  const btn = document.getElementById('lang-btn');
+  if(btn) btn.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
+  const createBtn = document.getElementById('create-btn');
+  if(createBtn) createBtn.innerHTML = `✦ ${t('createBtn').replace('✦ ','')}`;
+  renderMain();
+}
+
+// Wrapper de makeCreature que usa idioma actual
+function makeCreatureI18n(v, seed){
+  const cr = makeCreature(v, seed);
+  // Translate fields
+  const sk = cr.skeleton;
+  if(lang==='en'){
+    const skMap = {'Endoesqueleto calcico':'Calcic endoskeleton','Exoesqueleto silíceo':'Siliceous exoskeleton','Exoesqueleto calcáreo':'Calcareous exoskeleton','Exoesqueleto sulfúrico':'Sulfuric exoskeleton','Hidrostático/Quitina':'Hydrostatic/Chitin'};
+    const blMap = {'Hemoglobina (roja)':'Hemoglobin (red)','Hemocianina (azul)':'Hemocyanin (blue)','Vanadina (verde)':'Vanadin (green)','Hb-H₂S gigante':'Giant Hb H₂S/O₂','Hemeritrina (violeta)':'Hemerythrin (violet)','Difusión directa':'Direct diffusion'};
+    const meMap = {'Aeróbico eficiente':'Efficient aerobic','Fotosíntesis':'Photosynthesis','Quimiosíntesis H₂S':'H₂S Chemosynthesis','Metanogénesis':'Methanogenesis','Fermentación':'Fermentation'};
+    const neMap = {'Cerebro centralizado':'Centralized brain','Sistema gangliado':'Ganglionic system','Red difusa':'Diffuse net'};
+    const thMap = {'Homeotermo':'Homeotherm','Crioprotección AFP':'AFP Cryoprotection','Termoestable':'Thermostable','Poiquilotermo':'Poikilotherm'};
+    const loMap = {'Flotación/vuelo':'Float/fly','Natación':'Swimming','Rastrero':'Crawling','Cuadrúpedo':'Quadruped','Ondulatorio':'Undulation'};
+    const szMap = {'Megafauna (>10t)':'Megafauna (>10t)','Grande (100kg–10t)':'Large (100kg–10t)','Mediano (10–100kg)':'Medium (10–100kg)','Pequeño (<10kg)':'Small (<10kg)','Microscópico':'Microscopic'};
+    const cxMap = {'vertebrado':'vertebrate','invertebrado':'invertebrate','simple':'simple','colonial':'colonial','unicelular':'unicellular'};
+    cr.skeleton = skMap[cr.skeleton] || cr.skeleton;
+    cr.blood    = blMap[cr.blood]    || cr.blood;
+    cr.meta     = meMap[cr.meta]     || cr.meta;
+    cr.nervous  = neMap[cr.nervous]  || cr.nervous;
+    cr.thermo   = thMap[cr.thermo]   || cr.thermo;
+    cr.loco     = loMap[cr.loco]     || cr.loco;
+    cr.size     = szMap[cr.size]     || cr.size;
+    cr.complexity = cxMap[cr.complexity] || cr.complexity;
+  }
+  return cr;
+}
+
+// ═══════════════════════════════════════════════════════
+// BASE DE DATOS MINDAT / IMA — 110 minerales representativos
+// Fuente: mindat.org / IMA-CNMNC (CC BY-NC-SA 4.0)
+// Total en Mindat: 6,210 especies aprobadas
+// ═══════════════════════════════════════════════════════
+// BASE DE DATOS — ESPECIES REALES DE LA TIERRA
+// Para validación científica del motor evolutivo
+// Fuente: GBIF, NCBI Taxonomy, AnAge Database
+// ═══════════════════════════════════════════════════════
+const EARTH_SPECIES_DB = [
+  // MAMÍFEROS
+  {
+    name:"Homo sapiens", common_es:"Ser humano", common_en:"Human",
+    kingdom:"Animalia", class:"Mammalia", order:"Primates",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Cuadrúpedo", complexity:"vertebrado",
+    size:"Mediano (10–100kg)", mass_kg:70,
+    key_abilities:["Inteligencia superior","Lenguaje complejo","Memoria fotográfica","Feromonas moleculares"],
+    Ca_min:30, Fe_min:20, P_min:0.5, O2_min:15, Temp_min:-20, Temp_max:50, H2O_min:20,
+    conservation:"LC", emoji:"👤",
+    fun_fact:"El único animal que cocina su comida, modificando así la química de los nutrientes disponibles.",
+    earth_ppm:{Ca:41000,Fe:56300,P:1050,Mg:23300,O2:20.95,Temp:15}
+  },
+  {
+    name:"Balaenoptera musculus", common_es:"Ballena azul", common_en:"Blue whale",
+    kingdom:"Animalia", class:"Mammalia", order:"Cetacea",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Natación", complexity:"vertebrado",
+    size:"Megafauna (>10t)", mass_kg:150000,
+    key_abilities:["Ecolocalización activa","Audición subacuática","Línea lateral"],
+    Ca_min:30, Fe_min:20, P_min:0.5, O2_min:15, H2O_min:50,
+    conservation:"EN", emoji:"🐋",
+    fun_fact:"El animal más grande que ha existido. Su corazón pesa 180kg y late 2 veces por minuto en inmersión.",
+    earth_ppm:{Ca:41000,Fe:56300,P:1050,Mg:23300,O2:20.95,Temp:15}
+  },
+  {
+    name:"Panthera leo", common_es:"León africano", common_en:"African lion",
+    kingdom:"Animalia", class:"Mammalia", order:"Carnivora",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Cuadrúpedo", complexity:"vertebrado",
+    size:"Grande (100kg–10t)", mass_kg:190,
+    key_abilities:["Visión infrarroja","Mecanorreceptores de alta resolución","Feromonas moleculares"],
+    Ca_min:25, Fe_min:20, O2_min:15, Temp_min:-10, Temp_max:50,
+    conservation:"VU", emoji:"🦁",
+    fun_fact:"Caza cooperativamente con estrategias coordinadas — nivel básico de cognición social compleja.",
+    earth_ppm:{Ca:15000,Fe:30000,P:500,Mg:10000,O2:20.95,Temp:25}
+  },
+  {
+    name:"Elephas maximus", common_es:"Elefante asiático", common_en:"Asian elephant",
+    kingdom:"Animalia", class:"Mammalia", order:"Proboscidea",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Cuadrúpedo", complexity:"vertebrado",
+    size:"Megafauna (>10t)", mass_kg:5000,
+    key_abilities:["Inteligencia superior","Memoria fotográfica","Mecanorreceptores de alta resolución","Sismorreceptores"],
+    Ca_min:30, Fe_min:20, O2_min:15, H2O_min:10,
+    conservation:"EN", emoji:"🐘",
+    fun_fact:"Detecta terremotos y tsunamis antes que los humanos gracias a sus sismorreceptores en patas.",
+    earth_ppm:{Ca:25000,Fe:40000,P:800,Mg:15000,O2:20.95,Temp:28}
+  },
+
+  // AVES
+  {
+    name:"Aquila chrysaetos", common_es:"Águila real", common_en:"Golden eagle",
+    kingdom:"Animalia", class:"Aves", order:"Accipitriformes",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Flotación/vuelo", complexity:"vertebrado",
+    size:"Pequeño (<10kg)", mass_kg:4.5,
+    key_abilities:["Visión UV","Visión infrarroja","Mecanorreceptores"],
+    Ca_min:20, Fe_min:15, O2_min:15,
+    conservation:"LC", emoji:"🦅",
+    fun_fact:"Ve 8 veces más que el humano. Su cristalino detecta UV — ve la orina de roedores brillar en el suelo.",
+    earth_ppm:{Ca:30000,Fe:45000,P:900,Mg:18000,O2:20.95,Temp:12}
+  },
+
+  // REPTILES
+  {
+    name:"Crocodylus niloticus", common_es:"Cocodrilo del Nilo", common_en:"Nile crocodile",
+    kingdom:"Animalia", class:"Reptilia", order:"Crocodilia",
+    skeleton:"Endoesqueleto calcico", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Poiquilotermo", loco:"Cuadrúpedo", complexity:"vertebrado",
+    size:"Grande (100kg–10t)", mass_kg:750,
+    key_abilities:["Mecanorreceptores de alta resolución","Sismorreceptores","Electrorrecepción pasiva"],
+    Ca_min:20, Fe_min:15, O2_min:10, H2O_min:20, Temp_min:20, Temp_max:60,
+    conservation:"LC", emoji:"🐊",
+    fun_fact:"Su sistema inmune puede curar heridas en agua séptica. Sangre activa contra bacterias resistentes a antibióticos.",
+    earth_ppm:{Ca:20000,Fe:35000,P:600,Mg:12000,O2:20.95,Temp:30}
+  },
+
+  // PECES
+  {
+    name:"Carcharodon carcharias", common_es:"Gran tiburón blanco", common_en:"Great white shark",
+    kingdom:"Animalia", class:"Chondrichthyes", order:"Lamniformes",
+    skeleton:"Exoesqueleto calcáreo", blood:"Hemoglobina (roja)",
+    meta:"Aeróbico eficiente", nervous:"Cerebro centralizado",
+    thermo:"Homeotermo", loco:"Natación", complexity:"vertebrado",
+    size:"Grande (100kg–10t)", mass_kg:1100,
+    key_abilities:["Electrorrecepción pasiva","Línea lateral","Olfato sulfúrico ultra-sensible","Ecolocalización activa"],
+    Ca_min:15, Fe_min:10, O2_min:5, H2O_min:60,
+    conservation:"VU", emoji:"🦈",
+    fun_fact:"Detecta 1 gota de sangre en 100L de agua. Sus ampollas de Lorenzini captan campos eléctricos de 0.005 microvoltios.",
+    earth_ppm:{Ca:411,Fe:0.002,P:0.08,Mg:1290,O2:8,Temp:15}
+  },
+
+  // INVERTEBRADOS
+  {
+    name:"Octopus vulgaris", common_es:"Pulpo común", common_en:"Common octopus",
+    kingdom:"Animalia", class:"Cephalopoda", order:"Octopoda",
+    skeleton:"Hidrostático/Quitina", blood:"Hemocianina (azul)",
+    meta:"Aeróbico eficiente", nervous:"Sistema gangliado",
+    thermo:"Poiquilotermo", loco:"Natación", complexity:"invertebrado",
+    size:"Pequeño (<10kg)", mass_kg:3,
+    key_abilities:["Camuflaje cromático activo","Inteligencia superior","Quimiorrecepción","Línea lateral"],
+    Cu_min:40, Fe_max:25, H2O_min:50, O2_min:5,
+    conservation:"LC", emoji:"🐙",
+    fun_fact:"Tiene 3 corazones, 9 cerebros (1 central + 1 en cada brazo). Cada brazo toma decisiones autónomamente.",
+    earth_ppm:{Ca:411,Fe:0.002,Cu:0.003,Mg:1290,O2:8,Temp:18}
+  },
+  {
+    name:"Apis mellifera", common_es:"Abeja melífera", common_en:"Honey bee",
+    kingdom:"Animalia", class:"Insecta", order:"Hymenoptera",
+    skeleton:"Hidrostático/Quitina", blood:"Difusión directa",
+    meta:"Aeróbico eficiente", nervous:"Sistema gangliado",
+    thermo:"Poiquilotermo", loco:"Flotación/vuelo", complexity:"invertebrado",
+    size:"Microscópico", mass_kg:0.0001,
+    key_abilities:["Visión UV","Magnetorrecepción","Feromonas moleculares","Comunicación bioeléctrica"],
+    Ca_min:10, Fe_min:5, O2_min:15, Mg_min:10,
+    conservation:"NT", emoji:"🐝",
+    fun_fact:"Usa baile waggle codificado en ángulos para comunicar ubicaciones a 5km de distancia. Detecta campo magnético terrestre.",
+    earth_ppm:{Ca:41000,Fe:56300,P:1050,Mg:23300,O2:20.95,Temp:20}
+  },
+  {
+    name:"Riftia pachyptila", common_es:"Gusano de fumarola", common_en:"Giant tube worm",
+    kingdom:"Animalia", class:"Polychaeta", order:"Vestimentifera",
+    skeleton:"Hidrostático/Quitina", blood:"Hb-H₂S gigante",
+    meta:"Quimiosíntesis H₂S", nervous:"Red difusa",
+    thermo:"Poiquilotermo", loco:"Ondulatorio", complexity:"simple",
+    size:"Pequeño (<10kg)", mass_kg:0.5,
+    key_abilities:["Resistencia extrema a toxinas sulfurosas","Quimiosíntesis cutánea","Hidrolocalización"],
+    H2S_min:1, S_min:500, O2_max:8,
+    conservation:"NE", emoji:"🪱",
+    fun_fact:"No tiene boca ni estómago. Alberga 10¹⁰ bacterias quimiosintéticas/cm³ que le alimentan directamente.",
+    earth_ppm:{Ca:100,Fe:50000,S:30,Cu:0.5,O2:0,H2S:30,Temp:2}
+  },
+
+  // PLANTAS Y ALGAS
+  {
+    name:"Sequoia sempervirens", common_es:"Secuoya roja", common_en:"Coast redwood",
+    kingdom:"Plantae", class:"Pinopsida", order:"Cupressales",
+    skeleton:"Hidrostático/Quitina", blood:"Difusión directa",
+    meta:"Fotosíntesis", nervous:"Red difusa",
+    thermo:"Poiquilotermo", loco:"Ondulatorio", complexity:"simple",
+    size:"Megafauna (>10t)", mass_kg:500000,
+    key_abilities:["Fotosíntesis dérmico","Señalización química intergeneracional","Mecanorreceptores"],
+    Ca_min:30, Mg_min:15, O2_min:5, H2O_min:30, CO2_min:0.01,
+    conservation:"EN", emoji:"🌲",
+    fun_fact:"115m de altura. Comparte nutrientes con otros árboles vía red miceliar. Vive 3,000+ años.",
+    earth_ppm:{Ca:41000,Fe:56300,P:1050,Mg:23300,O2:20.95,CO2:0.04,Temp:12}
+  },
+  {
+    name:"Thalassiosira weissflogii", common_es:"Diatomea marina", common_en:"Marine diatom",
+    kingdom:"Protista", class:"Bacillariophyceae", order:"Thalassiosirales",
+    skeleton:"Exoesqueleto silíceo", blood:"Difusión directa",
+    meta:"Fotosíntesis", nervous:"Red difusa",
+    thermo:"Poiquilotermo", loco:"Ondulatorio", complexity:"unicelular",
+    size:"Microscópico", mass_kg:0,
+    key_abilities:["Biomineralización activa","Fotosíntesis dérmico"],
+    Si_min:50, Mg_min:10, Fe_min:0, H2O_min:50,
+    conservation:"NE", emoji:"🔵",
+    fun_fact:"Produce el 20% del O₂ que respiras. Su frustula de SiO₂ es más eficiente estructuralmente que el acero.",
+    earth_ppm:{Si:2.2,Fe:0.002,Mg:1290,P:0.08,O2:8,Temp:15}
+  },
+
+  // MICROBIOS EXTREMÓFILOS
+  {
+    name:"Pyrolobus fumarii", common_es:"Arquea hipertermófila", common_en:"Hyperthermophilic archaea",
+    kingdom:"Archaea", class:"Thermoprotei", order:"Desulfurococcales",
+    skeleton:"Hidrostático/Quitina", blood:"Difusión directa",
+    meta:"Quimiosíntesis H₂S", nervous:"Red difusa",
+    thermo:"Termoestable", loco:"Ondulatorio", complexity:"unicelular",
+    size:"Microscópico", mass_kg:0,
+    key_abilities:["Termoestabilidad proteica a 120°C","Resistencia extrema a toxinas sulfurosas"],
+    H2S_min:1, Temp_min:90, Temp_max:135,
+    conservation:"NE", emoji:"🦠",
+    fun_fact:"Vive a 121°C — temperatura de esterilización quirúrgica. Se reproduce en agua hirviendo.",
+    earth_ppm:{Fe:50000,S:30,H2S:30,O2:0,Temp:106}
+  },
+  {
+    name:"Deinococcus radiodurans", common_es:"Bacteria resistente a radiación", common_en:"Radiation-resistant bacteria",
+    kingdom:"Bacteria", class:"Deinococci", order:"Deinococcales",
+    skeleton:"Hidrostático/Quitina", blood:"Difusión directa",
+    meta:"Aeróbico eficiente", nervous:"Red difusa",
+    thermo:"Termoestable", loco:"Ondulatorio", complexity:"unicelular",
+    size:"Microscópico", mass_kg:0,
+    key_abilities:["Sistema inmune adaptativo","Resistencia a pH extremo"],
+    O2_min:0, Ca_min:0,
+    conservation:"NE", emoji:"🧬",
+    fun_fact:"Resiste 1.5 millones de rads (humano letal: 500 rads). Repara su ADN fragmentado en pocas horas.",
+    earth_ppm:{Ca:41000,Fe:56300,O2:20.95,Temp:25}
+  },
+  {
+    name:"Ramazzottius varieornatus", common_es:"Tardígrado", common_en:"Water bear",
+    kingdom:"Animalia", class:"Eutardigrada", order:"Parachela",
+    skeleton:"Hidrostático/Quitina", blood:"Difusión directa",
+    meta:"Aeróbico eficiente", nervous:"Sistema gangliado",
+    thermo:"Crioprotección AFP", loco:"Rastrero", complexity:"simple",
+    size:"Microscópico", mass_kg:0,
+    key_abilities:["Criobiosis","Resistencia a pH extremo","Resistencia extrema a toxinas"],
+    Ca_min:0, O2_min:0,
+    conservation:"NE", emoji:"🐻",
+    fun_fact:"Sobrevive en el vacío del espacio, -272°C, 600MPa de presión y 1,000× la radiación letal humana.",
+    earth_ppm:{Ca:41000,O2:20.95,Temp:15}
+  },
+];
+
+// ─── Motor de similitud especie real vs criatura generada ────
+function calcSpeciesSimilarity(creature, species, v){
+  let matches = 0;
+  let total   = 0;
+
+  // Rasgos anatómicos (50% del score)
+  const traitPairs = [
+    [creature.skeleton, species.skeleton],
+    [creature.blood,    species.blood],
+    [creature.meta,     species.meta],
+    [creature.nervous,  species.nervous],
+    [creature.thermo,   species.thermo],
+    [creature.loco,     species.loco],
+    [creature.complexity, species.complexity],
+    [creature.size,     species.size],
+  ];
+  traitPairs.forEach(([a,b])=>{
+    total+=10;
+    if(a===b)matches+=10;
+    else if(a?.includes(b?.split(' ')[0]) || b?.includes(a?.split(' ')[0]))matches+=5;
+  });
+
+  // Condiciones ambientales (30%)
+  const {Ca,Fe,Si,P,Mg,Cu,S,O2,CO2,H2S,H2O,Temp,pH,gravity}=v;
+  if(species.Ca_min  !== undefined && Ca  >= species.Ca_min)  {matches+=5;total+=5;}
+  else if(species.Ca_min !== undefined)                        {total+=5;}
+  if(species.Fe_min  !== undefined && Fe  >= species.Fe_min)  {matches+=5;total+=5;}
+  else if(species.Fe_min !== undefined)                        {total+=5;}
+  if(species.O2_min  !== undefined && O2  >= species.O2_min)  {matches+=5;total+=5;}
+  else if(species.O2_min !== undefined)                        {total+=5;}
+  if(species.H2S_min !== undefined && H2S >= species.H2S_min) {matches+=5;total+=5;}
+  else if(species.H2S_min !== undefined)                       {total+=5;}
+  if(species.H2O_min !== undefined && H2O >= species.H2O_min) {matches+=4;total+=4;}
+  else if(species.H2O_min !== undefined)                       {total+=4;}
+  if(species.Si_min  !== undefined && Si  >= species.Si_min)  {matches+=4;total+=4;}
+  else if(species.Si_min !== undefined)                        {total+=4;}
+  if(species.Cu_min  !== undefined && Cu  >= species.Cu_min)  {matches+=4;total+=4;}
+  else if(species.Cu_min !== undefined)                        {total+=4;}
+  if(species.Temp_min !== undefined && Temp >= species.Temp_min) {matches+=3;total+=3;}
+  else if(species.Temp_min !== undefined)                         {total+=3;}
+  if(species.Temp_max !== undefined && Temp <= species.Temp_max) {matches+=3;total+=3;}
+  else if(species.Temp_max !== undefined)                         {total+=3;}
+
+  // Habilidades (20%)
+  if(species.key_abilities && creature.abilities){
+    const creatureAbilityNames = creature.abilities.map(a=>a.name.toLowerCase());
+    species.key_abilities.forEach(hab=>{
+      total+=4;
+      const found = creatureAbilityNames.some(a=>
+        a.includes(hab.toLowerCase().split(' ')[0]) ||
+        hab.toLowerCase().includes(a.split(' ')[0])
+      );
+      if(found)matches+=4;
+    });
+  }
+
+  return total>0 ? Math.round((matches/total)*100) : 0;
+}
+
+function findBestEarthMatches(creature, v, limit=5){
+  return EARTH_SPECIES_DB
+    .map(sp=>({...sp, similarity:calcSpeciesSimilarity(creature, sp, v)}))
+    .sort((a,b)=>b.similarity-a.similarity)
+    .slice(0, limit);
+}
+
+// ═══════════════════════════════════════════════════════
+const MINERALS_DB=[
+{id:1,  name:"Quartz",        name_es:"Cuarzo",       formula:"SiO₂",                  group:"Silicatos",   elements:["Si","O"],           hardness:7.0,density:2.65,color:"incoloro/blanco",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3337.html", bio_role:"Fitolitos vegetales, frústulas de diatomeas — estructural"},
+{id:2,  name:"Feldspar K",    name_es:"Feldespato K", formula:"KAlSi₃O₈",              group:"Silicatos",   elements:["K","Al","Si","O"],   hardness:6.0,density:2.56,color:"blanco/rosa",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-816.html",  bio_role:"Fuente de K — turgencia celular, activación enzimática"},
+{id:3,  name:"Plagioclase",   name_es:"Plagioclasa",  formula:"NaAlSi₃O₈–CaAl₂Si₂O₈", group:"Silicatos",   elements:["Na","Ca","Al","Si"], hardness:6.0,density:2.62,color:"blanco/gris",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3151.html", bio_role:"Na, Ca — señalización nerviosa, hueso"},
+{id:4,  name:"Olivine",       name_es:"Olivino",      formula:"(Mg,Fe)₂SiO₄",          group:"Silicatos",   elements:["Mg","Fe","Si","O"], hardness:6.5,density:3.30,color:"verde/amarillo",   luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2989.html", bio_role:"Mg, Fe — clorofila, hemoglobina, enzimas"},
+{id:5,  name:"Pyroxene",      name_es:"Piroxeno",     formula:"(Mg,Fe)SiO₃",           group:"Silicatos",   elements:["Mg","Fe","Si","O"], hardness:5.5,density:3.20,color:"verde oscuro",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3329.html", bio_role:"Fuente de Fe y Mg por meteorización"},
+{id:6,  name:"Amphibole",     name_es:"Anfíbol",      formula:"Ca₂(Mg,Fe)₅Si₈O₂₂(OH)₂",group:"Silicatos", elements:["Ca","Mg","Fe","Si"],hardness:5.5,density:3.10,color:"verde oscuro",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-222.html",  bio_role:"Ca, Mg, Fe — hueso, músculo, metabolismo"},
+{id:7,  name:"Biotite",       name_es:"Biotita",      formula:"K(Mg,Fe)₃AlSi₃O₁₀(OH)₂",group:"Silicatos",  elements:["K","Mg","Fe","Al"], hardness:2.5,density:3.00,color:"negro/marrón",    luster:"perlado",   mindat_url:"https://www.mindat.org/min-677.html",  bio_role:"K, Mg, Fe — nutrientes clave del suelo"},
+{id:8,  name:"Muscovite",     name_es:"Moscovita",    formula:"KAl₂(AlSi₃)O₁₀(OH)₂",  group:"Silicatos",   elements:["K","Al","Si","O"],   hardness:2.5,density:2.83,color:"incoloro",         luster:"perlado",   mindat_url:"https://www.mindat.org/min-2815.html", bio_role:"Fuente de K para el suelo agrícola"},
+{id:9,  name:"Kaolinite",     name_es:"Caolinita",    formula:"Al₂Si₂O₅(OH)₄",        group:"Silicatos",   elements:["Al","Si","O"],       hardness:2.0,density:2.60,color:"blanco",           luster:"terroso",   mindat_url:"https://www.mindat.org/min-2156.html", bio_role:"Arcilla — estructura del suelo, adsorción de P"},
+{id:10, name:"Talc",          name_es:"Talco",        formula:"Mg₃Si₄O₁₀(OH)₂",       group:"Silicatos",   elements:["Mg","Si","O"],       hardness:1.0,density:2.75,color:"blanco/verde",     luster:"perlado",   mindat_url:"https://www.mindat.org/min-3875.html", bio_role:"Fuente de Mg, tampón pH del suelo"},
+{id:11, name:"Serpentine",    name_es:"Serpentina",   formula:"Mg₃Si₂O₅(OH)₄",        group:"Silicatos",   elements:["Mg","Si","O"],       hardness:3.0,density:2.55,color:"verde",             luster:"céreo",     mindat_url:"https://www.mindat.org/min-3638.html", bio_role:"Fuente Mg — flora única en suelos ultramáficos"},
+{id:12, name:"Garnet",        name_es:"Granate",      formula:"Fe₃Al₂(SiO₄)₃",        group:"Silicatos",   elements:["Fe","Al","Si","O"],  hardness:7.5,density:4.30,color:"rojo",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-179.html",  bio_role:"Fuente de Fe en terrenos metamórficos"},
+{id:13, name:"Tourmaline",    name_es:"Turmalina",    formula:"NaFe₃Al₆(BO₃)₃Si₆O₁₈(OH)₄",group:"Silicatos",elements:["Na","Fe","Al","B","Si"],hardness:7.5,density:3.10,color:"negro/multicolor",luster:"vítreo", mindat_url:"https://www.mindat.org/min-3968.html", bio_role:"Fuente de B — pared celular vegetal (borato)"},
+{id:14, name:"Wollastonite",  name_es:"Wollastonita", formula:"CaSiO₃",                group:"Silicatos",   elements:["Ca","Si","O"],       hardness:5.0,density:2.90,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-4319.html", bio_role:"Fuente de Ca — enmienda del suelo"},
+{id:15, name:"Zircon",        name_es:"Circón",       formula:"ZrSiO₄",               group:"Silicatos",   elements:["Zr","Si","O"],       hardness:7.5,density:4.65,color:"marrón/rojo",      luster:"adamantino",mindat_url:"https://www.mindat.org/min-4421.html", bio_role:"Zr — función enzimática traza"},
+// Carbonatos
+{id:21, name:"Calcite",       name_es:"Calcita",      formula:"CaCO₃",                 group:"Carbonatos",  elements:["Ca","C","O"],        hardness:3.0,density:2.71,color:"blanco/incoloro",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-859.html",  bio_role:"BIOMINERALIZACIÓN — conchas, huesos, coral. pH suelo"},
+{id:22, name:"Aragonite",     name_es:"Aragonita",    formula:"CaCO₃",                 group:"Carbonatos",  elements:["Ca","C","O"],        hardness:3.5,density:2.93,color:"blanco/amarillo",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-308.html",  bio_role:"Esqueleto de coral, concha de molusco — soluble pH<7.8"},
+{id:23, name:"Dolomite",      name_es:"Dolomita",     formula:"CaMg(CO₃)₂",            group:"Carbonatos",  elements:["Ca","Mg","C","O"],   hardness:3.5,density:2.85,color:"blanco/rosa",      luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1304.html", bio_role:"Ca, Mg — mineral importante del suelo agrícola"},
+{id:24, name:"Magnesite",     name_es:"Magnesita",    formula:"MgCO₃",                 group:"Carbonatos",  elements:["Mg","C","O"],        hardness:4.0,density:3.01,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2482.html", bio_role:"Fuente de Mg — cofactor enzimático, clorofila"},
+{id:25, name:"Siderite",      name_es:"Siderita",     formula:"FeCO₃",                 group:"Carbonatos",  elements:["Fe","C","O"],        hardness:4.0,density:3.96,color:"amarillo-marrón",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3648.html", bio_role:"Fuente de Fe — hemoglobina, citocromos"},
+{id:26, name:"Rhodochrosite", name_es:"Rodocrosita",  formula:"MnCO₃",                 group:"Carbonatos",  elements:["Mn","C","O"],        hardness:3.5,density:3.70,color:"rosa/rojo",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3422.html", bio_role:"Fuente de Mn — Fotosistema II, superóxido dismutasa"},
+{id:27, name:"Smithsonite",   name_es:"Smithsonita",  formula:"ZnCO₃",                 group:"Carbonatos",  elements:["Zn","C","O"],        hardness:4.0,density:4.43,color:"blanco/verde",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3691.html", bio_role:"Fuente de Zn — zinc fingers, ADN polimerasa"},
+{id:28, name:"Azurite",       name_es:"Azurita",      formula:"Cu₃(CO₃)₂(OH)₂",        group:"Carbonatos",  elements:["Cu","C","O"],        hardness:3.5,density:3.77,color:"azul intenso",     luster:"vítreo",    mindat_url:"https://www.mindat.org/min-446.html",  bio_role:"Fuente de Cu — hemocianina (sangre azul)"},
+{id:29, name:"Malachite",     name_es:"Malaquita",    formula:"Cu₂(CO₃)(OH)₂",         group:"Carbonatos",  elements:["Cu","C","O"],        hardness:4.0,density:4.03,color:"verde",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2550.html", bio_role:"Fuente de Cu — tirosinasa (melanina), lacasa"},
+// Óxidos
+{id:33, name:"Hematite",      name_es:"Hematita",     formula:"Fe₂O₃",                 group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:5.26,color:"rojo/negro",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1856.html", bio_role:"Fuente de Fe — superficie de Marte, formaciones bandeadas"},
+{id:34, name:"Magnetite",     name_es:"Magnetita",    formula:"Fe₃O₄",                 group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:5.20,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-2538.html", bio_role:"Fe — bacterias magnetotácticas, orientación magnética"},
+{id:35, name:"Goethite",      name_es:"Goethita",     formula:"FeO(OH)",               group:"Óxidos",      elements:["Fe","O"],            hardness:5.5,density:4.28,color:"amarillo-marrón",  luster:"sedoso",    mindat_url:"https://www.mindat.org/min-1719.html", bio_role:"Fuente de Fe — mineral de Fe más común en suelos"},
+{id:36, name:"Pyrolusite",    name_es:"Pirolusita",   formula:"MnO₂",                  group:"Óxidos",      elements:["Mn","O"],            hardness:6.0,density:5.08,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-3324.html", bio_role:"Fuente de Mn — PSII, superóxido dismutasa"},
+{id:37, name:"Chromite",      name_es:"Cromita",      formula:"FeCr₂O₄",               group:"Óxidos",      elements:["Fe","Cr","O"],       hardness:5.5,density:5.09,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1036.html", bio_role:"Cr³⁺ — factor de tolerancia a la glucosa"},
+{id:38, name:"Rutile",        name_es:"Rutilo",       formula:"TiO₂",                  group:"Óxidos",      elements:["Ti","O"],            hardness:6.0,density:4.25,color:"rojo-marrón",      luster:"adamantino",mindat_url:"https://www.mindat.org/min-3486.html", bio_role:"Ti — sin rol biológico esencial conocido"},
+{id:39, name:"Cuprite",       name_es:"Cuprita",      formula:"Cu₂O",                  group:"Óxidos",      elements:["Cu","O"],            hardness:3.5,density:6.14,color:"rojo",              luster:"adamantino",mindat_url:"https://www.mindat.org/min-1172.html", bio_role:"Fuente de Cu — oxidasas, síntesis de melanina"},
+{id:40, name:"Brucite",       name_es:"Brucita",      formula:"Mg(OH)₂",               group:"Óxidos",      elements:["Mg","O"],            hardness:2.5,density:2.39,color:"blanco",           luster:"céreo",     mindat_url:"https://www.mindat.org/min-790.html",  bio_role:"Fuente de Mg — mineral alcalino del suelo"},
+// Sulfuros
+{id:49, name:"Pyrite",        name_es:"Pirita",       formula:"FeS₂",                  group:"Sulfuros",    elements:["Fe","S"],            hardness:6.0,density:5.01,color:"oro pálido",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-3314.html", bio_role:"Fe, S — drenaje ácido de minas, ciclo del S"},
+{id:50, name:"Chalcopyrite",  name_es:"Calcopirita",  formula:"CuFeS₂",                group:"Sulfuros",    elements:["Cu","Fe","S"],       hardness:3.5,density:4.20,color:"amarillo bronce",  luster:"metálico",  mindat_url:"https://www.mindat.org/min-955.html",  bio_role:"Cu, Fe — hemocianina, hemoglobina"},
+{id:51, name:"Sphalerite",    name_es:"Esfalerita",   formula:"ZnS",                   group:"Sulfuros",    elements:["Zn","S"],            hardness:3.5,density:4.05,color:"marrón/negro",     luster:"resinoso",  mindat_url:"https://www.mindat.org/min-3727.html", bio_role:"Fuente de Zn — zinc fingers, almacenamiento de insulina"},
+{id:52, name:"Molybdenite",   name_es:"Molibdenita",  formula:"MoS₂",                  group:"Sulfuros",    elements:["Mo","S"],            hardness:1.0,density:5.06,color:"gris plomo",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-2746.html", bio_role:"Mo — nitrogenasa (fijación N₂), cofactor FeMo"},
+{id:53, name:"Pyrrhotite",    name_es:"Pirrotita",    formula:"Fe₁₋ₓS",               group:"Sulfuros",    elements:["Fe","S"],            hardness:4.0,density:4.61,color:"bronce",           luster:"metálico",  mindat_url:"https://www.mindat.org/min-3328.html", bio_role:"Fe, S — fumarolas hidrotermales"},
+{id:54, name:"Pentlandite",   name_es:"Pentlandita",  formula:"(Fe,Ni)₉S₈",            group:"Sulfuros",    elements:["Fe","Ni","S"],       hardness:3.5,density:5.00,color:"bronce",           luster:"metálico",  mindat_url:"https://www.mindat.org/min-3124.html", bio_role:"Ni — ureasa, metil-CoM reductasa (arqueas)"},
+{id:55, name:"Galena",        name_es:"Galena",       formula:"PbS",                   group:"Sulfuros",    elements:["Pb","S"],            hardness:2.5,density:7.60,color:"gris plomo",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1641.html", bio_role:"Pb — altamente tóxico, neurotóxico"},
+{id:56, name:"Cinnabar",      name_es:"Cinabrio",     formula:"HgS",                   group:"Sulfuros",    elements:["Hg","S"],            hardness:2.5,density:8.18,color:"rojo",             luster:"adamantino",mindat_url:"https://www.mindat.org/min-1052.html", bio_role:"Hg — neurotóxico, bioacumulación en cadena trófica"},
+{id:57, name:"Covellite",     name_es:"Covelita",     formula:"CuS",                   group:"Sulfuros",    elements:["Cu","S"],            hardness:1.5,density:4.68,color:"azul",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1151.html", bio_role:"Fuente de Cu — oxidasas, síntesis de melanina"},
+// Fosfatos
+{id:61, name:"Apatite",       name_es:"Apatita",      formula:"Ca₅(PO₄)₃(F,Cl,OH)",   group:"Fosfatos",    elements:["Ca","P","F","O"],    hardness:5.0,density:3.20,color:"verde/azul",       luster:"vítreo",    mindat_url:"https://www.mindat.org/min-290.html",  bio_role:"HUESO Y DIENTES — hidroxiapatita = variante de apatita"},
+{id:62, name:"Hydroxyapatite",name_es:"Hidroxiapatita",formula:"Ca₁₀(PO₄)₆(OH)₂",    group:"Fosfatos",    elements:["Ca","P","O"],        hardness:5.0,density:3.16,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1923.html", bio_role:"MINERAL DEL HUESO — endoesqueleto vertebrado, esmalte dental"},
+{id:63, name:"Vivianite",     name_es:"Vivianita",    formula:"Fe₃(PO₄)₂·8H₂O",       group:"Fosfatos",    elements:["Fe","P","O"],        hardness:1.5,density:2.68,color:"azul/verde",       luster:"vítreo",    mindat_url:"https://www.mindat.org/min-4238.html", bio_role:"Fe, P — turberas, conservación de huesos fósiles"},
+{id:64, name:"Turquoise",     name_es:"Turquesa",     formula:"CuAl₆(PO₄)₄(OH)₈·4H₂O",group:"Fosfatos",  elements:["Cu","Al","P","O"],   hardness:5.5,density:2.70,color:"azul-verde",       luster:"céreo",     mindat_url:"https://www.mindat.org/min-4060.html", bio_role:"Fuente de Cu y P en ambientes áridos"},
+{id:65, name:"Vanadinite",    name_es:"Vanadinita",   formula:"Pb₅(VO₄)₃Cl",           group:"Vanadatos",   elements:["Pb","V","Cl","O"],   hardness:3.0,density:6.88,color:"rojo/naranja",     luster:"resinoso",  mindat_url:"https://www.mindat.org/min-4166.html", bio_role:"V — pigmento de sangre verde en tunicados (vanadina)"},
+// Sulfatos
+{id:70, name:"Gypsum",        name_es:"Yeso",         formula:"CaSO₄·2H₂O",            group:"Sulfatos",    elements:["Ca","S","O"],        hardness:2.0,density:2.32,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1784.html", bio_role:"Ca, S — enmienda agrícola del suelo, evaporitas"},
+{id:71, name:"Barite",        name_es:"Barita",       formula:"BaSO₄",                 group:"Sulfatos",    elements:["Ba","S","O"],        hardness:3.5,density:4.48,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-543.html",  bio_role:"Ba — algunos organismos marinos (Xenophyophora)"},
+{id:72, name:"Epsomite",      name_es:"Epsomita",     formula:"MgSO₄·7H₂O",            group:"Sulfatos",    elements:["Mg","S","O"],        hardness:2.0,density:1.68,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1393.html", bio_role:"Mg, S — sal de Epsom, nutriente vegetal"},
+{id:73, name:"Jarosite",      name_es:"Jarosita",     formula:"KFe₃(SO₄)₂(OH)₆",       group:"Sulfatos",    elements:["K","Fe","S","O"],    hardness:3.0,density:3.26,color:"amarillo-marrón",  luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2096.html", bio_role:"Fe, K — suelos ácidos sulfatados, superficie de Marte"},
+{id:74, name:"Chalcanthite",  name_es:"Calcantita",   formula:"CuSO₄·5H₂O",            group:"Sulfatos",    elements:["Cu","S","O"],        hardness:2.5,density:2.29,color:"azul",             luster:"vítreo",    mindat_url:"https://www.mindat.org/min-960.html",  bio_role:"Fuente de Cu soluble en agua — muy biodisponible"},
+// Halogenuros
+{id:79, name:"Halite",        name_es:"Halita",       formula:"NaCl",                  group:"Halogenuros", elements:["Na","Cl"],           hardness:2.5,density:2.17,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1804.html", bio_role:"Na, Cl — balance osmótico, impulso nervioso"},
+{id:80, name:"Sylvite",       name_es:"Silvita",      formula:"KCl",                   group:"Halogenuros", elements:["K","Cl"],            hardness:2.0,density:1.99,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3858.html", bio_role:"K — fertilizante potásico (potasa), función celular"},
+{id:81, name:"Fluorite",      name_es:"Fluorita",     formula:"CaF₂",                  group:"Halogenuros", elements:["Ca","F"],            hardness:4.0,density:3.18,color:"púrpura/verde",    luster:"vítreo",    mindat_url:"https://www.mindat.org/min-1576.html", bio_role:"Ca, F — fluorapatita (dientes), fuente de flúor"},
+// Elementos nativos
+{id:85, name:"Sulfur",        name_es:"Azufre nativo",formula:"S",                     group:"Elementos nativos",elements:["S"],             hardness:2.0,density:2.07,color:"amarillo",         luster:"resinoso",  mindat_url:"https://www.mindat.org/min-3855.html", bio_role:"S — aminoácidos, clústeres Fe-S, energía H₂S"},
+{id:86, name:"Graphite",      name_es:"Grafito",      formula:"C",                     group:"Elementos nativos",elements:["C"],             hardness:1.0,density:2.09,color:"negro",             luster:"metálico",  mindat_url:"https://www.mindat.org/min-1740.html", bio_role:"C — forma pura del elemento base de la vida"},
+{id:87, name:"Copper",        name_es:"Cobre nativo", formula:"Cu",                    group:"Elementos nativos",elements:["Cu"],            hardness:2.5,density:8.96,color:"rojo cobre",       luster:"metálico",  mindat_url:"https://www.mindat.org/min-1142.html", bio_role:"Cu — hemocianina, oxidasas, melanina"},
+// Boratos
+{id:94, name:"Borax",         name_es:"Bórax",        formula:"Na₂B₄O₅(OH)₄·8H₂O",    group:"Boratos",     elements:["Na","B","O"],        hardness:2.5,density:1.72,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-738.html",  bio_role:"B — pared celular vegetal (boro esencial para plantas)"},
+// Minerales especiales biológicos
+{id:100,name:"Opal",          name_es:"Ópalo",        formula:"SiO₂·nH₂O",             group:"Mineraloides",elements:["Si","O"],            hardness:6.0,density:2.10,color:"varios",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3004.html", bio_role:"Si amorfo — espículas de esponjas, fitolitos de plantas"},
+{id:101,name:"Natron",        name_es:"Natrón",       formula:"Na₂CO₃·10H₂O",          group:"Carbonatos",  elements:["Na","C","O"],        hardness:1.0,density:1.42,color:"blanco",           luster:"vítreo",    mindat_url:"https://www.mindat.org/min-2880.html", bio_role:"Na — lagos alcalinos (lagos de soda), pH extremo"},
+{id:102,name:"Struvite",      name_es:"Estruvita",    formula:"NH₄MgPO₄·6H₂O",         group:"Fosfatos",    elements:["N","Mg","P","O"],    hardness:2.0,density:1.71,color:"incoloro",         luster:"vítreo",    mindat_url:"https://www.mindat.org/min-3820.html", bio_role:"N, Mg, P — cálculos renales, tratamiento de aguas"},
+];
+
+// ─── Motor de mineralogía ────────────────────────────────────
+function getMineralsForPlanet(v){
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH}=v;
+  const rules=[
+    {cond:Ca>30&&CO2>0,                ids:[21,22,23]},
+    {cond:Ca>20&&P>0.5,                ids:[61,62]},
+    {cond:Ca>10&&S>100,                ids:[70]},
+    {cond:Fe>40&&O2<5,                 ids:[34,49,53]},
+    {cond:Fe>20&&O2>5,                 ids:[33,35]},
+    {cond:Fe>10&&CO2>0,                ids:[25]},
+    {cond:Si>150,                      ids:[1,100]},
+    {cond:Si>80&&H2O>10,              ids:[1,100]},
+    {cond:Mg>30,                       ids:[4,10,24]},
+    {cond:Mg>20&&Si>50,               ids:[11,4]},
+    {cond:Cu>80,                       ids:[50,29,28]},
+    {cond:Cu>80&&S>500,               ids:[57,74]},
+    {cond:S>2000&&H2S>1,              ids:[49,85,53]},
+    {cond:H2S>5,                       ids:[55,56]},
+    {cond:Ni>100,                      ids:[54,52]},
+    {cond:V>200,                       ids:[65]},
+    {cond:pH<4&&Fe>20,                ids:[73]},
+    {cond:H2O>60,                      ids:[79,80]},
+    {cond:Temp>50&&S>1000,            ids:[85,49]},
+    {cond:Mg>10&&Temp<-20&&H2O>30,  ids:[72]},
+    {cond:Ca>10&&Mg>10,              ids:[23]},
+    {cond:Ca>10&&pH>7&&CO2>0.01,    ids:[21,22]},
+    {cond:O2>15&&Mg>15&&P>0.3,      ids:[61,62,6]},
+    {cond:Si>50&&Mg>20,              ids:[4,5,6]},
+    {cond:true,                        ids:[1,3,7]},// siempre presentes
+  ];
+  const added=new Set();
+  const result=[];
+  rules.forEach(rule=>{
+    if(rule.cond){
+      rule.ids.forEach(id=>{
+        if(!added.has(id)){
+          const m=MINERALS_DB.find(m=>m.id===id);
+          if(m){result.push(m);added.add(id);}
+        }
+      });
+    }
+  });
+  return result.slice(0,15);
+}
+
+function getMineralColor(group){
+  const colors={
+    'Silicatos':'#60A5FA','Carbonatos':'#4ADE80','Óxidos':'#F87171',
+    'Sulfuros':'#FBBF24','Fosfatos':'#A78BFA','Sulfatos':'#F472B6',
+    'Halogenuros':'#34D399','Elementos nativos':'#FCD34D',
+    'Boratos':'#6EE7B7','Vanadatos':'#00D4AA','Mineraloides':'#94A3B8',
+  };
+  return colors[group]||'#94A3B8';
+}
+
+function getHardnessBar(h){
+  const pct=Math.round((h/10)*100);
+  const col=h>=7?'#F87171':h>=5?'#FBBF24':'#4ADE80';
+  return`<div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;"><div style="height:100%;width:${pct}%;background:${col};border-radius:2px;"></div></div><span style="font-size:8px;color:${col};font-family:'JetBrains Mono',monospace;width:20px;">${h}</span></div>`;
+}
+
+// ─── Render pestaña Minerales ────────────────────────────────
+function renderMinerals(el){
+  const minerals=getMineralsForPlanet(vals);
+  const score=calcScore(vals);
+  const code=planetCode(vals);
+  const groups=[...new Set(minerals.map(m=>m.group))];
+
+  // Elemento más representado en el planeta
+  const elemCount={};
+  minerals.forEach(m=>m.elements.forEach(e=>{elemCount[e]=(elemCount[e]||0)+1;}));
+  const topElem=Object.entries(elemCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  el.innerHTML=`
+<div style="display:flex;height:100%;overflow:hidden;">
+
+  <!-- Panel izquierdo: estadísticas y búsqueda -->
+  <div class="scroll" style="width:220px;border-right:1px solid var(--border);padding:12px;flex-shrink:0;">
+    <div class="label">${lang==='en'?'Planet Mineralogy':'Mineralogía del Planeta'}</div>
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;font-family:'JetBrains Mono',monospace;">${code}</div>
+      ${[
+        {l:lang==='en'?'Detected minerals':'Minerales detectados',v:`${minerals.length}`,c:'var(--teal)'},
+        {l:lang==='en'?'Mineral groups':'Grupos minerales',v:`${groups.length}`,c:'#60A5FA'},
+        {l:lang==='en'?'Habitability':'Habitabilidad',v:`${Math.round(score*100)}%`,c:score>=0.6?'var(--teal)':'#FBBF24'},
+        {l:lang==='en'?'IMA total':'Total IMA Mindat',v:'6,210',c:'#94A3B8'},
+      ].map(({l,v,c})=>`
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
+          <span style="font-size:9px;color:var(--muted);">${l}</span>
+          <span style="font-size:11px;font-weight:700;color:${c};font-family:'JetBrains Mono',monospace;">${v}</span>
+        </div>`).join('')}
+    </div>
+
+    <div class="label">${lang==='en'?'Dominant elements':'Elementos dominantes'}</div>
+    ${topElem.map(([el2,count])=>`
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <div style="width:28px;height:28px;border-radius:5px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--teal);font-family:'JetBrains Mono',monospace;flex-shrink:0;">${el2}</div>
+        <div style="flex:1;">
+          <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;">
+            <div style="height:100%;width:${Math.round(count/minerals.length*100)}%;background:var(--teal);border-radius:2px;"></div>
+          </div>
+          <div style="font-size:8px;color:var(--muted);margin-top:2px;">${count} ${lang==='en'?'minerals':'minerales'}</div>
+        </div>
+      </div>`).join('')}
+
+    <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;">
+      <div class="label">${lang==='en'?'Groups present':'Grupos presentes'}</div>
+      ${groups.map(g=>{
+        const col=getMineralColor(g);
+        const count=minerals.filter(m=>m.group===g).length;
+        return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <div style="width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0;"></div>
+          <span style="font-size:10px;color:${col};">${g}</span>
+          <span style="font-size:9px;color:var(--dim);margin-left:auto;">${count}</span>
+        </div>`;}).join('')}
+    </div>
+
+    <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;">
+      <div style="font-size:9px;color:var(--dim);line-height:1.6;">
+        <div style="color:var(--muted);margin-bottom:4px;font-size:8px;text-transform:uppercase;letter-spacing:.08em;">${lang==='en'?'Data source':'Fuente de datos'}</div>
+        <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;font-size:10px;">mindat.org</a><br>
+        <span style="font-size:8px;">IMA-CNMNC · CC BY-NC-SA 4.0</span><br>
+        <span style="font-size:8px;color:var(--dim);">6,210 especies aprobadas</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Centro: grid de minerales -->
+  <div class="scroll" style="flex:1;padding:14px 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">${lang==='en'?'Minerals of this planet':'Minerales de este planeta'}</div>
+        <div style="font-size:10px;color:var(--muted);">${lang==='en'?'Based on current mineral composition · Source: Mindat.org':'Basado en la composición mineral actual · Fuente: Mindat.org'}</div>
+      </div>
+      <div style="font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;text-align:right;">
+        ${lang==='en'?'Showing':'Mostrando'} ${minerals.length} / 6,210<br>
+        <span style="color:var(--muted);">${lang==='en'?'IMA-approved species':'especies IMA aprobadas'}</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;">
+      ${minerals.map((m,i)=>{
+        const col=getMineralColor(m.group);
+        const nameDisp=lang==='en'?m.name:m.name_es;
+        return`
+        <div class="card" style="animation:fadeIn .3s ease both;animation-delay:${i*.04}s;border-color:${col}25;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${col},transparent);"></div>
+          <!-- Header -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:${col};">${nameDisp}</div>
+              <div style="font-size:9px;color:var(--muted);margin-top:1px;font-family:'JetBrains Mono',monospace;">${m.formula}</div>
+            </div>
+            <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:${col}18;color:${col};flex-shrink:0;margin-left:6px;">${m.group}</span>
+          </div>
+
+          <!-- Propiedades físicas -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">
+            <div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${lang==='en'?'Hardness':'Dureza'} (Mohs)</div>
+              ${getHardnessBar(m.hardness)}
+            </div>
+            <div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${lang==='en'?'Density':'Densidad'} (g/cm³)</div>
+              <div style="font-size:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-weight:600;">${m.density}</div>
+            </div>
+          </div>
+
+          <!-- Color y brillo -->
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px;">${lang==='en'?'Color':'Color'}</div>
+              <div style="font-size:9px;color:var(--text);">${m.color}</div>
+            </div>
+            <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 6px;">
+              <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px;">${lang==='en'?'Luster':'Brillo'}</div>
+              <div style="font-size:9px;color:var(--text);">${m.luster}</div>
+            </div>
+          </div>
+
+          <!-- Elementos -->
+          <div style="margin-bottom:8px;">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${lang==='en'?'Elements':'Elementos'}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+              ${m.elements.map(e=>`
+                <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);color:var(--teal);font-family:'JetBrains Mono',monospace;">${e}</span>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Rol biológico -->
+          <div style="background:${col}08;border-radius:5px;padding:5px 8px;margin-bottom:8px;border:0.5px solid ${col}20;">
+            <div style="font-size:7px;color:${col};text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">🧬 ${lang==='en'?'Biological role':'Rol biológico'}</div>
+            <div style="font-size:9px;color:var(--muted);line-height:1.5;">${m.bio_role}</div>
+          </div>
+
+          <!-- Link Mindat -->
+          <a href="${m.mindat_url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--teal);text-decoration:none;background:rgba(0,212,170,0.06);border:0.5px solid rgba(0,212,170,0.2);border-radius:5px;padding:4px 8px;transition:all .15s;"
+            onmouseover="this.style.background='rgba(0,212,170,0.12)'"
+            onmouseout="this.style.background='rgba(0,212,170,0.06)'">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#00D4AA" stroke-width="0.8"/><path d="M3 5h4M5 3v4" stroke="#00D4AA" stroke-width="0.8"/></svg>
+            Ver en Mindat.org
+            <span style="margin-left:auto;opacity:.5;">↗</span>
+          </a>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Footer Mindat -->
+    <div style="margin-top:16px;padding:12px;background:rgba(0,212,170,0.04);border:0.5px solid rgba(0,212,170,0.15);border-radius:10px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);line-height:1.7;">
+        ${lang==='en'
+          ?`Data sourced from <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;">mindat.org</a> — The world's largest open mineralogy database with <b style="color:var(--teal);">6,210</b> IMA-approved mineral species. License: CC BY-NC-SA 4.0`
+          :`Datos obtenidos de <a href="https://www.mindat.org" target="_blank" style="color:var(--teal);text-decoration:none;">mindat.org</a> — La mayor base de datos de mineralogía del mundo con <b style="color:var(--teal);">6,210</b> especies minerales aprobadas por la IMA. Licencia: CC BY-NC-SA 4.0`}
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+
+// ─── Mis Planetas ────────────────────────────────────
+async function renderMyPlanets(el){
+  // Si no hay sesión, mostrar pantalla de login
+  if(!clerkUser){
+    el.innerHTML=`
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;padding:40px;">
+        <div style="font-size:48px;">🪐</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text);">${lang==='en'?'Your planet collection':'Tu colección de planetas'}</div>
+        <div style="font-size:12px;color:var(--muted);text-align:center;max-width:360px;line-height:1.7;">
+          ${lang==='en'
+            ?'Sign in to save your planets permanently and access them from any device.'
+            :'Inicia sesión para guardar tus planetas permanentemente y acceder desde cualquier dispositivo.'}
+        </div>
+        <button onclick="openSignIn()" class="btn btn-teal" style="font-size:13px;padding:10px 28px;font-weight:700;">
+          👤 ${lang==='en'?'Sign in / Register':'Iniciar sesión / Registrarse'}
+        </button>
+        <div style="font-size:10px;color:var(--dim);">
+          ${lang==='en'?'Free · No credit card required':'Gratis · Sin tarjeta de crédito'}
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Mostrar loading
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:10px;">
+      <div style="width:28px;height:28px;border:3px solid rgba(0,212,170,0.3);border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <div style="font-size:11px;color:var(--muted);">${lang==='en'?'Loading your planets…':'Cargando tus planetas…'}</div>
+    </div>`;
+
+  // Cargar planetas del usuario
+  const { data: planets, error } = await sb
+    .from('planets')
+    .select('*')
+    .eq('user_id', clerkUser.id)
+    .order('created_at', { ascending: false });
+
+  if(error || !planets){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted);">${lang==='en'?'Error loading planets.':'Error cargando planetas.'}</div>`;
+    return;
+  }
+
+  const name = clerkUser.firstName || clerkUser.username || 'Explorador';
+
+  el.innerHTML=`
+    <div style="padding:20px 24px;overflow-y:auto;height:100%;">
+      <!-- Header usuario -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:16px;background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;">
+        <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#60A5FA);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#000;flex-shrink:0;">
+          ${name.slice(0,2).toUpperCase()}
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;">${lang==='en'?'Welcome back,':'Bienvenido,'} ${name}</div>
+          <div style="font-size:11px;color:var(--muted);">${clerkUser.emailAddresses?.[0]?.emailAddress || ''}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right;">
+          <div style="font-size:28px;font-weight:800;color:var(--teal);font-family:'JetBrains Mono',monospace;">${planets.length}</div>
+          <div style="font-size:10px;color:var(--muted);">${lang==='en'?'planets created':'planetas creados'}</div>
+        </div>
+      </div>
+
+      ${planets.length === 0 ? `
+        <div style="text-align:center;padding:40px;color:var(--muted);">
+          <div style="font-size:32px;margin-bottom:10px;">🌌</div>
+          <div style="font-size:14px;margin-bottom:6px;">${lang==='en'?'No planets yet':'Sin planetas aún'}</div>
+          <div style="font-size:11px;">${lang==='en'?'Create your first planet!':'¡Crea tu primer planeta!'}</div>
+          <button onclick="switchTab('planet')" class="btn btn-teal" style="margin-top:14px;font-size:12px;">🌍 ${lang==='en'?'Create planet':'Crear planeta'}</button>
+        </div>
+      ` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+          ${planets.map(p => {
+            const score = p.score || 0;
+            const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+            const v = p.vals || {};
+            const date = new Date(p.created_at).toLocaleDateString(lang==='en'?'en-US':'es-ES',{day:'numeric',month:'short',year:'numeric'});
+            const planetCol = v.H2S>2?'#B8860B':v.Temp<-20?'#7AA0C4':v.Temp>50?'#C0441A':v.H2O>30?'#1D6B8C':'#4A7A4A';
+            const minerals = getMineralsForPlanet(v).slice(0,3).map(m=>m.name_es||m.name).join(', ');
+            return`
+            <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s;"
+              onmouseover="this.style.borderColor='var(--teal)';this.style.transform='translateY(-2px)'"
+              onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'"
+              onclick="loadPlanetFromGallery('${p.code}');switchTab('planet');">
+              <!-- Mini planeta -->
+              <div style="display:flex;justify-content:center;margin-bottom:10px;">
+                <svg viewBox="0 0 80 80" width="80" height="80">
+                  <defs>
+                    <radialGradient id="pg-${p.code}" cx="35%" cy="35%">
+                      <stop offset="0%" stop-color="white" stop-opacity="0.15"/>
+                      <stop offset="100%" stop-color="${planetCol}"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="40" cy="40" r="34" fill="${scoreCol}15"/>
+                  <circle cx="40" cy="40" r="28" fill="url(#pg-${p.code})"/>
+                  ${v.H2O>25?`<ellipse cx="32" cy="46" rx="10" ry="6" fill="#1E90FF" opacity="0.4"/>`:'' }
+                  ${v.Temp<-15?`<ellipse cx="40" cy="14" rx="14" ry="5" fill="white" opacity="0.5"/>`:'' }
+                  <ellipse cx="30" cy="30" rx="10" ry="6" fill="white" opacity="0.08"/>
+                  <ellipse cx="40" cy="40" rx="34" ry="8" fill="none" stroke="${scoreCol}40" stroke-width="1" stroke-dasharray="4 3"/>
+                </svg>
+              </div>
+              <!-- Código -->
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--teal);text-align:center;margin-bottom:6px;letter-spacing:.06em;">${p.code}</div>
+              <!-- Score -->
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-size:9px;color:var(--muted);">${date}</div>
+                <div style="font-size:13px;font-weight:800;color:${scoreCol};font-family:'JetBrains Mono',monospace;">${Math.round(score*100)}%</div>
+              </div>
+              <!-- Barra score -->
+              <div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:8px;">
+                <div style="height:100%;width:${Math.round(score*100)}%;background:${scoreCol};border-radius:2px;"></div>
+              </div>
+              <!-- Condiciones -->
+              <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;">
+                ${[
+                  v.O2>15?{l:`O₂ ${v.O2}%`,c:'#00D4AA'}:null,
+                  v.H2O>30?{l:`H₂O ${v.H2O}%`,c:'#60A5FA'}:null,
+                  v.H2S>1?{l:`H₂S ${v.H2S}%`,c:'#FBBF24'}:null,
+                  v.Temp?{l:`${v.Temp}°C`,c:v.Temp<-20?'#60A5FA':v.Temp>50?'#F87171':'#4ADE80'}:null,
+                ].filter(Boolean).slice(0,3).map(t=>`
+                  <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
+                `).join('')}
+              </div>
+              <!-- Minerales -->
+              <div style="font-size:9px;color:var(--dim);line-height:1.4;">⬡ ${minerals}</div>
+              <!-- Botones -->
+              <div style="display:flex;gap:6px;margin-top:10px;">
+                <button onclick="event.stopPropagation();loadPlanetFromGallery('${p.code}');switchTab('planet');"
+                  class="btn btn-teal" style="flex:1;font-size:10px;padding:5px;">
+                  ${lang==='en'?'Load':'Cargar'} →
+                </button>
+                <button onclick="event.stopPropagation();deletePlanet('${p.id}','${p.code}')"
+                  title="${lang==='en'?'Delete planet':'Eliminar planeta'}"
+                  style="flex-shrink:0;background:rgba(248,113,113,0.08);border:0.5px solid rgba(248,113,113,0.3);
+                    color:#F87171;font-size:11px;padding:5px 10px;cursor:pointer;border-radius:6px;
+                    font-family:inherit;transition:all .15s;"
+                  onmouseover="this.style.background='rgba(248,113,113,0.18)'"
+                  onmouseout="this.style.background='rgba(248,113,113,0.08)'">
+                  🗑
+                </button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+}
+
+// ─── Eliminar planeta ─────────────────────────────────
+async function deletePlanet(id, code){
+  const E = lang==='en';
+  const ok = confirm(E
+    ? `Delete planet ${code}? This cannot be undone.`
+    : `¿Eliminar el planeta ${code}? Esta acción no se puede deshacer.`);
+  if(!ok) return;
+
+  const { error, count } = await sb
+    .from('planets')
+    .delete({ count: 'exact' })
+    .eq('id', id);
+
+  if(error){
+    // Mostrar el error real para diagnóstico
+    console.error('Delete error:', error);
+    showToast(
+      (E?'Error: ':'Error: ') + (error.message||error.code||'unknown'),
+      'error'
+    );
+    return;
+  }
+
+  // Si no hubo error pero tampoco se borró nada → política RLS bloqueando
+  if(count===0){
+    showToast(
+      E ? 'Could not delete — permission denied (RLS policy).'
+        : 'No se pudo eliminar — permiso denegado (política RLS).',
+      'error'
+    );
+    return;
+  }
+
+  showToast(E ? '✓ Planet deleted' : '✓ Planeta eliminado', 'success');
+  // Recargar la lista
+  const main = document.getElementById('main');
+  if(main) renderMyPlanets(main);
+}
+
+// ─── Árbol Taxonómico — toggle y sincronización ───────
+let taxTreeOpen=false;
+function toggleTaxTree(){
+  const cont=document.getElementById('tax-tree-container');
+  const icon=document.getElementById('tax-toggle-icon');
+  if(!cont) return;
+  taxTreeOpen=!taxTreeOpen;
+  cont.style.height = taxTreeOpen ? '600px' : '0';
+  if(icon) icon.style.transform = taxTreeOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  // Al abrir, sincronizar los parámetros actuales
+  if(taxTreeOpen) setTimeout(syncTaxTree, 400);
+}
+
+function syncTaxTree(){
+  const frame=document.getElementById('tax-tree-frame');
+  if(!frame || !frame.contentWindow) return;
+  try{
+    frame.contentWindow.postMessage({
+      type:'bioplanet-params',
+      vals:{...vals},
+      code: planetCode(vals),
+    }, '*');
+  }catch(e){}
+}
+
+
+// ─── VALIDACIÓN TIERRA ────────────────────────────────
+function renderValidation(el){
+  const earthVals = {...PRESETS["Tierra"]};
+  const earthCreatures = Array.from({length:6},(_,i)=>makeCreature(earthVals, generateCreatureSeed(earthVals,i)));
+  const results = earthCreatures.map(cr=>{
+    const matches = findBestEarthMatches(cr, earthVals, 3);
+    return {cr, matches, bestSimilarity: matches[0]?.similarity||0};
+  }).sort((a,b)=>b.bestSimilarity-a.bestSimilarity);
+
+  const avgSimilarity = Math.round(results.reduce((s,r)=>s+r.bestSimilarity,0)/results.length);
+  const accuracyLabel = avgSimilarity>=70
+    ?(lang==='en'?'High accuracy':'Alta precisión')
+    :avgSimilarity>=50
+    ?(lang==='en'?'Good accuracy':'Buena precisión')
+    :(lang==='en'?'Moderate accuracy':'Precisión moderada');
+  const accuracyCol = avgSimilarity>=70?'#00D4AA':avgSimilarity>=50?'#FBBF24':'#94A3B8';
+
+  const speciesAnalysis = EARTH_SPECIES_DB.map(sp=>{
+    const bestCreature = earthCreatures.reduce((best,cr)=>{
+      const sim = calcSpeciesSimilarity(cr, sp, earthVals);
+      return sim > (best?.sim||0) ? {cr, sim} : best;
+    }, null);
+    return {species:sp, ...bestCreature};
+  }).sort((a,b)=>b.sim-a.sim);
+
+  const E = lang==='en';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+    <div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">
+        🔬 ${E?'Scientific Validation — Earth Parameters':'Validación Científica — Parámetros de la Tierra'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);">
+        ${E?'Can BioPlanet recreate Earth life using real mineral parameters?':'¿Puede BioPlanet recrear la vida terrestre con los minerales reales de la Tierra?'}
+      </div>
+    </div>
+    <button onclick="applyPreset('Tierra');switchTab('planet');" class="btn btn-teal" style="font-size:11px;flex-shrink:0;">
+      ${E?'Use Earth parameters →':'Usar parámetros Tierra →'}
+    </button>
+  </div>
+
+  <!-- ═══ ÁRBOL TAXONÓMICO TERRESTRE (iframe aislado) ═══ -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+    margin-bottom:16px;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;"
+      onclick="toggleTaxTree()">
+      <div>
+        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;">
+          🌳 ${E?'Terrestrial Taxonomic Tree':'Árbol Taxonómico Terrestre'}
+          <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:rgba(0,212,255,0.12);
+            border:0.5px solid rgba(0,212,255,0.3);color:#00d4ff;font-weight:600;">
+            ${E?'LIVE SYNC':'SINCRONIZADO'}
+          </span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+          ${E?'Earth species organ tree — reacts to your planet sliders in real time':'Árbol de órganos de especies terrestres — reacciona a los sliders de tu planeta en tiempo real'}
+        </div>
+      </div>
+      <div id="tax-toggle-icon" style="font-size:14px;color:var(--teal);transition:transform .2s;">▼</div>
+    </div>
+    <div id="tax-tree-container" style="height:0;overflow:hidden;transition:height .3s ease;">
+      <iframe id="tax-tree-frame" src="taxonomic-tree.html"
+        style="width:100%;height:600px;border:none;display:block;background:#07080f;"
+        title="Taxonomic Tree"></iframe>
+    </div>
+  </div>
+
+  <!-- Score global -->
+  <div style="background:${accuracyCol}0D;border:1px solid ${accuracyCol}30;border-radius:14px;padding:18px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;align-items:center;">
+    <div style="text-align:center;">
+      <div style="font-size:48px;font-weight:900;color:${accuracyCol};font-family:'JetBrains Mono',monospace;line-height:1;">${avgSimilarity}%</div>
+      <div style="font-size:10px;color:${accuracyCol};margin-top:4px;font-weight:600;">${accuracyLabel}</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;">${E?'average similarity':'similitud promedio'}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Parameters used':'Parámetros usados'}</div>
+      <div style="font-size:9px;color:var(--teal);font-family:'JetBrains Mono',monospace;line-height:1.9;">
+        Ca: 41K ppm<br>Fe: 56K ppm<br>O₂: 20.95%<br>T°: 15°C
+      </div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Database':'Base de datos'}</div>
+      <div style="font-size:9px;line-height:1.9;color:var(--text);">
+        ${EARTH_SPECIES_DB.length} ${E?'real species':'especies reales'}<br>
+        ${earthCreatures.length} ${E?'generated creatures':'criaturas generadas'}<br>
+        ${EARTH_SPECIES_DB.length * earthCreatures.length} ${E?'comparisons':'comparaciones'}<br>
+        ${E?'Engine: real biochemistry':'Motor: bioquímico real'}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${E?'Conclusion':'Conclusión'}</div>
+      <div style="font-size:10px;color:var(--text);line-height:1.6;">
+        ${avgSimilarity>=70
+          ?(E?'The engine reproduces Earth life characteristics with high fidelity. Scientifically valid.':'El motor reproduce con alta fidelidad las características de la vida terrestre. Válido científicamente.')
+          :avgSimilarity>=50
+          ?(E?'The engine correctly reproduces general traits. Differences reflect niche diversity.':'El motor reproduce los rasgos generales correctamente. Las diferencias reflejan la diversidad de nichos.')
+          :(E?'The engine captures fundamental traits. Earth diversity requires more granularity.':'El motor captura los rasgos fundamentales. La diversidad de la Tierra requiere mayor granularidad.')}
+      </div>
+    </div>
+  </div>
+
+  <!-- Dos columnas -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+    <div>
+      <div class="label">${E?'Creatures generated with Earth parameters':'Criaturas generadas con parámetros de la Tierra'}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${results.map(({cr,matches,bestSimilarity})=>{
+          const best = matches[0];
+          const simCol = bestSimilarity>=70?'#00D4AA':bestSimilarity>=50?'#FBBF24':'#94A3B8';
+          const commonName = E ? (best?.common_en||best?.common_es||'') : (best?.common_es||'');
+          return`
+          <div style="background:var(--bg2);border:0.5px solid ${simCol}30;border-radius:10px;padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div>
+                <div style="font-size:11px;font-style:italic;color:${cr.orgCol};font-weight:700;">${cr.latinName}</div>
+                <div style="font-size:9px;color:var(--muted);">${cr.complexity} · ${cr.meta}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:18px;font-weight:800;color:${simCol};font-family:'JetBrains Mono',monospace;">${bestSimilarity}%</div>
+                <div style="font-size:8px;color:var(--muted);">${E?'similarity':'similitud'}</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px;">
+              ${[cr.skeleton,cr.blood,cr.nervous,cr.thermo].map(t=>`
+                <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:rgba(255,255,255,0.05);color:var(--muted);">${t}</span>
+              `).join('')}
+            </div>
+            ${best&&bestSimilarity>=20?`
+              <div style="background:${simCol}0D;border-radius:6px;padding:6px 8px;">
+                <div style="font-size:9px;color:var(--muted);">${E?'Closest analog:':'Análogo más cercano:'}</div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
+                  <span style="font-size:14px;">${best.emoji}</span>
+                  <div>
+                    <div style="font-size:10px;font-style:italic;color:${simCol};font-weight:600;">${best.name}</div>
+                    <div style="font-size:8px;color:var(--muted);">${commonName} · ${best.class}</div>
+                  </div>
+                </div>
+              </div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div>
+      <div class="label">${E?'Real species — BioPlanet engine accuracy':'Especies reales — precisión del motor BioPlanet'}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${speciesAnalysis.map(({species,cr,sim})=>{
+          const simCol = sim>=70?'#00D4AA':sim>=50?'#FBBF24':sim>=30?'#94A3B8':'#3A4560';
+          const commonName = E ? (species.common_en||species.common_es) : species.common_es;
+          const fidelityLabel = sim>=70
+            ?(E?'✓ High fidelity':'✓ Alta fidelidad')
+            :sim>=50?(E?'◈ Good match':'◈ Buena aproximación')
+            :sim>=30?(E?'· Convergent':'· Convergente')
+            :(E?'– Different niche':'– Nicho diferente');
+          return`
+          <div style="background:var(--bg2);border:0.5px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+              <span style="font-size:18px;flex-shrink:0;">${species.emoji}</span>
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                  <div>
+                    <span style="font-size:10px;font-style:italic;color:var(--text);font-weight:600;">${species.name}</span>
+                    <span style="font-size:9px;color:var(--muted);margin-left:5px;">${commonName}</span>
+                  </div>
+                  <span style="font-size:11px;font-weight:800;color:${simCol};font-family:'JetBrains Mono',monospace;">${sim}%</span>
+                </div>
+                <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:4px;">
+                  <div style="height:100%;width:${sim}%;background:${simCol};border-radius:2px;transition:width .5s;${sim>=70?`box-shadow:0 0 6px ${simCol}60;`:''}"></div>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:8px;color:var(--muted);display:flex;justify-content:space-between;">
+              <span>${species.kingdom} · ${species.class}</span>
+              <span style="color:${sim>=70?'#00D4AA':sim>=50?'#FBBF24':'var(--dim)'};">${fidelityLabel}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- Conclusión científica -->
+  <div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:16px;">
+    <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:10px;">
+      🧬 ${E?'Scientific conclusion: Can BioPlanet recreate Earth life?':'Conclusión científica: ¿Puede BioPlanet recrear la vida terrestre?'}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:11px;color:var(--muted);line-height:1.8;">
+      <div>
+        <div style="color:var(--teal);font-weight:600;margin-bottom:6px;">✓ ${E?'What the engine reproduces correctly:':'Lo que el motor reproduce correctamente:'}</div>
+        ${E?`
+        <div>· Calcic endoskeleton (Ca + P + O₂) — all vertebrates</div>
+        <div>· Red hemoglobin (Fe + O₂) — mammals, birds, fish</div>
+        <div>· Centralized brain (Ca + Fe + P + O₂) — primates</div>
+        <div>· Homeothermy (high O₂ + moderate temperature)</div>
+        <div>· Photosynthesis with Mg + Mn + CO₂ — plants and algae</div>
+        <div>· H₂S chemosynthesis without O₂ — Riftia, Pyrolobus</div>
+        <div>· Blue hemocyanin with high Cu — octopuses, arthropods</div>
+        `:`
+        <div>· Endoesqueleto calcico (Ca + P + O₂) — como todos los vertebrados</div>
+        <div>· Hemoglobina roja (Fe + O₂) — como mamíferos, aves, peces</div>
+        <div>· Cerebro centralizado (Ca + Fe + P + O₂) — como primates</div>
+        <div>· Homeotermia (O₂ alto + temperatura moderada)</div>
+        <div>· Fotosíntesis con Mg + Mn + CO₂ — como plantas y algas</div>
+        <div>· Quimiosíntesis H₂S sin O₂ — como Riftia y Pyrolobus</div>
+        <div>· Hemocianina azul con Cu alto — como pulpos y artrópodos</div>
+        `}
+      </div>
+      <div>
+        <div style="color:#FBBF24;font-weight:600;margin-bottom:6px;">◈ ${E?'Current limitations:':'Limitaciones actuales:'}</div>
+        ${E?`
+        <div>· Earth has 8.7M species — engine generates general archetypes</div>
+        <div>· Convergent evolution creates similar organisms via different paths</div>
+        <div>· Traits like feathers, scales or fur need more parameters</div>
+        <div>· Geographic speciation (islands, mountains) not modeled</div>
+        <div>· Complex symbioses (mitochondria, chloroplasts) are endosymbiotic</div>
+        <div style="margin-top:8px;color:var(--teal);font-weight:600;">
+          → With Earth parameters, the engine generates biochemically equivalent organisms with ~${avgSimilarity}% accuracy on fundamental traits.
+        </div>
+        `:`
+        <div>· La Tierra tiene 8.7M de especies — el motor genera arquetipos generales</div>
+        <div>· La evolución convergente crea organismos similares por distintos caminos</div>
+        <div>· Rasgos como plumaje, escamas o pelaje requieren más parámetros</div>
+        <div>· La especiación geográfica (islas, montañas) no está modelada</div>
+        <div>· Simbiosis complejas (mitocondrias, cloroplastos) son endosimbióticas</div>
+        <div style="margin-top:8px;color:var(--teal);font-weight:600;">
+          → Con los parámetros de la Tierra, el motor genera organismos bioquímicamente equivalentes con ~${avgSimilarity}% de precisión en rasgos fundamentales.
+        </div>
+        `}
+      </div>
+    </div>
+  </div>
+
+</div>`;
+}
+
+
+
+// ═══════════════════════════════════════════════════════
+// MOTOR DE FENÓMENOS NATURALES
+// Genera fenómenos únicos basados en composición mineral
+// Ciencia: termodinámica, electroquímica, geología planetaria
+// ═══════════════════════════════════════════════════════
+
+function generatePhenomena(v){
+  const {Ca,Fe,Si,P,Mg,Cu,S,Ni,V,O2,CO2,H2S,H2O,Temp,pH,pressure,gravity}=v;
+  const score=calcScore(v);
+  const phenomena=[];
+
+  // ─── FENÓMENOS TERRESTRES (presentes si las condiciones coinciden) ───
+
+  if(H2O>20&&Temp>-10&&Temp<80&&pressure>0.3){
+    const intensity=Math.min(100,Math.round(H2O*0.8+pressure*20));
+    const frequency=H2O>60?'Constant':H2O>40?'Daily':'Seasonal';
+    phenomena.push({
+      id:'rain', icon:'🌧',
+      name:lang==='en'?'Rain / Water precipitation':'Lluvia / Precipitación de agua',
+      type:'terrestrial',
+      col:'#60A5FA',
+      intensity, frequency,
+      earth_analog:lang==='en'?'Identical to Earth rain':'Idéntico a la lluvia terrestre',
+      science:lang==='en'
+        ?`Water evaporates at surface (${Temp}°C) and condenses in upper atmosphere where T° is lower. pH of rain: ${pH<5.5?pH.toFixed(1)+' (acid rain due to low pH)':'~5.6 (natural carbonic acid)'}. Precipitation rate estimated at ${Math.round(H2O*0.8)} mm/year.`
+        :`El agua se evapora en la superficie (${Temp}°C) y condensa en la alta atmósfera donde T° es menor. pH de la lluvia: ${pH<5.5?pH.toFixed(1)+' (lluvia ácida por pH bajo)':'~5.6 (ácido carbónico natural)'}. Tasa de precipitación estimada: ${Math.round(H2O*0.8)} mm/año.`,
+      evolution:lang==='en'
+        ?'Drives mineral dissolution and transport. Plants and root systems evolve to capture water. Waterproof cuticles develop.'
+        :'Impulsa la disolución y transporte de minerales. Plantas y sistemas radiculares evolucionan para capturar agua. Se desarrollan cutículas impermeables.',
+      affected_traits:lang==='en'?['Skin/cuticle','Root systems','Mineral absorption']:['Tegumento/cutícula','Sistemas radiculares','Absorción mineral'],
+    });
+  }
+
+  if(H2O>25&&Temp>5&&pressure>0.5&&gravity>0.3){
+    const intensity=Math.min(100,Math.round((H2O/100)*gravity*50+pressure*15));
+    phenomena.push({
+      id:'storm', icon:'⛈',
+      name:lang==='en'?'Electrical storms / Lightning':'Tormentas eléctricas / Rayos',
+      type:'terrestrial',
+      col:'#FBBF24',
+      intensity, frequency:H2O>50?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Similar to Earth thunderstorms':'Similar a tormentas terrestres',
+      science:lang==='en'
+        ?`Charge separation in water droplet clouds generates potentials of ${Math.round(intensity*3)} MV. Lightning channels reach 30,000K — 5× hotter than the sun's surface. Each bolt fixes ~${Math.round(N2||78)} g of atmospheric N₂ as NH₃, feeding the nitrogen cycle.`
+        :`La separación de cargas en nubes de gotas de agua genera potenciales de ${Math.round(intensity*3)} MV. Los canales de rayo alcanzan 30,000K — 5× más caliente que la superficie solar. Cada rayo fija ~${Math.round(N2||78)} g de N₂ atmosférico como NH₃, alimentando el ciclo del nitrógeno.`,
+      evolution:lang==='en'
+        ?'Lightning fixes nitrogen → fertilizes ecosystems. Creatures evolve electroreception to predict storms. Some develop electrical resistance membranes.'
+        :'Los rayos fijan nitrógeno → fertilizan ecosistemas. Las criaturas evolucionan electrorrecepción para predecir tormentas. Algunas desarrollan membranas de resistencia eléctrica.',
+      affected_traits:lang==='en'?['Electroreception','Nitrogen metabolism','Shelter behavior']:['Electrorrecepción','Metabolismo del nitrógeno','Comportamiento de refugio'],
+    });
+  }
+
+  if(H2O>40&&Temp>20&&pressure>0.8&&gravity>0.5){
+    const intensity=Math.min(100,Math.round(H2O*0.6+Temp*0.8));
+    phenomena.push({
+      id:'hurricane', icon:'🌀',
+      name:lang==='en'?'Tropical cyclones / Hurricanes':'Ciclones tropicales / Huracanes',
+      type:'terrestrial',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'Similar to Atlantic/Pacific hurricanes':'Similar a huracanes Atlántico/Pacífico',
+      science:lang==='en'
+        ?`Warm ocean evaporation (${Temp}°C) + Coriolis effect from rotation + low pressure center. Sustained winds up to ${Math.round(intensity*2.5)} km/h. Eye diameter: ${Math.round(intensity*0.5+20)} km. Energy equivalent of ${Math.round(intensity*100)} nuclear bombs/day.`
+        :`Evaporación oceánica cálida (${Temp}°C) + efecto Coriolis de la rotación + centro de baja presión. Vientos sostenidos hasta ${Math.round(intensity*2.5)} km/h. Diámetro del ojo: ${Math.round(intensity*0.5+20)} km. Energía equivalente a ${Math.round(intensity*100)} bombas nucleares/día.`,
+      evolution:lang==='en'
+        ?'Coastal creatures develop streamlined bodies. Flying species become seasonal migrants. Underground sheltering becomes dominant behavior.'
+        :'Las criaturas costeras desarrollan cuerpos aerodinámicos. Las especies voladoras se vuelven migradores estacionales. El refugio subterráneo se vuelve comportamiento dominante.',
+      affected_traits:lang==='en'?['Body streamlining','Migration','Burrowing']:['Aerodinámica corporal','Migración','Excavación'],
+    });
+  }
+
+  if(Fe>30&&Si>100&&pressure>1&&gravity>0.5){
+    const intensity=Math.min(100,Math.round(Fe*0.5+Si*0.1+pressure*10));
+    phenomena.push({
+      id:'seismic', icon:'🌋',
+      name:lang==='en'?'Seismic activity / Tectonic earthquakes':'Actividad sísmica / Terremotos tectónicos',
+      type:'terrestrial',
+      col:'#F87171',
+      intensity, frequency:intensity>70?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Similar to Earth plate tectonics':'Similar a la tectónica terrestre',
+      science:lang==='en'
+        ?`High Fe (${Fe}K ppm) and Si (${Si}K ppm) content indicates active mantle convection. Estimated magnitude: ${(intensity/20+4).toFixed(1)} Richter average. Tectonic plates driven by Fe-rich magma at ${Math.round(Temp+800)}°C in the mantle.`
+        :`Alto contenido de Fe (${Fe}K ppm) y Si (${Si}K ppm) indica convección del manto activa. Magnitud estimada: ${(intensity/20+4).toFixed(1)} Richter promedio. Placas tectónicas impulsadas por magma rico en Fe a ${Math.round(Temp+800)}°C en el manto.`,
+      evolution:lang==='en'
+        ?'Seismoreceptor organs become standard. Burrowing species gain advantage. Exoskeletons thicken for crush resistance. Communal early warning systems evolve.'
+        :'Los órganos sismorreceptores se vuelven estándar. Las especies excavadoras ganan ventaja. Los exoesqueletos se engrosan para resistir aplastamiento. Evolucionan sistemas comunitarios de alerta temprana.',
+      affected_traits:lang==='en'?['Seismoreception','Burrowing','Exoskeleton thickness']:['Sismorreceptores','Excavación','Grosor del exoesqueleto'],
+    });
+  }
+
+  if(Temp>-20&&Temp<50&&H2O>15&&gravity>0.3){
+    const intensity=Math.min(100,Math.round((50-Math.abs(Temp-15))*1.5+gravity*10));
+    phenomena.push({
+      id:'wind', icon:'💨',
+      name:lang==='en'?'Atmospheric winds / Planetary circulation':'Vientos atmosféricos / Circulación planetaria',
+      type:'terrestrial',
+      col:'#94A3B8',
+      intensity, frequency:'Constant',
+      earth_analog:lang==='en'?'Trade winds, jet streams':'Vientos alisios, corrientes en chorro',
+      science:lang==='en'
+        ?`Atmospheric pressure differential of ${(pressure*0.3).toFixed(2)} atm drives wind circulation. Estimated average speed: ${Math.round(intensity*0.8)} km/h. Polar cells + Ferrel cells + Hadley cells create global circulation pattern. ${gravity>1.5?'High gravity compresses atmosphere — stronger surface winds.':'Low gravity allows thin extended atmosphere.'}`
+        :`Diferencial de presión atmosférica de ${(pressure*0.3).toFixed(2)} atm impulsa la circulación. Velocidad media estimada: ${Math.round(intensity*0.8)} km/h. Células polares + células de Ferrel + células de Hadley crean el patrón global. ${gravity>1.5?'Alta gravedad comprime la atmósfera — vientos superficiales más fuertes.':'Baja gravedad permite atmósfera extendida y delgada.'}`,
+      evolution:lang==='en'
+        ?'Seeds and spores dispersed by wind — accelerates plant colonization. Winged species evolve efficient soaring. Aerodynamic body shapes selected strongly.'
+        :'Semillas y esporas dispersadas por el viento — acelera la colonización vegetal. Las especies aladas evolucionan el planeo eficiente. Las formas corporales aerodinámicas se seleccionan con fuerza.',
+      affected_traits:lang==='en'?['Flight efficiency','Spore dispersal','Body shape']:['Eficiencia de vuelo','Dispersión de esporas','Forma corporal'],
+    });
+  }
+
+  // ─── FENÓMENOS ALIENÍGENAS ───────────────────────────
+
+  if(Fe>55&&Temp>60){
+    const intensity=Math.min(100,Math.round(Fe*0.8+Temp*0.3));
+    phenomena.push({
+      id:'iron_rain', icon:'🔴',
+      name:lang==='en'?'Iron Rain — liquid metal precipitation':'Lluvia de hierro líquido',
+      type:'alien',
+      col:'#F87171',
+      intensity, frequency:Temp>100?'Daily':'Seasonal',
+      earth_analog:lang==='en'?'Similar to exoplanet WASP-76b (2020 discovery)':'Similar al exoplaneta WASP-76b (descubierto 2020)',
+      science:lang==='en'
+        ?`Fe concentration of ${Fe}K ppm combined with T° ${Temp}°C volatilizes iron oxides at high altitude. As temperature drops with altitude, liquid Fe droplets precipitate. Droplet diameter: 0.1–5mm. Contact temperature on impact: ~${Math.round(Temp*0.7)}°C. Chemical reaction: Fe₂O₃ → 2Fe(l) + 3/2O₂. WASP-76b confirmed this phenomenon in 2020 with ESPRESSO spectrograph.`
+        :`La concentración de Fe de ${Fe}K ppm combinada con T° ${Temp}°C volatiliza óxidos de hierro en la alta atmósfera. Al bajar la temperatura con la altitud, gotitas de Fe líquido precipitan. Diámetro de gotitas: 0.1–5mm. Temperatura de contacto al impactar: ~${Math.round(Temp*0.7)}°C. Reacción: Fe₂O₃ → 2Fe(l) + 3/2O₂. WASP-76b confirmó este fenómeno en 2020 con el espectrógrafo ESPRESSO.`,
+      evolution:lang==='en'
+        ?'Creatures develop metallic armor plating. Underground or cave-dwelling becomes mandatory. Photosynthetic organisms evolve metal-reflective surfaces. Fe-resistant protein structures selected.'
+        :'Las criaturas desarrollan placas de armadura metálica. La vida subterránea o en cuevas se vuelve obligatoria. Los organismos fotosintéticos evolucionan superficies reflectoras de metal. Se seleccionan estructuras proteicas resistentes al Fe.',
+      affected_traits:lang==='en'?['Armored exoskeleton','Burrowing','Metal resistance']:['Exoesqueleto blindado','Excavación','Resistencia metálica'],
+    });
+  }
+
+  if(H2S>4||S>10000){
+    const intensity=Math.min(100,Math.round(H2S*8+S*0.003));
+    phenomena.push({
+      id:'acid_storm', icon:'☠',
+      name:lang==='en'?'Sulfuric acid storms — H₂SO₄ clouds':'Tormentas de ácido sulfúrico — nubes de H₂SO₄',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:intensity>70?'Daily':'Weekly',
+      earth_analog:lang==='en'?'Identical to Venus cloud layer (H₂SO₄ at 48–70km altitude)':'Idéntico a las nubes de Venus (H₂SO₄ a 48–70km de altitud)',
+      science:lang==='en'
+        ?`H₂S (${H2S}%) + atmospheric O₂ → SO₃ → H₂SO₄ in the presence of water vapor. Cloud droplet pH: ${(2-H2S*0.1).toFixed(1)} (concentrated sulfuric acid). Temperature inside clouds: ${Math.round(Temp+30)}°C. These clouds reflect ~80% of solar radiation — causing surface cooling. On Venus confirmed at densities of 1–100 mg/m³.`
+        :`H₂S (${H2S}%) + O₂ atmosférico → SO₃ → H₂SO₄ en presencia de vapor de agua. pH de las gotitas de nube: ${(2-H2S*0.1).toFixed(1)} (ácido sulfúrico concentrado). Temperatura interior de nubes: ${Math.round(Temp+30)}°C. Estas nubes reflejan ~80% de la radiación solar — causando enfriamiento superficial. En Venus confirmado a densidades de 1–100 mg/m³.`,
+      evolution:lang==='en'
+        ?'Acid-resistant biochemistry becomes mandatory. Metalloprotein-based exoskeletons (sulfur cross-links). Creatures retreat underground during storms. Chemosynthetic organisms thrive in acid clouds.'
+        :'La bioquímica resistente al ácido se vuelve obligatoria. Exoesqueletos de metaloproteínas (puentes de azufre). Las criaturas se retiran bajo tierra durante las tormentas. Los organismos quimiosintéticos prosperan en las nubes ácidas.',
+      affected_traits:lang==='en'?['Chemical resistance','Acid-proof membrane','Chemosynthesis']:['Resistencia química','Membrana ácido-resistente','Quimiosíntesis'],
+    });
+  }
+
+  if(Si>180&&Temp<-30){
+    const intensity=Math.min(100,Math.round(Si*0.3+(Math.abs(Temp))*0.5));
+    phenomena.push({
+      id:'silicon_snow', icon:'❄',
+      name:lang==='en'?'Silicon snow — SiO₂ crystal precipitation':'Nieve de silicio — precipitación de cristales SiO₂',
+      type:'alien',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for early rocky planets':'Sin equivalente terrestre — propuesto para planetas rocosos primitivos',
+      science:lang==='en'
+        ?`At temperatures of ${Temp}°C and Si concentrations of ${Si}K ppm, SiO₂ sublimates from surface minerals and recondenses as microscopic crystals at altitude. Crystal diameter: 0.01–0.5mm. Mohs hardness 7 — abrasive like sandpaper. Accumulates in layers of ${Math.round(intensity*0.5)} cm/year. Acts as photonic reflector — increases surface albedo.`
+        :`A temperaturas de ${Temp}°C y concentraciones de Si de ${Si}K ppm, el SiO₂ sublima de minerales superficiales y recondensa como cristales microscópicos en altitud. Diámetro de cristal: 0.01–0.5mm. Dureza Mohs 7 — abrasivo como lija. Se acumula en capas de ${Math.round(intensity*0.5)} cm/año. Actúa como reflector fotónico — aumenta el albedo superficial.`,
+      evolution:lang==='en'
+        ?'Silica-resistant integument (ironically similar to diatom frustules). Creatures evolve internal SiO₂ filtration. Vision organs develop crystal-proof membranes. Some organisms biomineralize Si as armor.'
+        :'Integumento resistente a la sílice (irónicamente similar a las frústulas de diatomeas). Las criaturas evolucionan filtración interna de SiO₂. Los órganos visuales desarrollan membranas protegidas de cristales. Algunos organismos biomineralizan Si como armadura.',
+      affected_traits:lang==='en'?['Siliceous exoskeleton','Vision protection','Si biomineralization']:['Exoesqueleto silíceo','Protección visual','Biomineralización Si'],
+    });
+  }
+
+  if(Temp<-100){
+    const intensity=Math.min(100,Math.round(Math.abs(Temp)*0.6+pressure*10));
+    phenomena.push({
+      id:'methane_rain', icon:'🟡',
+      name:lang==='en'?'Methane rain — cryogenic hydrocarbon cycle':'Lluvia de metano — ciclo criogénico de hidrocarburos',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'Confirmed on Titan (Saturn moon) — methane lakes at -179°C':'Confirmado en Titán (luna de Saturno) — lagos de metano a -179°C',
+      science:lang==='en'
+        ?`At ${Temp}°C, methane (CH₄) condenses as liquid (boiling point: -162°C). Methane evaporates from surface → rises → condenses → precipitates as golden rain. Lakes of liquid methane estimated at ${Math.round(intensity*50)} km² surface area. Titan confirmed this with Cassini-Huygens in 2005. Ethane (C₂H₆) also present as seasonal component.`
+        :`A ${Temp}°C, el metano (CH₄) se condensa como líquido (punto de ebullición: -162°C). El metano evapora de la superficie → asciende → condensa → precipita como lluvia dorada. Lagos de metano líquido estimados en ${Math.round(intensity*50)} km² de superficie. Titán lo confirmó con Cassini-Huygens en 2005. El etano (C₂H₆) también presente como componente estacional.`,
+      evolution:lang==='en'
+        ?'Life based on liquid methane solvent instead of water. Cell membranes made of nitrogen compounds (azotosomes). Metabolism at -179°C — chemical reactions 10,000× slower than on Earth. Unique non-aqueous biochemistry.'
+        :'Vida basada en metano líquido como solvente en lugar de agua. Membranas celulares de compuestos nitrogenados (azotosomas). Metabolismo a -179°C — reacciones químicas 10,000× más lentas que en la Tierra. Bioquímica no acuosa única.',
+      affected_traits:lang==='en'?['Non-aqueous biochemistry','Cryogenic metabolism','Azotosome membranes']:['Bioquímica no acuosa','Metabolismo criogénico','Membranas de azotosoma'],
+    });
+  }
+
+  if(Fe>40&&Ni>100){
+    const intensity=Math.min(100,Math.round(Fe*0.4+Ni*0.2));
+    phenomena.push({
+      id:'magnetic_storm', icon:'🌐',
+      name:lang==='en'?'Magnetic storms — electromagnetic pulses':'Tormentas magnéticas — pulsos electromagnéticos',
+      type:'alien',
+      col:'#A78BFA',
+      intensity, frequency:intensity>70?'Weekly':'Monthly',
+      earth_analog:lang==='en'?'Like Earth geomagnetic storms but 10–100× stronger':'Como tormentas geomagnéticas terrestres pero 10–100× más fuertes',
+      science:lang==='en'
+        ?`Fe (${Fe}K ppm) + Ni (${Ni} ppm) generate a planetary magnetic field of ${Math.round(Fe*0.02+Ni*0.01)} Tesla (Earth: 0.00005T). Solar wind interaction creates electromagnetic pulses of ${Math.round(intensity*50)} kV/m at surface. Induced currents in conductive organisms can reach ${Math.round(intensity*0.1)} mA — enough to disrupt neural function.`
+        :`Fe (${Fe}K ppm) + Ni (${Ni} ppm) generan un campo magnético planetario de ${Math.round(Fe*0.02+Ni*0.01)} Tesla (Tierra: 0.00005T). La interacción del viento solar crea pulsos electromagnéticos de ${Math.round(intensity*50)} kV/m en la superficie. Las corrientes inducidas en organismos conductores pueden alcanzar ${Math.round(intensity*0.1)} mA — suficiente para disrupt la función neural.`,
+      evolution:lang==='en'
+        ?'Neural systems evolve Faraday-cage-like biological shielding (ferritin layers). Magnetoreception becomes universal — organisms navigate with precision. Some develop magnetic field "vision" as primary sense.'
+        :'Los sistemas nerviosos evolucionan blindaje biológico tipo jaula de Faraday (capas de ferritina). La magnetorrecepción se vuelve universal — los organismos navegan con precisión. Algunos desarrollan "visión" del campo magnético como sentido primario.',
+      affected_traits:lang==='en'?['Magnetoreception','Neural shielding','EM resistance']:['Magnetorrecepción','Blindaje neural','Resistencia EM'],
+    });
+  }
+
+  if(V>250&&Fe>30&&Temp>20&&Temp<60){
+    const intensity=Math.min(100,Math.round(V*0.2+Fe*0.3));
+    phenomena.push({
+      id:'vanadium_aurora', icon:'🟢',
+      name:lang==='en'?'Vanadium auroras — metallic green sky':'Auroras de vanadio — cielo verde metálico',
+      type:'alien',
+      col:'#4ADE80',
+      intensity, frequency:'Nightly',
+      earth_analog:lang==='en'?'Like Earth auroras but vanadium-emission green (520nm)':'Como auroras terrestres pero en verde de emisión de vanadio (520nm)',
+      science:lang==='en'
+        ?`V³⁺ ions (${V} ppm) excited by solar wind emit at 519nm (metallic green). Auroral altitude: 80–300km. Intensity: ${Math.round(intensity*10)} Rayleigh (Earth aurora: 1–1,000 kR). The vanadium spectral line is distinctive — no Earth aurora produces this exact color. Visible from surface at night as permanent shimmering curtains.`
+        :`Iones V³⁺ (${V} ppm) excitados por el viento solar emiten a 519nm (verde metálico). Altitud auroral: 80–300km. Intensidad: ${Math.round(intensity*10)} Rayleigh (aurora terrestre: 1–1,000 kR). La línea espectral del vanadio es distintiva — ninguna aurora terrestre produce este color exacto. Visible desde la superficie de noche como cortinas permanentes titilantes.`,
+      evolution:lang==='en'
+        ?'Night vision optimized for 520nm (vanadium green). Nocturnal species become dominant — permanent aurora provides navigation light. Bioluminescence evolves to match aurora wavelength for camouflage.'
+        :'La visión nocturna se optimiza para 520nm (verde vanadio). Las especies nocturnas se vuelven dominantes — la aurora permanente proporciona luz de navegación. La bioluminiscencia evoluciona para coincidir con la longitud de onda de la aurora como camuflaje.',
+      affected_traits:lang==='en'?['Night vision 520nm','Nocturnal behavior','Bioluminescence']:['Visión nocturna 520nm','Comportamiento nocturno','Bioluminiscencia'],
+    });
+  }
+
+  if(Ca>55&&Temp>40&&CO2>2){
+    const intensity=Math.min(100,Math.round(Ca*0.8+CO2*5));
+    phenomena.push({
+      id:'crystal_precipitation', icon:'💎',
+      name:lang==='en'?'Aerial mineral crystallization — CaCO₃ falls from sky':'Cristalización mineral aérea — CaCO₃ cae del cielo',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for super-Earth planets':'Sin equivalente terrestre — propuesto para súper-Tierras',
+      science:lang==='en'
+        ?`Ca (${Ca}K ppm) + CO₂ (${CO2}%) + high temperature create supersaturated CaCO₃ vapor. Rapid cooling at altitude causes direct crystal precipitation: Ca²⁺ + CO₃²⁻ → CaCO₃↓. Crystal size: 0.5–10mm. Falls as mineral hail at terminal velocity ${Math.round(gravity*12)} m/s. Rate: ${Math.round(intensity*0.2)} g/m²/year. Visible as white glittering precipitation.`
+        :`Ca (${Ca}K ppm) + CO₂ (${CO2}%) + temperatura alta crean vapor de CaCO₃ supersaturado. El enfriamiento rápido en altitud causa precipitación directa de cristales: Ca²⁺ + CO₃²⁻ → CaCO₃↓. Tamaño de cristal: 0.5–10mm. Cae como granizo mineral a velocidad terminal ${Math.round(gravity*12)} m/s. Tasa: ${Math.round(intensity*0.2)} g/m²/año. Visible como precipitación blanca brillante.`,
+      evolution:lang==='en'
+        ?'Creatures develop hard dorsal shields (convergent with turtle shells). Cave dwelling becomes common. Organisms evolve to use falling minerals as building material — first mineral architecture.'
+        :'Las criaturas desarrollan escudos dorsales duros (convergente con caparazones de tortuga). La vida en cuevas se vuelve común. Los organismos evolucionan para usar los minerales caídos como material de construcción — primera arquitectura mineral.',
+      affected_traits:lang==='en'?['Dorsal shell','Cave dwelling','Mineral construction']:['Caparazón dorsal','Vida en cuevas','Construcción mineral'],
+    });
+  }
+
+  if(S>8000&&H2S>3&&pressure>1.5){
+    const intensity=Math.min(100,Math.round(S*0.005+H2S*6+pressure*8));
+    phenomena.push({
+      id:'geyser_h2s', icon:'🌋',
+      name:lang==='en'?'H₂S geysers — sulfur hydrothermal columns':'Géiseres de H₂S — columnas hidrotermales sulfurosas',
+      type:'alien',
+      col:'#FBBF24',
+      intensity, frequency:intensity>60?'Continuous':'Daily',
+      earth_analog:lang==='en'?'Like Earth geysers but sulfuric — similar to hydrothermal vents':'Como géiseres terrestres pero sulfurosos — similar a fumarolas hidrotermales',
+      science:lang==='en'
+        ?`Subsurface H₂S (${H2S}%) heated by geothermal energy (${Math.round(Temp+300)}°C at depth) and released through fractures. Column height: ${Math.round(intensity*2)} m. Temperature at vent: ${Math.round(Temp+150)}°C. H₂S concentration at base: ${Math.round(H2S*10)}% v/v. Carries dissolved minerals: Fe, S, Si. Creates unique localized oasis ecosystems where chemosynthesis thrives.`
+        :`H₂S subsuperficial (${H2S}%) calentado por energía geotérmica (${Math.round(Temp+300)}°C en profundidad) y liberado por fracturas. Altura de la columna: ${Math.round(intensity*2)} m. Temperatura en el orificio: ${Math.round(Temp+150)}°C. Concentración de H₂S en la base: ${Math.round(H2S*10)}% v/v. Transporta minerales disueltos: Fe, S, Si. Crea ecosistemas oasis localizados únicos donde prospera la quimiosíntesis.`,
+      evolution:lang==='en'
+        ?'Entire ecosystems organized around geysers. Chemosynthetic base replaces photosynthesis. Creatures develop thermophilic enzymes. Geyser timing becomes evolutionary selective pressure — organisms synchronize reproduction with eruption cycles.'
+        :'Ecosistemas enteros organizados alrededor de los géiseres. La base quimiosintética reemplaza la fotosíntesis. Las criaturas desarrollan enzimas termófilas. El ritmo del géiser se convierte en presión selectiva evolutiva — los organismos sincronizan la reproducción con los ciclos de erupción.',
+      affected_traits:lang==='en'?['Chemosynthesis','Thermophilic enzymes','Eruption timing']:['Quimiosíntesis','Enzimas termófilas','Sincronización de erupción'],
+    });
+  }
+
+  if(Cu>180&&H2S>2){
+    const intensity=Math.min(100,Math.round(Cu*0.4+H2S*5));
+    phenomena.push({
+      id:'copper_vortex', icon:'🌀',
+      name:lang==='en'?'Copper vortices — blue-green gas whirlwinds':'Vórtices de cobre — remolinos de gas azul-verdoso',
+      type:'alien',
+      col:'#60A5FA',
+      intensity, frequency:'Seasonal',
+      earth_analog:lang==='en'?'No Earth equivalent — proposed for copper-rich exoplanets':'Sin equivalente terrestre — propuesto para exoplanetas ricos en Cu',
+      science:lang==='en'
+        ?`Cu (${Cu} ppm) + H₂S → CuS nanoparticles (2–20nm) suspended in atmosphere. These nanoparticles absorb red/yellow wavelengths, making the sky appear blue-green (487nm peak). Atmospheric vortices concentrate CuS to ${Math.round(Cu*0.01)} mg/m³ — visible as tinted whirlwinds. Electrically conductive: generates static discharges of ${Math.round(intensity*50)} kV.`
+        :`Cu (${Cu} ppm) + H₂S → nanopartículas de CuS (2–20nm) suspendidas en la atmósfera. Estas nanopartículas absorben longitudes de onda rojo/amarillo, haciendo que el cielo aparezca azul-verdoso (pico 487nm). Los vórtices atmosféricos concentran CuS a ${Math.round(Cu*0.01)} mg/m³ — visibles como remolinos teñidos. Eléctricamente conductores: generan descargas estáticas de ${Math.round(intensity*50)} kV.`,
+      evolution:lang==='en'
+        ?'Color vision shifts to blue-green spectrum. Hemocyanin (Cu-based blood) becomes dominant blood pigment. Organisms evolve Cu-sequestration proteins for protection. Bioluminescence at 487nm used for mate signaling.'
+        :'La visión de color se desplaza hacia el espectro azul-verde. La hemocianina (sangre basada en Cu) se convierte en el pigmento sanguíneo dominante. Los organismos evolucionan proteínas de secuestro de Cu para protección. La bioluminiscencia a 487nm se usa para señalización de apareamiento.',
+      affected_traits:lang==='en'?['Hemocyanin blood','Blue-green vision','Cu-binding proteins']:['Sangre hemocianina','Visión azul-verde','Proteínas de unión a Cu'],
+    });
+  }
+
+  if(pressure>3&&gravity>2){
+    const intensity=Math.min(100,Math.round(pressure*15+gravity*12));
+    phenomena.push({
+      id:'compression_wave', icon:'💥',
+      name:lang==='en'?'Hyperbaric pressure waves — atmospheric compression':'Ondas de presión hiperbárica — compresión atmosférica',
+      type:'alien',
+      col:'#94A3B8',
+      intensity, frequency:'Daily',
+      earth_analog:lang==='en'?'Like deep ocean pressure but in atmosphere — no Earth equivalent':'Como presión del océano profundo pero en atmósfera — sin equivalente terrestre',
+      science:lang==='en'
+        ?`Pressure of ${pressure} atm + gravity ${gravity}g creates atmospheric density ${Math.round(pressure*gravity*1.2)}× Earth's. Sound travels at ${Math.round(340*Math.sqrt(pressure))} m/s (vs 340 m/s on Earth). Pressure waves from geological events propagate globally. At ground level: organisms experience ${Math.round(pressure*101.3)} kPa — equivalent to ${Math.round(pressure*10)} m underwater continuously.`
+        :`Presión de ${pressure} atm + gravedad ${gravity}g crea densidad atmosférica ${Math.round(pressure*gravity*1.2)}× la de la Tierra. El sonido viaja a ${Math.round(340*Math.sqrt(pressure))} m/s (vs 340 m/s en la Tierra). Las ondas de presión de eventos geológicos se propagan globalmente. A nivel del suelo: los organismos experimentan ${Math.round(pressure*101.3)} kPa — equivalente a ${Math.round(pressure*10)} m bajo el agua continuamente.`,
+      evolution:lang==='en'
+        ?'Compact, low-profile body plans. No flying organisms above insect size. Internal gas bladders reinforced. Bone density 3–5× Earth vertebrates. Exceptional pressure resistance — organisms survive what would crush terrestrial life.'
+        :'Planes corporales compactos y de perfil bajo. Sin organismos voladores de más de tamaño insecto. Vejigas de gas internas reforzadas. Densidad ósea 3–5× vertebrados terrestres. Resistencia a la presión excepcional — los organismos sobreviven lo que aplastaría a la vida terrestre.',
+      affected_traits:lang==='en'?['Compact body plan','Bone density','Pressure resistance']:['Plan corporal compacto','Densidad ósea','Resistencia a la presión'],
+    });
+  }
+
+  if(score>0.7&&O2>22&&Mg>20){
+    const intensity=Math.min(100,Math.round(score*80+O2*1.5));
+    phenomena.push({
+      id:'biological_haze', icon:'🟢',
+      name:lang==='en'?'Biological aerosol haze — living atmosphere':'Neblina biológica — atmósfera viva',
+      type:'alien',
+      col:'#4ADE80',
+      intensity, frequency:'Constant',
+      earth_analog:lang==='en'?'Like Earth atmosphere but 100–1000× more biologically active':'Como la atmósfera terrestre pero 100–1000× más biológicamente activa',
+      science:lang==='en'
+        ?`High habitability (${Math.round(score*100)}%) + O₂ (${O2}%) + Mg generates explosive microbial populations. Atmosphere contains ${Math.round(intensity*1000)} cells/m³ (Earth: 10–1,000/m³). Spores, pollen, bacteria and archaea in suspension. Visible as green tint in sky. These organisms perform aerial photosynthesis and chemosynthesis, fixing CO₂ at altitude.`
+        :`Alta habitabilidad (${Math.round(score*100)}%) + O₂ (${O2}%) + Mg genera poblaciones microbianas explosivas. La atmósfera contiene ${Math.round(intensity*1000)} células/m³ (Tierra: 10–1,000/m³). Esporas, polen, bacterias y arqueas en suspensión. Visible como tinte verde en el cielo. Estos organismos realizan fotosíntesis y quimiosíntesis aérea, fijando CO₂ en altitud.`,
+      evolution:lang==='en'
+        ?'Respiratory filters evolve (spiral nostrils, mucus traps). Immune systems become extraordinarily sophisticated. Aerial microbiome co-evolves with all organisms. Some organisms develop mutualistic relationships with specific atmospheric microbes.'
+        :'Los filtros respiratorios evolucionan (fosas nasales en espiral, trampas de moco). Los sistemas inmunes se vuelven extraordinariamente sofisticados. El microbioma aéreo coevoluciona con todos los organismos. Algunos organismos desarrollan relaciones mutualistas con microbios atmosféricos específicos.',
+      affected_traits:lang==='en'?['Respiratory filters','Immune complexity','Aerial symbiosis']:['Filtros respiratorios','Complejidad inmune','Simbiosis aérea'],
+    });
+  }
+
+  // Si no hay fenómenos, añadir fenómeno básico
+  if(phenomena.length===0){
+    phenomena.push({
+      id:'calm', icon:'🌑',
+      name:lang==='en'?'Atmospheric calm — minimal phenomena':'Calma atmosférica — fenómenos mínimos',
+      type:'terrestrial', col:'#94A3B8',
+      intensity:5, frequency:'Rare',
+      earth_analog:lang==='en'?'Like Earth stratosphere':'Como la estratosfera terrestre',
+      science:lang==='en'
+        ?'Extreme conditions (very low temperature, pressure or water) prevent formation of complex atmospheric phenomena. The planet has minimal meteorological activity.'
+        :'Las condiciones extremas (temperatura, presión o agua muy bajas) impiden la formación de fenómenos atmosféricos complejos. El planeta tiene actividad meteorológica mínima.',
+      evolution:lang==='en'?'No atmospheric evolutionary pressure. Creatures evolve based on surface chemistry alone.':'Sin presión evolutiva atmosférica. Las criaturas evolucionan basándose únicamente en la química superficial.',
+      affected_traits:[],
+    });
+  }
+
+  return phenomena;
+}
+
+// ─── Render Fenómenos ──────────────────────────────────
+function renderPhenomena(el){
+  const phenomena = generatePhenomena(vals);
+  const score = calcScore(vals);
+  const earthPhenomena = phenomena.filter(p=>p.type==='terrestrial');
+  const alienPhenomena  = phenomena.filter(p=>p.type==='alien');
+
+  const intensityLabel=(i)=>i>=80?(lang==='en'?'Extreme':'Extremo'):i>=60?(lang==='en'?'High':'Alto'):i>=40?(lang==='en'?'Moderate':'Moderado'):i>=20?(lang==='en'?'Low':'Bajo'):(lang==='en'?'Minimal':'Mínimo');
+  const intensityCol=(i)=>i>=80?'#F87171':i>=60?'#FBBF24':i>=40?'#60A5FA':'#94A3B8';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+    <div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:3px;">
+        🌪 ${lang==='en'?'Natural Phenomena':'Fenómenos Naturales'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);">
+        ${lang==='en'
+          ?`${phenomena.length} phenomena detected · ${earthPhenomena.length} Earth-type · ${alienPhenomena.length} alien · Based on planetary mineralogy`
+          :`${phenomena.length} fenómenos detectados · ${earthPhenomena.length} tipo terrestre · ${alienPhenomena.length} alienígenas · Basado en mineralogía planetaria`}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;">
+        <div style="font-size:22px;font-weight:800;color:#60A5FA;font-family:'JetBrains Mono',monospace;">${earthPhenomena.length}</div>
+        <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Earth-type':'Terrestres'}</div>
+      </div>
+      <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;">
+        <div style="font-size:22px;font-weight:800;color:#A78BFA;font-family:'JetBrains Mono',monospace;">${alienPhenomena.length}</div>
+        <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Alien':'Alienígenas'}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Earth-type phenomena -->
+  ${earthPhenomena.length>0?`
+  <div class="label">${lang==='en'?'Earth-type phenomena — familiar physics':'Fenómenos tipo terrestre — física conocida'}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">
+    ${earthPhenomena.map(p=>phenomenonCard(p,intensityLabel,intensityCol)).join('')}
+  </div>`:''}
+
+  <!-- Alien phenomena -->
+  ${alienPhenomena.length>0?`
+  <div class="label" style="color:#A78BFA;">${lang==='en'?'Alien phenomena — no Earth equivalent':'Fenómenos alienígenas — sin equivalente terrestre'}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">
+    ${alienPhenomena.map(p=>phenomenonCard(p,intensityLabel,intensityCol)).join('')}
+  </div>`:''}
+
+  <!-- Impact summary -->
+  <div style="background:rgba(0,212,170,0.05);border:0.5px solid rgba(0,212,170,0.2);border-radius:12px;padding:16px;">
+    <div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:10px;">
+      🧬 ${lang==='en'?'Global evolutionary impact on creatures':'Impacto evolutivo global sobre las criaturas'}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${[...new Set(phenomena.flatMap(p=>p.affected_traits||[]))].map(trait=>`
+        <span style="font-size:10px;padding:4px 10px;border-radius:99px;background:rgba(0,212,170,0.1);border:0.5px solid rgba(0,212,170,0.3);color:var(--teal);">
+          ${trait}
+        </span>`).join('')}
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.7;">
+      ${lang==='en'
+        ?`These ${phenomena.length} phenomena create a unique evolutionary pressure on this planet. Creatures that survive must develop adaptations for: ${phenomena.map(p=>p.name.split('—')[0].trim()).join(', ')}.`
+        :`Estos ${phenomena.length} fenómenos crean una presión evolutiva única en este planeta. Las criaturas que sobrevivan deberán desarrollar adaptaciones para: ${phenomena.map(p=>p.name.split('—')[0].trim()).join(', ')}.`}
+    </div>
+  </div>
+
+</div>`;
+}
+
+function phenomenonCard(p, intensityLabel, intensityCol){
+  const iCol = intensityCol(p.intensity);
+  const iLbl = intensityLabel(p.intensity);
+  const isAlien = p.type==='alien';
+  return`
+  <div class="card" style="border-color:${p.col}25;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${p.col},transparent);"></div>
+    ${isAlien?`<div style="position:absolute;top:8px;right:8px;font-size:8px;padding:2px 7px;border-radius:99px;background:#A78BFA18;color:#A78BFA;font-weight:700;">${lang==='en'?'ALIEN':'ALIENÍGENA'}</div>`:''}
+
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+      <span style="font-size:28px;flex-shrink:0;">${p.icon}</span>
+      <div style="flex:1;">
+        <div style="font-size:12px;font-weight:700;color:${p.col};line-height:1.3;">${p.name}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${p.earth_analog}</div>
+      </div>
+    </div>
+
+    <!-- Intensity + Frequency -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+      <div style="background:${iCol}10;border:0.5px solid ${iCol}30;border-radius:6px;padding:6px 8px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${lang==='en'?'Intensity':'Intensidad'}</div>
+        <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:3px;">
+          <div style="height:100%;width:${p.intensity}%;background:${iCol};border-radius:2px;box-shadow:0 0 6px ${iCol}60;"></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:${iCol};">${iLbl} (${p.intensity}%)</div>
+      </div>
+      <div style="background:${p.col}10;border:0.5px solid ${p.col}30;border-radius:6px;padding:6px 8px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${lang==='en'?'Frequency':'Frecuencia'}</div>
+        <div style="font-size:14px;text-align:center;">${p.frequency==='Constant'||p.frequency==='Constante'?'♾':'📅'}</div>
+        <div style="font-size:10px;font-weight:700;color:${p.col};">${p.frequency}</div>
+      </div>
+    </div>
+
+    <!-- Science (expandable) -->
+    <div style="background:${p.col}08;border:0.5px solid ${p.col}20;border-radius:7px;padding:8px 10px;cursor:pointer;margin-bottom:8px;"
+      onclick="this.querySelector('.pheno-detail').style.display=this.querySelector('.pheno-detail').style.display==='none'?'block':'none'">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:${p.col};font-weight:700;text-transform:uppercase;letter-spacing:.06em;">
+          🔬 ${lang==='en'?'Scientific explanation':'Explicación científica'}
+        </div>
+        <span style="font-size:9px;color:${p.col};">▾</span>
+      </div>
+      <div class="pheno-detail" style="display:none;margin-top:7px;font-size:9px;color:#9BAEC8;line-height:1.7;">
+        ${p.science}
+      </div>
+    </div>
+
+    <!-- Evolution impact -->
+    <div style="background:rgba(0,212,170,0.06);border:0.5px solid rgba(0,212,170,0.2);border-radius:7px;padding:7px 9px;cursor:pointer;"
+      onclick="this.querySelector('.evo-detail').style.display=this.querySelector('.evo-detail').style.display==='none'?'block':'none'">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:9px;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">
+          🧬 ${lang==='en'?'Evolutionary impact':'Impacto evolutivo'}
+        </div>
+        <span style="font-size:9px;color:var(--teal);">▾</span>
+      </div>
+      <div class="evo-detail" style="display:none;margin-top:6px;font-size:9px;color:#9BAEC8;line-height:1.7;">
+        ${p.evolution}
+      </div>
+    </div>
+
+    <!-- Affected traits chips -->
+    ${p.affected_traits&&p.affected_traits.length>0?`
+    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px;">
+      ${p.affected_traits.map(tr=>`
+        <span style="font-size:8px;padding:2px 7px;border-radius:99px;background:${p.col}12;color:${p.col};border:0.5px solid ${p.col}30;">${tr}</span>
+      `).join('')}
+    </div>`:''}
+  </div>`;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// SURFACE RENDERER v2 — Calidad fotorrealista estilo SpaceEngine
+// Normales analíticas · Slope masking · Nishita sky · Micro-detail · AO · PBR
+// ═══════════════════════════════════════════════════════
+
+let surfaceState = {};
+let surfaceTime  = 0;
+let wireframeOn  = false;
+
+// ── NOISE LIBRARY (compartida entre shaders) ────────
+const GLSL_NOISE = `
+vec3 mod289v3(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 mod289v4(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 permute4(vec4 x){return mod289v4(((x*34.)+1.)*x);}
+vec4 taylorInvSqrt4(vec4 r){return 1.79284291400159-.85373472095314*r;}
+float snoise3(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;
+  i=mod289v3(i);
+  vec4 p=permute4(permute4(permute4(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt4(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+float fbm6(vec3 p){
+  float v=0.,a=.5;
+  v+=a*snoise3(p);p*=2.13;a*=.47;
+  v+=a*snoise3(p);p*=2.13;a*=.47;
+  v+=a*snoise3(p);p*=2.13;a*=.47;
+  v+=a*snoise3(p);p*=2.13;a*=.47;
+  v+=a*snoise3(p);p*=2.13;a*=.47;
+  v+=a*snoise3(p);
+  return v;
+}
+float fbm8(vec3 p){
+  float v=0.,a=.5;
+  for(int i=0;i<8;i++){v+=a*snoise3(p);p*=2.07;a*=.48;}
+  return v;
+}
+
+// ══════════════════════════════════════════════════════════
+// fBm CON DERIVADAS ANALÍTICAS — técnica de Inigo Quilez
+// https://iquilezles.org/articles/morenoise/
+// El gradiente analítico permite:
+//   1. Erosión procedural (terreno se aplana donde la pendiente es alta)
+//   2. Normales exactas sin sampleos extra (ahorra memoria/GPU)
+//   3. Variedad natural: zonas planas + crestas afiladas
+// ══════════════════════════════════════════════════════════
+
+// Ruido 2D con derivadas analíticas. Devuelve vec3(valor, dx, dy)
+// Basado en hash + interpolación cúbica suave (quintic)
+vec3 hash3(vec2 p){
+  vec3 q=vec3(dot(p,vec2(127.1,311.7)),
+             dot(p,vec2(269.5,183.3)),
+             dot(p,vec2(419.2,371.9)));
+  return fract(sin(q)*43758.5453);
+}
+
+// noised: ruido + sus 2 derivadas (Inigo Quilez)
+vec3 noised(vec2 x){
+  vec2 p=floor(x);
+  vec2 f=fract(x);
+  // Quintic interpolant y su derivada
+  vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+  vec2 du=30.0*f*f*(f*(f-2.0)+1.0);
+
+  float va=hash3(p+vec2(0.,0.)).x;
+  float vb=hash3(p+vec2(1.,0.)).x;
+  float vc=hash3(p+vec2(0.,1.)).x;
+  float vd=hash3(p+vec2(1.,1.)).x;
+
+  float k0=va;
+  float k1=vb-va;
+  float k2=vc-va;
+  float k4=va-vb-vc+vd;
+
+  float value=k0+k1*u.x+k2*u.y+k4*u.x*u.y;
+  vec2 deriv=du*(vec2(k1,k2)+k4*u.yx);
+  return vec3(value, deriv);
+}
+
+// fBm con erosión por derivadas (Inigo Quilez "morenoise")
+// uH = Hurst exponent (0=rugoso, 1=suave). uErosion controla el efecto.
+float fbmErosion(vec2 p, int octaves, float H, float erosion){
+  float a=0.5;
+  float f=1.0;
+  float sum=0.0;
+  vec2  grad=vec2(0.0);  // gradiente acumulado
+  // Matriz de rotación para des-correlacionar octavas
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    grad+=n.yz*f;                          // acumular derivadas
+    // EROSIÓN: dividir por (1 + |gradiente|²) suaviza pendientes pronunciadas
+    sum+=a*n.x/(1.0+erosion*dot(grad,grad));
+    a*=gain;
+    f*=2.0;
+    p=m*p;                                 // rotar dominio
+  }
+  return sum;
+}
+
+// fBm con derivadas que devuelve también la normal analítica
+// Devuelve vec3(altura, derivada_x, derivada_z) — para normales sin sampleo extra
+vec3 fbmDeriv(vec2 p, int octaves, float H){
+  float a=0.5, f=1.0;
+  float sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  mat2 m_acc=mat2(1.0,0.0,0.0,1.0);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    sum+=a*n.x;
+    grad+=a*f*(m_acc*n.yz);                // derivada con regla de la cadena
+    a*=gain; f*=2.0;
+    p=m*p; m_acc=m*m_acc;
+  }
+  return vec3(sum, grad);
+}
+
+// Ridged fBm con derivadas — para crestas montañosas afiladas
+float fbmRidged(vec2 p, int octaves, float H){
+  float a=0.5, f=1.0, sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  float gain=exp2(-H);
+  for(int i=0;i<8;i++){
+    if(i>=octaves) break;
+    vec3 n=noised(p*f);
+    float r=1.0-abs(n.x*2.0-1.0);          // crear cresta
+    grad+=n.yz*f;
+    sum+=a*r*r/(1.0+0.3*dot(grad,grad));    // erosión sobre la cresta
+    a*=gain; f*=2.0;
+    p=m*p;
+  }
+  return sum;
+}
+// Nota: fbmWarp eliminado — usa demasiada GPU en vertex shader
+`;
+
+
+// ── renderSurface ────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// RAYMARCHING HD — Terreno SDF + fBm derivadas + PBR
+// Técnica Stanislav Petrov / Inigo Quilez. Cero geometría.
+// Sombras suaves, AO, reflexión agua, FXAA. 8 octavas.
+// ══════════════════════════════════════════════════════════
+const RAYMARCH_VS = `attribute vec2 aPos;void main(){gl_Position=vec4(aPos,0.0,1.0);}`;
+
+const RAYMARCH_FS = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform vec3  uCam;
+uniform vec2  uRot;
+uniform float uAmp,uFreq,uErosion,uFog,uSunAlt,uSeaLevel;
+uniform vec3  uColLow,uColMid,uColHigh,uColSnow,uWaterCol,uSkyCol,uSunCol;
+uniform float uHasWater,uHasSnow,uAA;
+uniform float uMaxSteps;
+
+#define MAX_DIST  220.0
+#define SURF_DIST 0.0018
+
+vec3 hash3(vec2 p){
+  vec3 q=vec3(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)),dot(p,vec2(419.2,371.9)));
+  return fract(sin(q)*43758.5453);
+}
+vec3 noised(vec2 x){
+  vec2 p=floor(x),f=fract(x);
+  vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+  vec2 du=30.0*f*f*(f*(f-2.0)+1.0);
+  float a=hash3(p+vec2(0.,0.)).x;
+  float b=hash3(p+vec2(1.,0.)).x;
+  float c=hash3(p+vec2(0.,1.)).x;
+  float d=hash3(p+vec2(1.,1.)).x;
+  float k0=a,k1=b-a,k2=c-a,k4=a-b-c+d;
+  return vec3(k0+k1*u.x+k2*u.y+k4*u.x*u.y, du*(vec2(k1,k2)+k4*u.yx));
+}
+float terrainH(vec2 p){
+  float a=0.5, f=uFreq, sum=0.0;
+  vec2 grad=vec2(0.0);
+  mat2 m=mat2(0.8,0.6,-0.6,0.8);
+  for(int i=0;i<8;i++){
+    vec3 n=noised(p*f);
+    float s=sin(p.x*f*0.5)*sin(p.y*f*0.5)*0.15;
+    grad+=n.yz;
+    sum+=a*(n.x+s)/(1.0+uErosion*dot(grad,grad));
+    a*=0.5; f*=2.0; p=m*p;
+  }
+  return sum*uAmp*8.0;
+}
+float map(vec3 p){ return p.y - terrainH(p.xz*0.05); }
+vec3 calcNormal(vec3 p){
+  vec2 e=vec2(0.02,0.0);
+  return normalize(vec3(
+    map(p+e.xyy)-map(p-e.xyy),
+    map(p+e.yxy)-map(p-e.yxy),
+    map(p+e.yyx)-map(p-e.yyx)));
+}
+float softShadow(vec3 ro,vec3 rd){
+  float res=1.0,t=0.12,ph=1e10;
+  for(int i=0;i<26;i++){
+    float h=map(ro+rd*t);
+    if(h<0.001) return 0.0;
+    float y=h*h/(2.0*ph);
+    float d=sqrt(h*h-y*y);
+    res=min(res,10.0*d/max(0.0,t-y));
+    ph=h; t+=clamp(h,0.04,1.6);
+    if(t>45.0) break;
+  }
+  return clamp(res,0.0,1.0);
+}
+float calcAO(vec3 p,vec3 n){
+  float occ=0.0,sca=1.0;
+  for(int i=0;i<5;i++){
+    float hr=0.02+0.12*float(i)/4.0;
+    float dd=map(p+n*hr);
+    occ+=(hr-dd)*sca; sca*=0.92;
+  }
+  return clamp(1.0-2.5*occ,0.0,1.0);
+}
+vec3 renderScene(vec3 ro,vec3 rd,vec3 sunDir){
+  float t=0.0; bool hit=false;
+  for(int i=0;i<150;i++){
+    if(float(i)>=uMaxSteps) break;
+    vec3 p=ro+rd*t;
+    float d=map(p);
+    if(d<SURF_DIST){hit=true;break;}
+    t+=d*0.6;
+    if(t>MAX_DIST) break;
+  }
+  vec3 col;
+  if(hit){
+    vec3 p=ro+rd*t;
+    vec3 N=calcNormal(p);
+    float h=p.y, slope=1.0-N.y, seaH=uSeaLevel*8.0;
+    vec3 surf; float roughness=0.85,metalness=0.0; bool isWater=false;
+    if(uHasWater>0.5 && h<seaH){
+      isWater=true;
+      float depth=clamp((seaH-h)*0.3,0.,1.);
+      surf=mix(uWaterCol*1.6,uWaterCol*0.4,depth);
+      N=mix(N,vec3(0,1,0),0.6); roughness=0.05; metalness=0.85;
+    } else {
+      float nh=clamp((h+8.0)/24.0,0.,1.);
+      if(nh<0.3)      surf=mix(uColLow,uColMid,nh/0.3);
+      else if(nh<0.65)surf=mix(uColMid,uColHigh,(nh-0.3)/0.35);
+      else            surf=mix(uColHigh,uColSnow,(nh-0.65)/0.35);
+      surf=mix(surf,uColHigh*0.7,smoothstep(0.4,0.8,slope));
+      if(uHasSnow>0.5 && nh>0.7) surf=mix(surf,uColSnow,smoothstep(0.7,0.9,nh)*(1.0-slope));
+      roughness=mix(0.9,0.4,slope);
+    }
+    vec3 V=-rd;
+    float diff=max(dot(N,sunDir),0.0);
+    float sh=softShadow(p+N*0.05,sunDir);
+    float ao=calcAO(p,N);
+    float amb=(0.25+0.25*N.y)*ao;
+    vec3 H=normalize(sunDir+V);
+    float specPow=mix(8.0,250.0,1.0-roughness);
+    float spec=pow(max(dot(N,H),0.),specPow)*diff*sh;
+    float specInt=mix(0.15,2.5,metalness);
+    col=surf*(amb+diff*sh*0.9*uSunCol);
+    col+=uSunCol*spec*specInt;
+    if(isWater){
+      vec3 R=reflect(rd,N);
+      float skyR=pow(max(R.y,0.),0.5);
+      vec3 refl=mix(uSkyCol*1.2,uSkyCol*0.6,skyR);
+      float sunR=pow(max(dot(R,sunDir),0.),60.0)*2.0;
+      refl+=uSunCol*sunR;
+      float fres=pow(1.0-max(dot(N,V),0.),5.0);
+      col=mix(col,refl,clamp(fres*0.8+0.15,0.,1.));
+    }
+    float fog=1.0-exp(-t*0.006*uFog);
+    col=mix(col,uSkyCol,fog);
+  } else {
+    float sun=pow(max(dot(rd,sunDir),0.),8.0);
+    float sunDisk=smoothstep(0.9995,0.9998,dot(rd,sunDir));
+    col=uSkyCol*(0.6+0.4*rd.y)+uSunCol*sun*0.5+uSunCol*sunDisk*3.0;
+    col=mix(uSkyCol*1.3,col,smoothstep(-0.1,0.3,rd.y));
+  }
+  return col;
+}
+void main(){
+  vec3 sunDir=normalize(vec3(0.5,uSunAlt,0.3));
+  float cy=cos(uRot.x),sy=sin(uRot.x),cp=cos(uRot.y),sp=sin(uRot.y);
+  vec3 fwd=normalize(vec3(sy*cp,sp,cy*cp));
+  vec3 right=normalize(cross(vec3(0,1,0),fwd));
+  vec3 up=cross(fwd,right);
+  vec3 ro=uCam;
+  vec3 col;
+  if(uAA>0.5){
+    col=vec3(0.0);
+    vec2 off[4];
+    off[0]=vec2(-0.25,-0.25);off[1]=vec2(0.25,-0.25);
+    off[2]=vec2(-0.25,0.25); off[3]=vec2(0.25,0.25);
+    for(int i=0;i<4;i++){
+      vec2 uv=(gl_FragCoord.xy+off[i]-0.5*uRes)/uRes.y;
+      vec3 rd=normalize(uv.x*right+uv.y*up+1.4*fwd);
+      col+=renderScene(ro,rd,sunDir);
+    }
+    col*=0.25;
+  } else {
+    vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+    vec3 rd=normalize(uv.x*right+uv.y*up+1.4*fwd);
+    col=renderScene(ro,rd,sunDir);
+  }
+  col=col*(col*2.51+0.03)/(col*(col*2.43+0.59)+0.14);
+  col=pow(clamp(col,0.,1.),vec3(0.4545));
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+function renderSurface(el){
+  const E=lang==='en';
+  const biome=(()=>{
+    const{H2S,S,Temp,Fe,Ca,CO2,O2,Mg,H2O}=vals;
+    if(H2S>2||S>8000)  return E?'🌋 Sulfuric planet (Io-type)':'🌋 Planeta Sulfúrico (tipo Io)';
+    if(Temp<-70)       return E?'❄ Deep frozen world':'❄ Mundo profundamente helado';
+    if(Temp<-15)       return E?'❄ Glacial world':'❄ Mundo glacial';
+    if(Temp>55)        return E?'🔥 Volcanic world':'🔥 Planeta Volcánico';
+    if(Fe>55)          return E?'🔴 Iron desert (Mars-type)':'🔴 Desierto ferroso (tipo Marte)';
+    if(Ca>48&&CO2>0.08)return E?'🪨 Calcium carbonate world':'🪨 Mundo calcáreo';
+    if(O2>10&&Mg>12)   return E?'🌿 Habitable biosphere':'🌿 Biosfera Habitable';
+    return E?'🪐 Rocky world':'🪐 Mundo Rocoso';
+  })();
+
+  el.innerHTML=`
+<div style="position:relative;height:100%;background:#000;">
+  <canvas id="surf-canvas" style="width:100%;height:100%;display:block;cursor:grab;"></canvas>
+
+  <!-- HUD -->
+  <div style="position:absolute;top:12px;left:14px;font-family:'JetBrains Mono',monospace;pointer-events:none;">
+    <div style="font-size:12px;font-weight:800;color:var(--teal);margin-bottom:5px;letter-spacing:.05em;">
+      🏔 ${E?'Planet Surface':'Superficie del Planeta'}
+    </div>
+    <div id="surf-biome" style="font-size:9px;color:rgba(0,212,170,0.5);margin-bottom:6px;">${biome}</div>
+    <div style="font-size:9px;color:rgba(0,212,170,0.7);line-height:2.0;">
+      <span style="color:rgba(0,212,170,0.4);">T°    </span>${vals.Temp>0?'+':''}${vals.Temp}°C<br>
+      <span style="color:rgba(0,212,170,0.4);">O₂    </span>${vals.O2}%<br>
+      <span style="color:rgba(0,212,170,0.4);">H₂O   </span>${vals.H2O}%<br>
+      <span style="color:rgba(0,212,170,0.4);">PRES  </span>${vals.pressure||1} atm
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div style="position:absolute;top:12px;right:14px;display:flex;flex-direction:column;gap:5px;">
+    <button onclick="surfTOD('day')"    id="sbtn-day"    class="btn btn-teal" style="font-size:10px;padding:5px 12px;">☀ ${E?'Day':'Día'}</button>
+    <button onclick="surfTOD('sunset')" id="sbtn-sunset" class="btn"          style="font-size:10px;padding:5px 12px;">🌅 ${E?'Sunset':'Atardecer'}</button>
+    <button onclick="surfTOD('night')"  id="sbtn-night"  class="btn"          style="font-size:10px;padding:5px 12px;">🌙 ${E?'Night':'Noche'}</button>
+    <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
+    <button onclick="surfSnap()"                         class="btn"          style="font-size:10px;padding:5px 12px;">📷 ${E?'Screenshot':'Captura'}</button>
+    <div style="border-top:0.5px solid var(--border);margin:2px 0;"></div>
+    <button onclick="surfQuality('low')"  id="sbtn-low"  class="btn" style="font-size:9px;padding:3px 8px;">🔵 ${E?'Low':'Baja'}</button>
+    <button onclick="surfQuality('mid')"  id="sbtn-mid"  class="btn btn-teal" style="font-size:9px;padding:3px 8px;">🟡 ${E?'Medium':'Media'}</button>
+    <button onclick="surfQuality('high')" id="sbtn-high" class="btn" style="font-size:9px;padding:3px 8px;">🔴 ${E?'High':'Alta'}</button>
+  </div>
+
+  <!-- Info bar -->
+  <div style="position:absolute;bottom:8px;left:14px;font-size:9px;color:rgba(255,255,255,0.25);font-family:'JetBrains Mono',monospace;">
+    ${E?'Drag to look · Scroll to fly · RayMarching HD':'Arrastra para mirar · Scroll para volar · RayMarching HD'}
+    <span id="surf-tier" style="color:rgba(0,212,170,0.4);"></span>
+  </div>
+
+  <!-- Loading -->
+  <div id="surf-loading" style="position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;flex-direction:column;gap:10px;background:#000;">
+    <div style="width:32px;height:32px;border:3px solid rgba(0,212,170,0.2);
+      border-top:3px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+      ${E?'Building terrain…':'Generando terreno…'}
+    </div>
+  </div>
+</div>`;
+
+  setTimeout(()=>initSurface2(), 80);
+}
+
+function initSurface2(){
+  const canvas=document.getElementById('surf-canvas');
+  if(!canvas){
+    const l=document.getElementById('surf-loading');
+    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">Canvas no disponible</div>';
+    return;
+  }
+  const gl=canvas.getContext('webgl');
+  if(!gl){
+    const l=document.getElementById('surf-loading');
+    if(l)l.innerHTML='<div style="color:#F87171;font-size:11px;">WebGL no disponible</div>';
+    return;
+  }
+
+  const container2=canvas.parentElement;
+  // Perfil de calidad según el dispositivo (protege rendimiento en móvil)
+  const devProfile = detectDeviceProfile();
+  let qualityMult = devProfile.resMult;   // multiplicador de resolución
+  function fitCanvas(){
+    const dpr=Math.min(window.devicePixelRatio, devProfile.dprMax) * qualityMult;
+    canvas.width=(container2.clientWidth||900)*dpr;
+    canvas.height=(container2.clientHeight||560)*dpr;
+  }
+  fitCanvas();
+
+  // ── Compilar shaders ──
+  function compile(type,src){
+    const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error('Shader:',gl.getShaderInfoLog(s));
+    return s;
+  }
+  const prog=gl.createProgram();
+  gl.attachShader(prog,compile(gl.VERTEX_SHADER,RAYMARCH_VS));
+  gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,RAYMARCH_FS));
+  gl.linkProgram(prog);gl.useProgram(prog);
+
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const aPos=gl.getAttribLocation(prog,'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+  const U={};
+  ['uRes','uTime','uCam','uRot','uAmp','uFreq','uErosion','uFog','uSunAlt','uSeaLevel',
+   'uColLow','uColMid','uColHigh','uColSnow','uWaterCol','uSkyCol','uSunCol','uHasWater','uHasSnow','uAA','uMaxSteps']
+   .forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+  // ── Mapear parámetros del planeta a colores RayMarching ──
+  const rmCol=getRayMarchColors(vals);
+
+  // ── Estado de cámara ──
+  let cam={x:0,y:14,z:0}, rot={yaw:0,pitch:-0.15};
+  let tod={sunAlt:0.35, mode:'day'};
+  let drag=false,prev={x:0,y:0};
+
+  const onMD=e=>{drag=true;prev={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';};
+  const onMU=()=>{drag=false;canvas.style.cursor='grab';};
+  const onMM=e=>{
+    if(!drag)return;
+    rot.yaw-=(e.clientX-prev.x)*0.004;
+    rot.pitch=Math.max(-1.4,Math.min(1.4,rot.pitch-(e.clientY-prev.y)*0.004));
+    prev={x:e.clientX,y:e.clientY};
+  };
+  const onWH=e=>{
+    const cy=Math.cos(rot.yaw),sy=Math.sin(rot.yaw),cp=Math.cos(rot.pitch),sp=Math.sin(rot.pitch);
+    const step=e.deltaY*0.02;
+    cam.x-=sy*cp*step;cam.y-=sp*step;cam.z-=cy*cp*step;
+    cam.y=Math.max(2,cam.y);
+    e.preventDefault();
+  };
+  const onTD=e=>{drag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const onTM=e=>{if(!drag)return;rot.yaw-=(e.touches[0].clientX-prev.x)*0.004;rot.pitch=Math.max(-1.4,Math.min(1.4,rot.pitch-(e.touches[0].clientY-prev.y)*0.004));prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  canvas.addEventListener('mousedown',onMD);
+  window.addEventListener('mouseup',onMU);
+  window.addEventListener('mousemove',onMM);
+  canvas.addEventListener('wheel',onWH,{passive:false});
+  canvas.addEventListener('touchstart',onTD,{passive:true});
+  canvas.addEventListener('touchmove',onTM,{passive:true});
+  window.addEventListener('touchend',onMU);
+
+  const ro2=new ResizeObserver(()=>fitCanvas());
+  ro2.observe(container2);
+
+  // ── Render loop con OPTIMIZACIÓN DE CARGA ──
+  // 1. Arranca a baja resolución y sin AA (carga instantánea)
+  // 2. Sube a calidad objetivo tras 600ms (cuando ya se ve algo)
+  // 3. Pausa el render si la pestaña/ventana no está visible
+  let t0=performance.now(),animId;
+  let warmup=true;          // fase de calentamiento
+  let aaActive=false;       // AA arranca apagado
+  const startT=performance.now();
+
+  // Arranque a resolución reducida
+  const targetMult=qualityMult;
+  qualityMult=Math.min(qualityMult,0.5);
+  fitCanvas();
+
+  function render(){
+    animId=requestAnimationFrame(render);
+    // Pausar si la página no está visible (ahorra GPU/batería)
+    if(document.hidden) return;
+    const now=performance.now();
+
+    // Salir del modo warmup tras 600ms → subir a calidad objetivo
+    if(warmup && now-startT>600){
+      warmup=false;
+      qualityMult=targetMult;
+      fitCanvas();
+      aaActive=devProfile.aa;
+    }
+
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.uniform2f(U.uRes,canvas.width,canvas.height);
+    gl.uniform1f(U.uTime,(now-t0)*0.001);
+    gl.uniform3f(U.uCam,cam.x,cam.y,cam.z);
+    gl.uniform2f(U.uRot,rot.yaw,rot.pitch);
+    gl.uniform1f(U.uAmp,rmCol.amp);
+    gl.uniform1f(U.uFreq,rmCol.freq);
+    gl.uniform1f(U.uErosion,rmCol.erosion);
+    gl.uniform1f(U.uFog,rmCol.fog);
+    gl.uniform1f(U.uSunAlt,tod.sunAlt);
+    gl.uniform1f(U.uSeaLevel,rmCol.seaLevel);
+    gl.uniform3fv(U.uColLow,rmCol.colLow);
+    gl.uniform3fv(U.uColMid,rmCol.colMid);
+    gl.uniform3fv(U.uColHigh,rmCol.colHigh);
+    gl.uniform3fv(U.uColSnow,rmCol.colSnow);
+    gl.uniform3fv(U.uWaterCol,rmCol.waterCol);
+    gl.uniform3fv(U.uSkyCol,tod.skyCol||rmCol.skyCol);
+    gl.uniform3fv(U.uSunCol,tod.sunCol||rmCol.sunCol);
+    gl.uniform1f(U.uHasWater,rmCol.hasWater);
+    gl.uniform1f(U.uHasSnow,rmCol.hasSnow);
+    // AA y pasos reducidos durante warmup (carga rápida)
+    gl.uniform1f(U.uAA, aaActive?1.0:0.0);
+    gl.uniform1f(U.uMaxSteps, warmup?60:devProfile.maxSteps);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+
+  const loading=document.getElementById('surf-loading');
+  if(loading)loading.style.display='none';
+  render();
+
+  // Mostrar el modo detectado e iluminar el botón de calidad correcto
+  const tierEl=document.getElementById('surf-tier');
+  if(tierEl){
+    const labels={mobile:'· 📱 Mobile mode',mid:'· 💻 Balanced',high:'· 🖥 High quality'};
+    tierEl.textContent=' '+(labels[devProfile.tier]||'');
+  }
+  const defQ = devProfile.tier==='mobile'?'low':devProfile.tier==='high'?'high':'mid';
+  ['low','mid','high'].forEach(m=>{const b=document.getElementById('sbtn-'+m);if(b)b.className=m===defQ?'btn btn-teal':'btn';});
+
+  surfaceState={
+    gl,canvas,cam,rot,tod,rmCol,devProfile,
+    setQuality:(mult)=>{ qualityMult=mult; fitCanvas(); },
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      ro2.disconnect();
+      canvas.removeEventListener('mousedown',onMD);
+      window.removeEventListener('mouseup',onMU);
+      window.removeEventListener('mousemove',onMM);
+      canvas.removeEventListener('wheel',onWH);
+      canvas.removeEventListener('touchstart',onTD);
+      canvas.removeEventListener('touchmove',onTM);
+      window.removeEventListener('touchend',onMU);
+    },
+  };
+}
+
+// ── Mapea parámetros del planeta a colores/params RayMarching ──
+// ── DETECCIÓN DE DISPOSITIVO — protege el rendimiento ──
+// Devuelve un perfil de calidad según la GPU/dispositivo disponible
+function detectDeviceProfile(){
+  // 1. Detección de móvil/tablet por user agent
+  const ua = navigator.userAgent||'';
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua);
+  // 2. Pantalla táctil + pantalla pequeña
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+  const smallScreen = Math.min(window.screen.width, window.screen.height) < 768;
+  // 3. Núcleos de CPU (proxy de potencia)
+  const cores = navigator.hardwareConcurrency || 4;
+  // 4. Memoria del dispositivo (si está disponible)
+  const mem = navigator.deviceMemory || 4;
+  // 5. Intentar leer el renderer de la GPU
+  let gpuTier = 'unknown';
+  try{
+    const c = document.createElement('canvas');
+    const g = c.getContext('webgl');
+    const dbg = g && g.getExtension('WEBGL_debug_renderer_info');
+    if(dbg){
+      const r = (g.getParameter(dbg.UNMASKED_RENDERER_WEBGL)||'').toLowerCase();
+      if(/apple|nvidia|radeon rx|geforce|intel iris|arc/.test(r)) gpuTier='high';
+      else if(/mali|adreno|powervr|intel hd|intel uhd/.test(r))   gpuTier='low';
+    }
+  }catch(e){}
+
+  // Decidir perfil
+  let profile;
+  if(isMobile || (isTouch && smallScreen) || gpuTier==='low' || cores<=4 || mem<=3){
+    profile = {
+      tier:'mobile',
+      aa: false,          // sin anti-aliasing (4× más barato)
+      dprMax: 1.0,        // resolución nativa, sin supersampling
+      maxSteps: 90,       // menos pasos de raymarch
+      resMult: 0.65,      // render a 65% y escalar
+    };
+  } else if(gpuTier==='high' && cores>=8 && mem>=8){
+    profile = {tier:'high', aa:true, dprMax:1.5, maxSteps:150, resMult:1.0};
+  } else {
+    profile = {tier:'mid', aa:true, dprMax:1.25, maxSteps:120, resMult:0.85};
+  }
+  return profile;
+}
+
+function getRayMarchColors(v){
+  const {H2S,S,Temp,Fe,Ca,CO2,O2,Mg,H2O,pH,Si,pressure}=v;
+  const sulf=H2S>2||S>8000, vCold=Temp<-70, cold=Temp<-15, hot=Temp>55,
+        iron=Fe>55, calc=Ca>48&&CO2>0.08, life=O2>10&&Mg>12&&!sulf&&!hot;
+  const hasWater=H2O>18?1:0, hasSnow=(cold||Temp<3)?1:0;
+
+  let c;
+  if(sulf)      c={colLow:[0.38,0.28,0.02],colMid:[0.6,0.44,0.06],colHigh:[0.72,0.6,0.12],colSnow:[0.9,0.82,0.4],waterCol:[0.4,0.3,0.02],skyCol:[0.6,0.45,0.08],sunCol:[1.0,0.82,0.25]};
+  else if(vCold)c={colLow:[0.3,0.45,0.65],colMid:[0.55,0.68,0.86],colHigh:[0.78,0.86,0.96],colSnow:[0.96,0.98,1.0],waterCol:[0.15,0.3,0.55],skyCol:[0.06,0.1,0.2],sunCol:[0.75,0.82,1.0]};
+  else if(cold) c={colLow:[0.4,0.52,0.68],colMid:[0.6,0.72,0.86],colHigh:[0.8,0.88,0.95],colSnow:[0.96,0.98,1.0],waterCol:[0.12,0.28,0.52],skyCol:[0.3,0.45,0.65],sunCol:[0.85,0.9,1.0]};
+  else if(hot)  c={colLow:[0.15,0.05,0.03],colMid:[0.4,0.12,0.05],colHigh:[0.6,0.2,0.08],colSnow:[0.9,0.4,0.1],waterCol:[0.6,0.2,0.02],skyCol:[0.35,0.12,0.05],sunCol:[1.0,0.6,0.25]};
+  else if(iron) c={colLow:[0.45,0.2,0.1],colMid:[0.62,0.3,0.12],colHigh:[0.72,0.42,0.2],colSnow:[0.85,0.65,0.5],waterCol:[0.3,0.12,0.05],skyCol:[0.7,0.45,0.3],sunCol:[1.0,0.85,0.6]};
+  else if(calc) c={colLow:[0.62,0.58,0.48],colMid:[0.78,0.74,0.62],colHigh:[0.88,0.84,0.74],colSnow:[0.97,0.97,0.97],waterCol:[0.18,0.52,0.78],skyCol:[0.55,0.72,0.95],sunCol:[1.0,0.98,0.92]};
+  else if(life) c={colLow:[0.12,0.3,0.1],colMid:[0.3,0.4,0.16],colHigh:[0.48,0.42,0.32],colSnow:[0.92,0.94,0.98],waterCol:[0.04,0.2,0.46],skyCol:[0.45,0.62,0.88],sunCol:[1.0,0.97,0.88]};
+  else          c={colLow:[0.25,0.22,0.18],colMid:[0.4,0.36,0.3],colHigh:[0.55,0.5,0.44],colSnow:[0.88,0.9,0.94],waterCol:[0.1,0.2,0.4],skyCol:[0.5,0.6,0.75],sunCol:[1.0,0.95,0.85]};
+
+  return {
+    ...c,
+    hasWater, hasSnow,
+    // Parámetros de terreno según el planeta
+    amp:     hot?1.4 : vCold?0.7 : iron?1.1 : 1.0,
+    freq:    iron?1.8 : life?1.2 : 1.4,
+    erosion: H2O>40?0.85 : (pressure||1)>2?0.7 : cold?0.3 : 0.5,
+    fog:     sulf?1.3 : (pressure||1)>2?1.0 : cold?0.4 : 0.7,
+    seaLevel: hasWater?0.0 : -0.5,
+  };
+}
+
+// ── Time of Day — ahora ajusta sol del RayMarching ──
+function surfTOD(mode){
+  if(!surfaceState.tod)return;
+  const{tod,rmCol}=surfaceState;
+  if(mode==='day'){
+    tod.sunAlt=0.35; tod.skyCol=rmCol.skyCol; tod.sunCol=rmCol.sunCol;
+  } else if(mode==='sunset'){
+    tod.sunAlt=0.08;
+    tod.skyCol=[0.85,0.42,0.12]; tod.sunCol=[1.0,0.55,0.15];
+  } else { // night
+    tod.sunAlt=0.02;
+    tod.skyCol=[0.04,0.06,0.14]; tod.sunCol=[0.3,0.4,0.7];
+  }
+  tod.mode=mode;
+  ['day','sunset','night'].forEach(m=>{
+    const b=document.getElementById('sbtn-'+m);
+    if(b)b.className=m===mode?'btn btn-teal':'btn';
+  });
+}
+
+// ── Calidad — ajusta resolución del canvas ──
+function surfQuality(q){
+  if(!surfaceState.setQuality)return;
+  const mult=q==='low'?0.6:q==='mid'?0.85:1.15;
+  surfaceState.setQuality(mult);
+  ['low','mid','high'].forEach(m=>{const b=document.getElementById('sbtn-'+m);if(b)b.className=m===q?'btn btn-teal':'btn';});
+}
+
+// ── Wireframe no aplica a RayMarching — muestra aviso ──
+function surfWire(){
+  const E=lang==='en';
+  const b=document.getElementById('sbtn-wire');
+  if(b){
+    b.textContent=E?'⬡ N/A (SDF)':'⬡ N/A (SDF)';
+    setTimeout(()=>{if(b)b.textContent='⬡ Wire';},1500);
+  }
+}
+
+function surfSnap(){
+  if(!surfaceState.canvas)return;
+  const link=document.createElement('a');
+  link.download=`bioplanet-surface-${planetCode(vals)}.png`;
+  link.href=surfaceState.canvas.toDataURL('image/png');
+  link.click();
+}
+
+// ═══════════════════════════════════════════════════════
+// X-RAY VISION — Órganos internos procedurales
+// Shader Fresnel + anatomía basada en rasgos evolutivos
+// ═══════════════════════════════════════════════════════
+
+// ─── Shader de cuerpo X-ray (fresnel rim glow) ───────
+const XRAY_VERT = `
+varying vec3 vNormal;
+varying vec3 vViewDir;
+void main(){
+  vNormal  = normalize(normalMatrix * normal);
+  vec4 mv  = modelViewMatrix * vec4(position, 1.0);
+  vViewDir = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const XRAY_FRAG = `
+uniform vec3  uColor;
+uniform float uRimPow;
+uniform float uAlpha;
+varying vec3  vNormal;
+varying vec3  vViewDir;
+void main(){
+  float rim   = 1.0 - abs(dot(normalize(vNormal), normalize(vViewDir)));
+  float alpha = pow(rim, uRimPow) * uAlpha;
+  // Scanlines effect
+  float scan  = sin(gl_FragCoord.y * 3.5) * 0.04 + 0.96;
+  gl_FragColor = vec4(uColor * scan, clamp(alpha, 0.0, 0.9));
+}`;
+
+// ─── Constructor de órganos internos ─────────────────
+function buildInternalOrgans(cr, T){
+  const group = new T.Group();
+  group.visible = false;
+  group.name = 'organs';
+
+  // Colores por función
+  const BONE_COL   = new T.Color(0.95, 0.92, 0.82);
+  const BRAIN_COL  = new T.Color(0.72, 0.35, 0.85);
+  const HEART_COL  = new T.Color(0.92, 0.12, 0.18);
+  const LUNG_COL   = new T.Color(0.20, 0.55, 0.88);
+  const STOMACH_COL= new T.Color(0.85, 0.68, 0.12);
+  const LIVER_COL  = new T.Color(0.62, 0.18, 0.08);
+  const NERVE_COL  = new T.Color(0.88, 0.88, 0.12);
+  const MUSCLE_COL = new T.Color(0.85, 0.32, 0.22);
+  const CHLORO_COL = new T.Color(0.18, 0.78, 0.28);
+
+  const mkMat = (col, opa=0.88, shine=60) => new T.MeshPhongMaterial({
+    color:col, emissive:col.clone().multiplyScalar(0.25),
+    transparent:true, opacity:opa, shininess:shine,
+    specular:new T.Color(1,1,1), depthWrite:false,
+  });
+  const mkWire = (col) => new T.MeshBasicMaterial({
+    color:col, wireframe:true, transparent:true, opacity:0.35
+  });
+
+  // ── 1. ESQUELETO ────────────────────────────────────
+  const hasBone = cr.skeleton?.includes('calcic')||cr.skeleton?.includes('Calcic')||
+                  cr.skeleton?.includes('endos')||cr.skeleton?.includes('Endos');
+  const hasSilica= cr.skeleton?.includes('silíce')||cr.skeleton?.includes('Silic');
+  const hasHydro = cr.skeleton?.includes('Hidro')||cr.skeleton?.includes('Hydro')||
+                   cr.skeleton?.includes('Quitin')||cr.skeleton?.includes('Chitin');
+
+  if(hasBone){
+    // Columna vertebral
+    for(let i=0;i<10;i++){
+      const vert=new T.Mesh(new T.SphereGeometry(0.055,10,8),mkMat(BONE_COL,0.95,120));
+      vert.position.set(0.55-i*0.12, 0.08+Math.sin(i*0.3)*0.02, 0);
+      vert.name='spine_'+i; group.add(vert);
+      // Disco intervertebral
+      if(i<9){
+        const disc=new T.Mesh(new T.CylinderGeometry(0.04,0.04,0.06,10),mkMat(new T.Color(0.70,0.70,0.65),0.7));
+        disc.rotation.z=Math.PI/2;
+        disc.position.set(0.49-i*0.12, 0.08, 0); group.add(disc);
+      }
+    }
+    // Cráneo
+    const skull=new T.Mesh(new T.SphereGeometry(0.22,16,14),mkMat(BONE_COL,0.90,130));
+    skull.position.set(0.88,0.14,0); skull.name='skull'; group.add(skull);
+    const jawGeo=new T.SphereGeometry(0.14,12,10);
+    const jaw=new T.Mesh(jawGeo,mkMat(BONE_COL,0.85,120));
+    jaw.position.set(0.90,-0.06,0); jaw.scale.set(0.9,0.55,0.85); group.add(jaw);
+    // Costillas
+    for(let i=0;i<6;i++){
+      [-0.18,0.18].forEach(z=>{
+        const rib=new T.Mesh(new T.TorusGeometry(0.22-i*0.01,0.018,6,16,Math.PI*1.15),mkMat(BONE_COL,0.82,100));
+        rib.position.set(0.35-i*0.10,0.05,z>0?0.02:-0.02);
+        rib.rotation.set(z>0?0.35:-0.35, 0, Math.PI/2+i*0.05);
+        group.add(rib);
+      });
+    }
+    // Pelvis
+    const pelvis=new T.Mesh(new T.TorusGeometry(0.18,0.04,8,18),mkMat(BONE_COL,0.88,110));
+    pelvis.position.set(-0.35,0.0,0); pelvis.rotation.x=Math.PI/2; group.add(pelvis);
+    // Huesos de patas (fémures)
+    [[0.38,-0.18,0.28],[-0.38,-0.18,0.28],[0.38,-0.18,-0.28],[-0.38,-0.18,-0.28]].forEach(([x,y,z])=>{
+      const femur=new T.Mesh(new T.CylinderGeometry(0.04,0.035,0.32,8),mkMat(BONE_COL,0.88,120));
+      femur.position.set(x,y,z); femur.rotation.z=x>0?0.22:-0.22; group.add(femur);
+      const tibia=new T.Mesh(new T.CylinderGeometry(0.032,0.025,0.28,8),mkMat(BONE_COL,0.85,120));
+      tibia.position.set(x,y-0.32,z); tibia.rotation.z=x>0?-0.15:0.15; group.add(tibia);
+    });
+  } else if(hasSilica){
+    // Exoesqueleto silíceo — capas cristalinas
+    for(let i=0;i<3;i++){
+      const shell=new T.Mesh(new T.SphereGeometry(0.5+i*0.06,20,16),mkWire(new T.Color(0.6,0.8,0.9)));
+      shell.scale.set(1.6,0.92,1.10); group.add(shell);
+    }
+  } else if(hasHydro){
+    // Hidrostático — cámaras de fluido
+    for(let i=0;i<4;i++){
+      const cham=new T.Mesh(new T.SphereGeometry(0.22-i*0.02,14,12),mkMat(new T.Color(0.2,0.7,0.9),0.35));
+      cham.position.set(0.3-i*0.22,0,0); group.add(cham);
+    }
+  }
+
+  // ── 2. SISTEMA NERVIOSO ─────────────────────────────
+  const hasBrain  = cr.nervous?.includes('Cerebro')||cr.nervous?.includes('brain')||cr.nervous?.includes('Brain');
+  const hasGanglia= cr.nervous?.includes('ganglia')||cr.nervous?.includes('Ganglio');
+
+  if(hasBrain){
+    // Cerebro: hemisferios + cerebelo
+    const brainMat=mkMat(BRAIN_COL,0.92,80);
+    const bl=new T.Mesh(new T.SphereGeometry(0.14,16,14),brainMat);
+    bl.position.set(0.88,0.22,-0.06); bl.scale.set(1.0,0.88,0.82); bl.name='brain_L'; group.add(bl);
+    const br=new T.Mesh(new T.SphereGeometry(0.14,16,14),brainMat);
+    br.position.set(0.88,0.22,0.06); br.scale.set(1.0,0.88,0.82); br.name='brain_R'; group.add(br);
+    // Cerebelo
+    const cer=new T.Mesh(new T.SphereGeometry(0.08,12,10),mkMat(BRAIN_COL.clone().multiplyScalar(0.8),0.88));
+    cer.position.set(0.72,0.10,0); cer.scale.set(0.9,0.7,1.1); group.add(cer);
+    // Médula espinal
+    const spinal=new T.Mesh(new T.CylinderGeometry(0.022,0.018,1.0,8),mkMat(NERVE_COL,0.75,40));
+    spinal.rotation.z=Math.PI/2; spinal.position.set(0.15,0.08,0); group.add(spinal);
+    // Nervios principales
+    [0.28,-0.28].forEach(z=>{
+      const nerve=new T.Mesh(new T.CylinderGeometry(0.010,0.008,0.6,6),mkMat(NERVE_COL,0.55,20));
+      nerve.rotation.z=Math.PI/2; nerve.position.set(0.15,0.0,z); group.add(nerve);
+    });
+  } else if(hasGanglia){
+    // Ganglios distribuidos
+    for(let i=0;i<5;i++){
+      const gan=new T.Mesh(new T.SphereGeometry(0.06,10,8),mkMat(NERVE_COL,0.80,60));
+      gan.position.set(0.55-i*0.22,0.05+Math.sin(i)*0.05,0); group.add(gan);
+      if(i<4){
+        const con=new T.Mesh(new T.CylinderGeometry(0.010,0.010,0.22,6),mkMat(NERVE_COL,0.55));
+        con.rotation.z=Math.PI/2; con.position.set(0.44-i*0.22,0.05,0); group.add(con);
+      }
+    }
+  } else {
+    // Red difusa — puntos distribuidos
+    for(let i=0;i<12;i++){
+      const nd=new T.Mesh(new T.SphereGeometry(0.025,6,6),mkMat(NERVE_COL,0.65));
+      nd.position.set((Math.random()-0.5)*1.2,(Math.random()-0.5)*0.7,(Math.random()-0.5)*0.8);
+      group.add(nd);
+    }
+  }
+
+  // ── 3. SISTEMA CARDIOVASCULAR ───────────────────────
+  const isHemo    = cr.blood?.includes('Hemoglobin')||cr.blood?.includes('Hemoglobina');
+  const isHemoCy  = cr.blood?.includes('Hemocyanin')||cr.blood?.includes('Hemocianina');
+  const isVanadin = cr.blood?.includes('Vanadin')||cr.blood?.includes('Vanadina');
+  const numHearts = isHemoCy?3:isVanadin?2:1;
+  const heartCol  = isHemoCy?new T.Color(0.18,0.42,0.88):isVanadin?new T.Color(0.20,0.80,0.35):HEART_COL;
+
+  const heartMat=mkMat(heartCol,0.95,80);
+  if(numHearts===1){
+    // Corazón de 4 cámaras
+    const h1=new T.Mesh(new T.SphereGeometry(0.10,14,12),heartMat);
+    h1.position.set(0.15,0.10,-0.06); h1.name='heart_L'; group.add(h1);
+    const h2=new T.Mesh(new T.SphereGeometry(0.09,14,12),heartMat);
+    h2.position.set(0.15,0.10,0.06); h2.name='heart_R'; group.add(h2);
+    const aorta=new T.Mesh(new T.CylinderGeometry(0.025,0.022,0.20,8),heartMat);
+    aorta.position.set(0.15,0.21,0); group.add(aorta);
+  } else if(numHearts===3){
+    // 3 corazones (como pulpo)
+    [[0.20,0.08,0],[0.0,0.05,-0.18],[0.0,0.05,0.18]].forEach(([x,y,z],i)=>{
+      const h=new T.Mesh(new T.SphereGeometry(0.08,12,10),heartMat);
+      h.position.set(x,y,z); h.name='heart_'+i; group.add(h);
+    });
+  } else {
+    // 2 corazones (vanadina)
+    [[-0.08,0],[0.08,0]].forEach(([z,_],i)=>{
+      const h=new T.Mesh(new T.SphereGeometry(0.09,12,10),heartMat);
+      h.position.set(0.18,0.08,z); h.name='heart_'+i; group.add(h);
+    });
+  }
+
+  // Vasos sanguíneos principales
+  const vesselMat=mkMat(heartCol.clone().multiplyScalar(0.8),0.50,20);
+  [[1.0,0],[0.0,0],[-0.5,0]].forEach(([x],i)=>{
+    const v=new T.Mesh(new T.CylinderGeometry(0.012,0.010,0.35,6),vesselMat);
+    v.rotation.set(0,0,Math.PI/2); v.position.set(x||0.5-i*0.5,0.06,0); group.add(v);
+  });
+
+  // ── 4. SISTEMA RESPIRATORIO ─────────────────────────
+  const isAerobic  = cr.meta?.includes('Aerób')||cr.meta?.includes('Aerob');
+  const isPhoto    = cr.meta?.includes('Fotos')||cr.meta?.includes('Photo');
+  const isChemo    = cr.meta?.includes('Quimio')||cr.meta?.includes('Chemo');
+
+  if(isAerobic){
+    // Pulmones
+    [-0.14,0.14].forEach(z=>{
+      const lung=new T.Mesh(new T.SphereGeometry(0.18,16,14),mkMat(LUNG_COL,0.62,40));
+      lung.position.set(0.08,0.06,z); lung.scale.set(1.1,1.4,0.75); lung.name=z>0?'lung_R':'lung_L'; group.add(lung);
+      // Bronquios
+      const bron=new T.Mesh(new T.CylinderGeometry(0.025,0.018,0.18,8),mkMat(LUNG_COL,0.70,30));
+      bron.position.set(0.08,0.18,z*0.5); group.add(bron);
+    });
+    // Tráquea
+    const trachea=new T.Mesh(new T.CylinderGeometry(0.028,0.028,0.35,8),mkMat(LUNG_COL,0.72,30));
+    trachea.position.set(0.08,0.28,0); group.add(trachea);
+  } else if(isPhoto){
+    // Cloroplastos distribuidos en la piel
+    for(let i=0;i<16;i++){
+      const cp=new T.Mesh(new T.SphereGeometry(0.04,8,6),mkMat(CHLORO_COL,0.85,60));
+      const th=Math.random()*Math.PI*2; const ph=Math.random()*Math.PI;
+      const r=0.45+Math.random()*0.08;
+      cp.position.set(Math.sin(ph)*Math.cos(th)*r, Math.sin(ph)*Math.sin(th)*r, Math.cos(ph)*r);
+      cp.name='chloroplast_'+i; group.add(cp);
+    }
+  } else if(isChemo){
+    // Quimiosintético — cámaras bacterianas
+    for(let i=0;i<5;i++){
+      const ch2=new T.Mesh(new T.SphereGeometry(0.08,10,8),mkMat(new T.Color(0.78,0.72,0.10),0.75));
+      ch2.position.set(0.2-i*0.15,0.0,Math.sin(i)*0.15); group.add(ch2);
+    }
+  }
+
+  // ── 5. SISTEMA DIGESTIVO ────────────────────────────
+  // Estómago
+  const stomach=new T.Mesh(new T.SphereGeometry(0.13,14,12),mkMat(STOMACH_COL,0.72,30));
+  stomach.position.set(-0.15,0.0,0.05); stomach.scale.set(1.2,0.9,1.0); stomach.name='stomach'; group.add(stomach);
+  // Intestinos (tubos enrollados)
+  const intPoints=[];
+  for(let i=0;i<60;i++){
+    const t2=i/59;
+    intPoints.push(new T.Vector3(
+      -0.10+Math.cos(t2*Math.PI*6)*0.14*(1-t2*0.3),
+      -0.08+Math.sin(t2*Math.PI*4)*0.08,
+      Math.sin(t2*Math.PI*5)*0.10
+    ));
+  }
+  const intCurve=new T.CatmullRomCurve3(intPoints);
+  const intGeo=new T.TubeGeometry(intCurve,40,0.025,6,false);
+  const intestines=new T.Mesh(intGeo,mkMat(STOMACH_COL.clone().multiplyScalar(0.7),0.65));
+  intestines.name='intestines'; group.add(intestines);
+  // Hígado
+  const liver=new T.Mesh(new T.SphereGeometry(0.11,12,10),mkMat(LIVER_COL,0.80,50));
+  liver.position.set(-0.05,0.04,-0.12); liver.scale.set(1.2,0.7,0.9); liver.name='liver'; group.add(liver);
+  // Riñones
+  [-0.12,0.12].forEach(z=>{
+    const kidney=new T.Mesh(new T.SphereGeometry(0.07,10,8),mkMat(LIVER_COL.clone().multiplyScalar(1.2),0.78,40));
+    kidney.position.set(-0.35,0.05,z); kidney.scale.set(0.7,1.0,0.65); group.add(kidney);
+  });
+
+  // ── 6. MÚSCULOS (semitransparentes) ─────────────────
+  const muscMat=mkMat(MUSCLE_COL,0.22,20);
+  // Músculos del torso
+  [[0.4,0.0],[0.1,0.0],[-0.2,0.0],[-0.4,0.0]].forEach(([x,y])=>{
+    [-0.15,0.15].forEach(z=>{
+      const m=new T.Mesh(new T.SphereGeometry(0.12,10,8),muscMat);
+      m.position.set(x,y,z); m.scale.set(1.5,0.5,0.6); group.add(m);
+    });
+  });
+
+  // ── 7. ÓRGANOS ESPECIALES por habilidades ───────────
+  const abilities = cr.abilities||[];
+  // Glándula eléctrica
+  const hasElec=abilities.some(a=>a.name.toLowerCase().includes('electr'));
+  if(hasElec){
+    const elMat=mkMat(new T.Color(1.0,0.90,0.10),0.85,100);
+    for(let i=0;i<8;i++){
+      const el=new T.Mesh(new T.BoxGeometry(0.10,0.025,0.18),elMat);
+      el.position.set(-0.35+i*0.10,0.12,0); group.add(el);
+    }
+  }
+  // Magnetita (navegación magnética)
+  const hasMag=abilities.some(a=>a.name.toLowerCase().includes('magnet'));
+  if(hasMag){
+    const magMat=mkMat(new T.Color(0.2,0.2,0.95),0.90,200);
+    const magCrystal=new T.Mesh(new T.OctahedronGeometry(0.06),magMat);
+    magCrystal.position.set(0.88,0.06,0); magCrystal.name='magnetite'; group.add(magCrystal);
+  }
+  // Vesícula gaseosa (vuelo)
+  const hasFloat=cr.loco?.includes('Flota')||cr.loco?.includes('Float')||cr.loco?.includes('vuelo')||cr.loco?.includes('fly');
+  if(hasFloat){
+    const gasBlad=new T.Mesh(new T.SphereGeometry(0.22,16,12),mkMat(new T.Color(0.7,0.9,1.0),0.35,30));
+    gasBlad.position.set(0.0,0.08,0); gasBlad.name='gasBladder'; group.add(gasBlad);
+  }
+
+  return group;
+}
+
+// ─── Leyenda de órganos ──────────────────────────────
+function getOrganLegend(cr){
+  const E=lang==='en';
+  const hasBone=cr.skeleton?.includes('calcic')||cr.skeleton?.includes('Calcic')||cr.skeleton?.includes('endos')||cr.skeleton?.includes('Endos');
+  const hasBrain=cr.nervous?.includes('Cerebro')||cr.nervous?.includes('brain')||cr.nervous?.includes('Brain');
+  const isHemoCy=cr.blood?.includes('Hemocyanin')||cr.blood?.includes('Hemocianina');
+  const isPhoto=cr.meta?.includes('Fotos')||cr.meta?.includes('Photo');
+  const isChemo=cr.meta?.includes('Quimio')||cr.meta?.includes('Chemo');
+  const isAerobic=cr.meta?.includes('Aerób')||cr.meta?.includes('Aerob');
+  const hasElec=(cr.abilities||[]).some(a=>a.name.toLowerCase().includes('electr'));
+  const hasMag=(cr.abilities||[]).some(a=>a.name.toLowerCase().includes('magnet'));
+
+  const items=[];
+  if(hasBone)    items.push({col:'#F4EBCF',n:E?'Endoskeleton (Ca₁₀(PO₄)₆(OH)₂)':'Endoesqueleto (hidroxiapatita)',d:E?'Vertebral column · Ribs · Skull · Limbs':'Columna · Costillas · Cráneo · Extremidades'});
+  if(hasBrain)   items.push({col:'#B85FD8',n:E?'Centralized brain':'Cerebro centralizado',d:E?'Cerebral hemispheres · Cerebellum · Spinal cord':'Hemisferios cerebrales · Cerebelo · Médula espinal'});
+  items.push({col:'#DDDD10',n:E?'Nervous system':'Sistema nervioso',d:E?cr.nervous:'Sistema: '+cr.nervous});
+  if(isHemoCy)   items.push({col:'#2E6EDE',n:E?'3 hearts (hemocyanin)':'3 corazones (hemocianina)',d:E?'Copper-based oxygen transport — blue blood':'Transporte de O₂ basado en Cu — sangre azul'});
+  else           items.push({col:'#E81C2E',n:E?'Heart':'Corazón',d:E?`${cr.blood} — pumps through entire body`:cr.blood+' — bombea por todo el cuerpo'});
+  if(isAerobic)  items.push({col:'#2288EE',n:E?'Lungs / Bronchi':'Pulmones / Bronquios',d:E?'O₂ / CO₂ gas exchange':'Intercambio gaseoso O₂ / CO₂'});
+  if(isPhoto)    items.push({col:'#20C847',n:E?'Dermal chloroplasts':'Cloroplastos dérmicos',d:E?'Photosynthesis in skin — solar energy':'Fotosíntesis en piel — energía solar'});
+  if(isChemo)    items.push({col:'#C8C010',n:E?'Chemosynthetic chambers':'Cámaras quimiosintéticas',d:E?'Symbiotic bacteria oxidize H₂S':'Bacterias simbióticas oxidan H₂S'});
+  items.push({col:'#D8AE20',n:E?'Stomach / Intestines':'Estómago / Intestinos',d:E?'Nutrient processing and absorption':'Procesamiento y absorción de nutrientes'});
+  items.push({col:'#9E2E10',n:E?'Liver / Kidneys':'Hígado / Riñones',d:E?'Metabolic filtering — toxin removal':'Filtrado metabólico — eliminación de toxinas'});
+  items.push({col:'#DA5238',n:E?'Musculature':'Musculatura',d:E?'Striated muscles for locomotion':'Músculos estriados para locomoción'});
+  if(hasElec)    items.push({col:'#FFE010',n:E?'Electric organ':'Órgano eléctrico',d:E?'Stacked electrocyte discs — 500–600V':'Discos de electrocitos apilados — 500–600V'});
+  if(hasMag)     items.push({col:'#3030F0',n:E?'Magnetite crystal':'Cristal de magnetita',d:E?'Fe₃O₄ nanocrystals for geomagnetic navigation':'Nanocristales Fe₃O₄ para navegación geomagnética'});
+  return items;
+}
+
+
+// Cada rasgo evolutivo → geometría Three.js
+// ═══════════════════════════════════════════════════════
+let c3dState = {};
+let c3dAnimating = true;
+let c3dWireframe = false;
+let c3dExploded  = false;
+
+// ─── Color por sangre ────────────────────────────────
+function getBloodColor3D(blood){
+  const map = {
+    'Hemoglobina (roja)'  :[0.85,0.22,0.18],
+    'Hemoglobin (red)'    :[0.85,0.22,0.18],
+    'Hemocianina (azul)'  :[0.18,0.42,0.88],
+    'Hemocyanin (blue)'   :[0.18,0.42,0.88],
+    'Vanadina (verde)'    :[0.20,0.75,0.32],
+    'Vanadin (green)'     :[0.20,0.75,0.32],
+    'Hb-H₂S gigante'     :[0.78,0.72,0.10],
+    'Giant Hb H₂S/O₂'    :[0.78,0.72,0.10],
+    'Hemeritrina (violeta)':[0.62,0.22,0.82],
+    'Hemerythrin (violet)':[0.62,0.22,0.82],
+    'Difusión directa'    :[0.50,0.52,0.55],
+    'Direct diffusion'    :[0.50,0.52,0.55],
+  };
+  return map[blood]||[0.5,0.5,0.5];
+}
+
+// ─── Materiales orgánicos ────────────────────────────
+function makeOrgMat(T, rgb, shininess=35, opacity=1.0){
+  return new T.MeshPhongMaterial({
+    color:    new T.Color(...rgb),
+    emissive: new T.Color(rgb[0]*0.08, rgb[1]*0.08, rgb[2]*0.08),
+    shininess,
+    specular: new T.Color(0.6,0.6,0.6),
+    transparent: opacity<1,
+    opacity,
+  });
+}
+
+// ─── Constructor de geometría por tipo ───────────────
+function buildCreatureMesh(cr, T){
+  const group = new T.Group();
+  const rgb   = getBloodColor3D(cr.blood);
+  const dark  = [rgb[0]*0.28, rgb[1]*0.28, rgb[2]*0.28];
+  const mid   = [rgb[0]*0.55, rgb[1]*0.55, rgb[2]*0.55];
+  const mat   = makeOrgMat(T, rgb, 35);
+  const matD  = makeOrgMat(T, dark, 20);
+  const matM  = makeOrgMat(T, mid,  25);
+
+  // Armored skeleton → more specular
+  if(cr.skeleton.includes('silíce')||cr.skeleton.includes('Silic')||
+     cr.skeleton.includes('sulfúr')||cr.skeleton.includes('Sulfur')||
+     cr.skeleton.includes('calcár')||cr.skeleton.includes('Calcar')){
+    mat.shininess=110; mat.specular=new T.Color(1,1,1);
+  }
+
+  const loco = cr.loco||'';
+  if(loco.includes('Cuadr')||loco.includes('Quad'))      buildQuadruped(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Nata')||loco.includes('Swim'))  buildSwimmer(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Flota')||loco.includes('Float')||loco.includes('vuelo')||loco.includes('fly')) buildFlyer(group,mat,matD,matM,cr,T);
+  else if(loco.includes('Rast')||loco.includes('Crawl')) buildCrawler(group,mat,matD,matM,cr,T);
+  else                                                    buildUndulator(group,mat,matD,matM,cr,T);
+
+  // Bioluminescence spots
+  const hasBioLum = cr.abilities?.some(a=>a.name.toLowerCase().includes('biolum')||a.name.toLowerCase().includes('luminesc'));
+  if(hasBioLum){
+    const spotMat = new T.MeshBasicMaterial({color:new T.Color(...rgb),transparent:true,opacity:0.95});
+    for(let i=0;i<10;i++){
+      const sg = new T.SphereGeometry(0.03+Math.random()*0.03,8,8);
+      const s  = new T.Mesh(sg,spotMat);
+      const th = Math.random()*Math.PI*2;
+      const ph = Math.random()*Math.PI;
+      s.position.set(Math.sin(ph)*Math.cos(th)*0.52,Math.sin(ph)*Math.sin(th)*0.52,Math.cos(ph)*0.52);
+      group.add(s);
+    }
+    const pl = new T.PointLight(new T.Color(...rgb),1.8,2.5);
+    group.add(pl);
+  }
+
+  // Camuflaje → pattern bands
+  const hasCamo = cr.abilities?.some(a=>a.name.toLowerCase().includes('camufl')||a.name.toLowerCase().includes('camou'));
+  if(hasCamo){
+    for(let i=0;i<3;i++){
+      const bandGeo = new T.TorusGeometry(0.38+i*0.04,0.04,8,24);
+      const bandMat = new T.MeshPhongMaterial({color:new T.Color(...dark),transparent:true,opacity:0.6});
+      const band = new T.Mesh(bandGeo,bandMat);
+      band.rotation.x = i*0.7;
+      band.rotation.z = i*0.4;
+      group.add(band);
+    }
+  }
+
+  return group;
+}
+
+// ── Cuadrúpedo ───────────────────────────────────────
+function buildQuadruped(g,mat,matD,matM,cr,T){
+  // Body
+  const body=new T.Mesh(new T.SphereGeometry(0.5,32,32),mat);
+  body.scale.set(1.65,0.92,1.10); body.name='body'; g.add(body);
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.30,24,24),mat);
+  head.position.set(0.88,0.14,0); head.name='head'; g.add(head);
+  // Neck
+  const neck=new T.Mesh(new T.CylinderGeometry(0.11,0.17,0.28,12),matM);
+  neck.rotation.z=-1.18; neck.position.set(0.64,0.13,0); g.add(neck);
+  // Tail
+  const tail=new T.Mesh(new T.CylinderGeometry(0.035,0.11,0.52,10),mat);
+  tail.position.set(-0.96,0.06,0); tail.rotation.z=Math.PI/2.15; g.add(tail);
+  // Legs
+  [[0.38,-0.38,0.32],[-0.38,-0.38,0.32],[0.38,-0.38,-0.32],[-0.38,-0.38,-0.32]].forEach(([x,y,z])=>{
+    // Thigh
+    const thigh=new T.Mesh(new T.CylinderGeometry(0.09,0.07,0.34,10),mat);
+    thigh.position.set(x,y,z); thigh.rotation.z=x>0?0.22:-0.22; g.add(thigh);
+    // Shin
+    const shin=new T.Mesh(new T.CylinderGeometry(0.065,0.045,0.30,10),matD);
+    shin.position.set(x,y-0.32,z); shin.rotation.z=x>0?-0.15:0.15; g.add(shin);
+    // Foot
+    const foot=new T.Mesh(new T.SphereGeometry(0.065,10,8),matD);
+    foot.position.set(x+(x>0?0.04:-0.04),y-0.48,z); g.add(foot);
+  });
+  // Eyes
+  const eyeMat=new T.MeshPhongMaterial({color:0x080808,shininess:300,specular:new T.Color(1,1,1)});
+  const hlMat =new T.MeshBasicMaterial({color:0xffffff});
+  [-0.13,0.13].forEach(ez=>{
+    const eye=new T.Mesh(new T.SphereGeometry(0.07,14,14),eyeMat);
+    eye.position.set(1.13,0.20,ez); g.add(eye);
+    const hl=new T.Mesh(new T.SphereGeometry(0.025,8,8),hlMat);
+    hl.position.set(1.18,0.25,ez+0.045); g.add(hl);
+  });
+  // Horns if armored
+  if(cr.skeleton.includes('silíce')||cr.skeleton.includes('Silic')){
+    [[-0.1,0.1],[-0.1,-0.1]].forEach(([hy,hz])=>{
+      const horn=new T.Mesh(new T.ConeGeometry(0.04,0.22,8),matD);
+      horn.position.set(0.88,0.45,hz); horn.rotation.z=hy; g.add(horn);
+    });
+  }
+}
+
+// ── Nadador ──────────────────────────────────────────
+function buildSwimmer(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.5,32,28),mat);
+  body.scale.set(2.3,0.78,0.92); body.name='body'; g.add(body);
+  // Tail fin
+  const tail=new T.Mesh(new T.SphereGeometry(0.28,16,12),matM);
+  tail.position.set(-1.12,0,0); tail.scale.set(0.55,0.14,0.85); g.add(tail);
+  // Dorsal fin
+  const dors=new T.Mesh(new T.ConeGeometry(0.20,0.38,12),matD);
+  dors.position.set(-0.08,0.46,0); dors.rotation.z=-0.12; g.add(dors);
+  // Pectoral fins
+  [-0.58,0.58].forEach(z=>{
+    const fin=new T.Mesh(new T.SphereGeometry(0.26,16,10),mat);
+    fin.position.set(0.32,-0.09,z); fin.scale.set(1.0,0.11,0.72); g.add(fin);
+  });
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.30,22,22),mat);
+  head.position.set(1.08,0.02,0); head.scale.set(0.82,0.88,0.88); head.name='head'; g.add(head);
+  // Eyes
+  const em=new T.MeshPhongMaterial({color:0x060606,shininess:280,specular:new T.Color(1,1,1)});
+  [-0.22,0.22].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.075,14,14),em);
+    e.position.set(1.12,0.12,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.025,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(1.17,0.17,z+0.04); g.add(hl);
+  });
+  // Lateral line
+  const ll=new T.Mesh(new T.CylinderGeometry(0.018,0.018,1.9,8),new T.MeshBasicMaterial({color:new T.Color(...getBloodColor3D(cr.blood)).multiplyScalar(1.6)}));
+  ll.rotation.z=Math.PI/2; ll.position.set(0,0.02,0.44); g.add(ll);
+}
+
+// ── Volador ──────────────────────────────────────────
+function buildFlyer(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.40,26,26),mat);
+  body.scale.set(1.25,1.0,0.88); body.name='body'; g.add(body);
+  const head=new T.Mesh(new T.SphereGeometry(0.24,20,20),mat);
+  head.position.set(0.56,0.15,0); head.name='head'; g.add(head);
+  // Wings using ShapeGeometry
+  const T3=window.THREE;
+  [-1,1].forEach(side=>{
+    const ws=new T3.Shape();
+    ws.moveTo(0,0);
+    ws.bezierCurveTo(0.35,side*0.25,0.85,side*0.85,0.48,side*1.28);
+    ws.bezierCurveTo(0.18,side*0.95,-0.28,side*0.78,-0.48,side*1.08);
+    ws.bezierCurveTo(-0.58,side*0.45,-0.28,side*0.18,0,0);
+    const wg=new T3.ShapeGeometry(ws);
+    const wm=new T3.MeshPhongMaterial({
+      color:mat.color, emissive:mat.emissive,
+      side:T3.DoubleSide, transparent:true, opacity:0.80, shininess:55,
+    });
+    const wing=new T3.Mesh(wg,wm);
+    wing.position.set(-0.08,0.12,0); wing.rotation.x=side*0.28; wing.name='wing'+side;
+    g.add(wing);
+    // Wing bone/spar
+    const spar=new T3.Mesh(new T3.CylinderGeometry(0.025,0.015,1.0,8),matD);
+    spar.position.set(0.18,0.12,side*0.35); spar.rotation.x=side*0.3; spar.rotation.z=-0.5;
+    g.add(spar);
+  });
+  // Small legs
+  [-0.15,0.15].forEach(z=>{
+    const leg=new T.Mesh(new T.CylinderGeometry(0.04,0.03,0.28,8),matD);
+    leg.position.set(0.1,-0.44,z); leg.rotation.z=0.2; g.add(leg);
+    const claw=new T.Mesh(new T.SphereGeometry(0.05,8,6),matD);
+    claw.position.set(0.14,-0.60,z); g.add(claw);
+  });
+  // Big eyes for flyers
+  const em=new T.MeshPhongMaterial({color:0x040414,shininess:300,specular:new T.Color(1,1,1)});
+  [-0.13,0.13].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.10,16,16),em);
+    e.position.set(0.75,0.22,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.03,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(0.82,0.28,z+0.07); g.add(hl);
+  });
+}
+
+// ── Rastreador ───────────────────────────────────────
+function buildCrawler(g,mat,matD,matM,cr,T){
+  const body=new T.Mesh(new T.SphereGeometry(0.5,28,22),mat);
+  body.scale.set(1.55,0.42,1.22); body.name='body'; g.add(body);
+  // Armored segments on back
+  for(let i=0;i<5;i++){
+    const seg=new T.Mesh(new T.SphereGeometry(0.22-i*0.02,16,10),matD);
+    seg.position.set(0.52-i*0.28,0.24,0); seg.scale.set(0.78,0.32,1.12); g.add(seg);
+  }
+  // Head
+  const head=new T.Mesh(new T.SphereGeometry(0.27,22,18),mat);
+  head.position.set(0.80,0.0,0); head.scale.set(0.9,0.72,1.0); head.name='head'; g.add(head);
+  // 6 legs
+  for(let i=0;i<3;i++){
+    [-0.48,0.48].forEach(z=>{
+      const leg=new T.Mesh(new T.CylinderGeometry(0.04,0.03,0.38,8),matD);
+      const xp=0.32-i*0.38;
+      leg.position.set(xp,-0.30,z>0?0.58:-0.58); leg.rotation.z=z>0?0.52:-0.52; g.add(leg);
+      const foot=new T.Mesh(new T.SphereGeometry(0.05,8,6),matD);
+      foot.position.set(xp+(z>0?0.14:-0.14),-0.50,z>0?0.66:-0.66); g.add(foot);
+    });
+  }
+  // Antennae
+  [-0.11,0.11].forEach(z=>{
+    const ant=new T.Mesh(new T.CylinderGeometry(0.014,0.008,0.52,6),mat);
+    ant.position.set(0.98,0.22,z); ant.rotation.z=z>0?-0.5:0.5; ant.rotation.x=0.3; g.add(ant);
+    const tip=new T.Mesh(new T.SphereGeometry(0.03,8,8),matD);
+    tip.position.set(0.98+Math.sin(z<0?-0.5:0.5)*0.28,0.44,z+Math.cos(0.3)*0.22); g.add(tip);
+  });
+  // Compound eyes
+  const em=new T.MeshPhongMaterial({color:0x050505,shininess:250,specular:new T.Color(1,1,1)});
+  [-0.14,0.14].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.09,14,14),em);
+    e.position.set(1.02,0.09,z); g.add(e);
+    // Facets
+    for(let f=0;f<5;f++){
+      const fa=new T.Mesh(new T.SphereGeometry(0.025,6,6),new T.MeshBasicMaterial({color:0x444466}));
+      const fa_angle=f/5*Math.PI*2;
+      fa.position.set(1.07+Math.cos(fa_angle)*0.06,0.09+Math.sin(fa_angle)*0.06,z); g.add(fa);
+    }
+  });
+}
+
+// ── Ondulatorio ──────────────────────────────────────
+function buildUndulator(g,mat,matD,matM,cr,T){
+  const segs=8;
+  for(let i=0;i<segs;i++){
+    const t2=i/(segs-1);
+    const r=0.30*(1-t2*0.52)*(i===0?1.18:1.0);
+    const sm=i%2===0?mat:matD;
+    const seg=new T.Mesh(new T.SphereGeometry(r,22,18),sm);
+    seg.position.set(0.88-i*0.27,Math.sin(i*0.65)*0.09,0);
+    seg.name=i===0?'head':'body'; g.add(seg);
+  }
+  // Eyes
+  const em=new T.MeshPhongMaterial({color:0x060606,shininess:220,specular:new T.Color(1,1,1)});
+  [-0.14,0.14].forEach(z=>{
+    const e=new T.Mesh(new T.SphereGeometry(0.065,12,12),em);
+    e.position.set(1.06,0.11,z); g.add(e);
+    const hl=new T.Mesh(new T.SphereGeometry(0.02,8,8),new T.MeshBasicMaterial({color:0xffffff}));
+    hl.position.set(1.11,0.15,z+0.04); g.add(hl);
+  });
+  // Cilia along body
+  for(let i=1;i<segs-1;i++){
+    [0.8,-0.8,2.2,-2.2].forEach((angle,ai)=>{
+      if(ai>1&&i%2!==0)return;
+      const cil=new T.Mesh(new T.CylinderGeometry(0.016,0.008,0.22,6),matD);
+      const xp=0.88-i*0.27;
+      const yBase=Math.sin(i*0.65)*0.09;
+      const radius=0.30*(1-(i/(segs-1))*0.52);
+      cil.position.set(xp,yBase+Math.sin(angle)*radius*0.85,Math.cos(angle)*radius*0.85);
+      cil.rotation.z=Math.sin(angle)*0.75; cil.rotation.x=Math.cos(angle)*0.5; g.add(cil);
+    });
+  }
+}
+
+// ─── Mostrar criatura 3D ─────────────────────────────
+function show3DCreature(index){
+  const cr = makeCreatureI18n(vals, generateCreatureSeed(vals, index));
+  const modal = document.getElementById('creature-3d-modal');
+  if(!modal)return;
+
+  // Info
+  document.getElementById('c3d-name').textContent = cr.latinName;
+  document.getElementById('c3d-desc').textContent =
+    `${cr.complexity} · ${cr.meta} · ${cr.skeleton}`;
+
+  // Info panel
+  const rgb = getBloodColor3D(cr.blood);
+  const col = `rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
+  const E   = lang==='en';
+  document.getElementById('c3d-info').innerHTML=`
+    <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">
+      ${E?'Morphology':'Morfología'}
+    </div>
+    ${[
+      {l:E?'Skeleton':'Esqueleto',   v:cr.skeleton,  c:'#FBBF24'},
+      {l:E?'Blood':'Sangre',         v:cr.blood,     c:col},
+      {l:E?'Metabolism':'Metabolismo',v:cr.meta,     c:'#00D4AA'},
+      {l:E?'Nervous':'Nervioso',     v:cr.nervous,   c:'#A78BFA'},
+      {l:E?'Thermoreg.':'Termoreg.', v:cr.thermo,    c:'#F87171'},
+      {l:E?'Locomotion':'Locomoción',v:cr.loco,      c:'#60A5FA'},
+      {l:E?'Size':'Tamaño',          v:cr.size,      c:'#94A3B8'},
+    ].map(({l,v,c})=>`
+      <div style="margin-bottom:8px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:7px;">
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${l}</div>
+        <div style="font-size:10px;color:${c};font-weight:600;">${v}</div>
+      </div>`).join('')}
+    <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:8px;margin-top:4px;">
+      ✨ ${E?'Abilities':'Habilidades'}
+    </div>
+    ${(cr.abilities||[]).slice(0,6).map(ab=>`
+      <div style="display:flex;align-items:flex-start;gap:5px;margin-bottom:5px;">
+        <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
+        <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
+      </div>`).join('')||`<div style="font-size:9px;color:var(--dim);">${E?'None detected':'Ninguna detectada'}</div>`}
+    <div style="margin-top:12px;padding:8px;background:rgba(0,212,170,0.06);border-radius:6px;border:0.5px solid rgba(0,212,170,0.2);">
+      <div style="font-size:8px;color:var(--teal);font-weight:600;margin-bottom:3px;">
+        🔬 ${E?'3D Generation method':'Método de generación 3D'}
+      </div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.6;">
+        ${E
+          ?'Procedural geometry based on evolutionary traits. Locomotion → body plan. Blood → color. Abilities → special features.'
+          :'Geometría procedural basada en rasgos evolutivos. Locomoción → plan corporal. Sangre → color. Habilidades → características especiales.'}
+      </div>
+    </div>`;
+
+  modal.style.display='flex';
+  setTimeout(()=>init3DCreature(cr), 60);
+}
+
+function init3DCreature(cr){
+  const canvas = document.getElementById('c3d-canvas');
+  if(!canvas||!window.THREE){ return; }
+  const T  = window.THREE;
+  const container3 = canvas.parentElement;
+  const W  = container3.clientWidth  || 560;
+  const H  = container3.clientHeight || 400;
+  canvas.width=W; canvas.height=H;
+
+  // Cleanup anterior
+  if(c3dState.cleanup) c3dState.cleanup();
+  c3dAnimating=true; c3dWireframe=false; c3dExploded=false;
+  const btnAnim=document.getElementById('c3d-anim-btn');
+  if(btnAnim) btnAnim.textContent='⏸ Pause';
+
+  const scene    = new T.Scene();
+  scene.background = new T.Color(0x04080F);
+  const camera   = new T.PerspectiveCamera(50,W/H,0.05,200);
+  camera.position.set(0,0.4,3.2);
+  camera.lookAt(0,0,0);
+
+  const renderer = new T.WebGLRenderer({canvas,antialias:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  // ResizeObserver criatura 3D
+  const ro3 = new ResizeObserver(()=>{
+    const nW=container3.clientWidth, nH=container3.clientHeight;
+    if(nW>0&&nH>0){ renderer.setSize(nW,nH); camera.aspect=nW/nH; camera.updateProjectionMatrix(); }
+  });
+  ro3.observe(container3);
+
+  // Stars
+  const starPts = new Float32Array(600*3);
+  for(let i=0;i<starPts.length;i++) starPts[i]=(Math.random()-0.5)*80;
+  const starGeo=new T.BufferGeometry();
+  starGeo.setAttribute('position',new T.Float32BufferAttribute(starPts,3));
+  scene.add(new T.Points(starGeo,new T.PointsMaterial({color:0xffffff,size:0.12,transparent:true,opacity:0.7})));
+
+  // Lighting
+  const rgb=getBloodColor3D(cr.blood);
+  const creatureColor=new T.Color(...rgb);
+  const keyLight  = new T.DirectionalLight(0xFFF8F0,1.8);
+  keyLight.position.set(3,4,3);
+  scene.add(keyLight);
+  const fillLight = new T.DirectionalLight(0x8090B0,0.6);
+  fillLight.position.set(-3,1,-2);
+  scene.add(fillLight);
+  const rimLight  = new T.DirectionalLight(creatureColor,0.9);
+  rimLight.position.set(0,-2,-3);
+  scene.add(rimLight);
+  scene.add(new T.AmbientLight(0x0A1020,0.8));
+
+  // Ground glow disc
+  const discGeo=new T.CircleGeometry(1.2,48);
+  const discMat=new T.MeshBasicMaterial({color:creatureColor,transparent:true,opacity:0.04,side:T.DoubleSide});
+  const disc=new T.Mesh(discGeo,discMat);
+  disc.rotation.x=-Math.PI/2; disc.position.y=-0.65;
+  scene.add(disc);
+
+  // Criatura
+  const creature = buildCreatureMesh(cr,T);
+  // Scale by size
+  const sizeScale = cr.size?.includes('Mega')?1.6:cr.size?.includes('Grand')||cr.size?.includes('Large')?1.3:
+                    cr.size?.includes('Micro')?0.55:1.0;
+  creature.scale.setScalar(sizeScale);
+  scene.add(creature);
+  c3dState.creature=creature;
+
+  // Órganos internos (ocultos por defecto)
+  const organs = buildInternalOrgans(cr,T);
+  organs.scale.setScalar(sizeScale);
+  scene.add(organs);
+  c3dState.organs=organs;
+  c3dState.currentCr=cr;
+
+  // Orbit
+  let isDrag=false,prev={x:0,y:0};
+  let rotY=0,rotX=0.12,dist=3.2;
+  function updateCam(){
+    camera.position.x=dist*Math.sin(rotY)*Math.cos(rotX);
+    camera.position.y=dist*Math.sin(rotX)+0.1;
+    camera.position.z=dist*Math.cos(rotY)*Math.cos(rotX);
+    camera.lookAt(0,0,0);
+  }
+  const onMD=e=>{isDrag=true;prev={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';};
+  const onMU=()=>{isDrag=false;canvas.style.cursor='grab';};
+  const onMM=e=>{if(!isDrag)return;rotY-=(e.clientX-prev.x)*0.006;rotX=Math.max(-0.8,Math.min(1.0,rotX+(e.clientY-prev.y)*0.004));prev={x:e.clientX,y:e.clientY};updateCam();};
+  const onWH=e=>{dist=Math.max(1.0,Math.min(8,dist+e.deltaY*0.005));updateCam();e.preventDefault();};
+  const onTD=e=>{isDrag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+  const onTM=e=>{if(!isDrag)return;rotY-=(e.touches[0].clientX-prev.x)*0.006;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();};
+  canvas.addEventListener('mousedown',onMD);
+  window.addEventListener('mouseup',onMU);
+  window.addEventListener('mousemove',onMM);
+  canvas.addEventListener('wheel',onWH,{passive:false});
+  canvas.addEventListener('touchstart',onTD,{passive:true});
+  canvas.addEventListener('touchmove',onTM,{passive:true});
+  window.addEventListener('touchend',onMU);
+  updateCam();
+
+  // Animate
+  let animId,time=0;
+  function animate(){
+    animId=requestAnimationFrame(animate);
+    time+=0.016;
+    if(c3dAnimating) creature.rotation.y+=0.008;
+    // Breathing
+    const breath=1.0+Math.sin(time*1.2)*0.012;
+    creature.scale.setScalar(sizeScale*breath);
+    // Wing flap for flyers
+    if(cr.loco?.includes('Flota')||cr.loco?.includes('Float')||cr.loco?.includes('vuelo')||cr.loco?.includes('fly')){
+      creature.children.forEach(ch=>{
+        if(ch.name==='wing1')  ch.rotation.x= 0.28+Math.sin(time*3)*0.18;
+        if(ch.name==='wing-1') ch.rotation.x=-0.28-Math.sin(time*3)*0.18;
+      });
+    }
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  c3dState={scene,renderer,camera,creature,
+    cleanup:()=>{
+      cancelAnimationFrame(animId);
+      ro3.disconnect();
+      canvas.removeEventListener('mousedown',onMD);
+      window.removeEventListener('mouseup',onMU);
+      window.removeEventListener('mousemove',onMM);
+      canvas.removeEventListener('wheel',onWH);
+      canvas.removeEventListener('touchstart',onTD);
+      canvas.removeEventListener('touchmove',onTM);
+      window.removeEventListener('touchend',onMU);
+      renderer.dispose();
+    }
+  };
+}
+
+function close3D(){
+  document.getElementById('creature-3d-modal').style.display='none';
+  if(c3dState.cleanup){c3dState.cleanup();c3dState={};}
+  c3dXRayMode=false; c3dWireframe=false; c3dExploded=false;
+}
+
+let c3dXRayMode = false;
+
+function c3dXRay(){
+  if(!c3dState.creature||!c3dState.organs) return;
+  const T=window.THREE;
+  c3dXRayMode=!c3dXRayMode;
+
+  const btn=document.getElementById('c3d-xray-btn');
+  if(btn){
+    btn.style.background=c3dXRayMode?'rgba(0,212,255,0.15)':'';
+    btn.style.borderColor=c3dXRayMode?'#00D4FF':'#00D4FF';
+    btn.textContent=c3dXRayMode?'🩻 X-Ray ON':'🩻 X-Ray';
+  }
+
+  if(c3dXRayMode){
+    // Guardar materiales originales y aplicar X-ray shader
+    c3dState.creature.traverse(ch=>{
+      if(!ch.isMesh) return;
+      ch.userData.origMat = Array.isArray(ch.material)
+        ? ch.material.map(m=>m.clone()) : ch.material.clone();
+      const xMat=new T.ShaderMaterial({
+        vertexShader: XRAY_VERT,
+        fragmentShader: XRAY_FRAG,
+        uniforms:{
+          uColor:{value: ch.userData.origMat.color||new T.Color(0.3,0.8,1.0)},
+          uRimPow:{value:1.8},
+          uAlpha:{value:0.75},
+        },
+        transparent:true, depthWrite:false, side:T.DoubleSide,
+        blending:T.AdditiveBlending,
+      });
+      // Color = original del material
+      const origColor = Array.isArray(ch.userData.origMat)
+        ? ch.userData.origMat[0]?.color : ch.userData.origMat?.color;
+      if(origColor) xMat.uniforms.uColor.value=origColor.clone().multiplyScalar(0.7).add(new T.Color(0,0.2,0.3));
+      ch.material=xMat;
+    });
+    // Mostrar órganos
+    c3dState.organs.visible=true;
+
+    // Cambiar fondo a negro médico con grid
+    c3dState.scene.background=new T.Color(0x000810);
+
+    // Actualizar panel info con leyenda de órganos
+    const legend=getOrganLegend(c3dState.currentCr);
+    const infoEl=document.getElementById('c3d-info');
+    if(infoEl){
+      const E=lang==='en';
+      infoEl.innerHTML=`
+        <div style="font-size:10px;font-weight:700;color:#00D4FF;margin-bottom:10px;">
+          🩻 ${E?'X-Ray Vision — Internal Anatomy':'Visión X-Ray — Anatomía Interna'}
+        </div>
+        <div style="font-size:9px;color:rgba(0,212,255,0.5);margin-bottom:10px;line-height:1.6;">
+          ${E?'Procedural internal organs based on evolutionary traits':'Órganos internos procedurales basados en rasgos evolutivos'}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${legend.map(item=>`
+            <div style="background:${item.col}10;border:0.5px solid ${item.col}40;border-radius:6px;padding:7px 8px;">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:${item.col};flex-shrink:0;box-shadow:0 0 5px ${item.col};"></div>
+                <div style="font-size:9px;font-weight:700;color:${item.col};">${item.n}</div>
+              </div>
+              <div style="font-size:8px;color:rgba(255,255,255,0.45);line-height:1.5;padding-left:15px;">${item.d}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:10px;padding:7px;background:rgba(0,212,255,0.06);border-radius:6px;border:0.5px solid rgba(0,212,255,0.2);">
+          <div style="font-size:8px;color:#00D4FF;font-weight:600;margin-bottom:3px;">
+            🔬 ${E?'Scientific basis':'Base científica'}
+          </div>
+          <div style="font-size:8px;color:rgba(255,255,255,0.45);line-height:1.6;">
+            ${E
+              ?'Organs generated from evolutionary traits: skeleton → bone structure, blood → heart type, metabolism → respiratory system, nervous → brain complexity.'
+              :'Órganos generados desde rasgos evolutivos: esqueleto → estructura ósea, sangre → tipo de corazón, metabolismo → sistema respiratorio, nervioso → complejidad cerebral.'}
+          </div>
+        </div>`;
+    }
+  } else {
+    // Restaurar materiales originales
+    c3dState.creature.traverse(ch=>{
+      if(!ch.isMesh||!ch.userData.origMat) return;
+      ch.material=ch.userData.origMat;
+    });
+    c3dState.organs.visible=false;
+    c3dState.scene.background=new T.Color(0x04080F);
+    // Restaurar panel info (re-llamar show3DCreature reconstruiría todo — solo reconstruimos info)
+    const cr=c3dState.currentCr;
+    if(cr){
+      const rgb=getBloodColor3D(cr.blood);
+      const col=`rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
+      const E=lang==='en';
+      document.getElementById('c3d-info').innerHTML=`
+        <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">${E?'Morphology':'Morfología'}</div>
+        ${[
+          {l:E?'Skeleton':'Esqueleto',v:cr.skeleton,c:'#FBBF24'},
+          {l:E?'Blood':'Sangre',v:cr.blood,c:col},
+          {l:E?'Metabolism':'Metabolismo',v:cr.meta,c:'#00D4AA'},
+          {l:E?'Nervous':'Nervioso',v:cr.nervous,c:'#A78BFA'},
+          {l:E?'Thermoreg.':'Termoreg.',v:cr.thermo,c:'#F87171'},
+          {l:E?'Locomotion':'Locomoción',v:cr.loco,c:'#60A5FA'},
+          {l:E?'Size':'Tamaño',v:cr.size,c:'#94A3B8'},
+        ].map(({l,v,c})=>`
+          <div style="margin-bottom:8px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:7px;">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${l}</div>
+            <div style="font-size:10px;color:${c};font-weight:600;">${v}</div>
+          </div>`).join('')}
+        <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:8px;margin-top:4px;">✨ ${E?'Abilities':'Habilidades'}</div>
+        ${(cr.abilities||[]).slice(0,6).map(ab=>`
+          <div style="display:flex;align-items:flex-start;gap:5px;margin-bottom:5px;">
+            <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
+            <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
+          </div>`).join('')}`;
+    }
+  }
+}
+
+function c3dToggleAnim(){
+  c3dAnimating=!c3dAnimating;
+  const b=document.getElementById('c3d-anim-btn');
+  if(b) b.textContent=c3dAnimating?(lang==='en'?'⏸ Pause':'⏸ Pausar'):(lang==='en'?'▶ Resume':'▶ Reanudar');
+}
+
+function c3dToggleWire(){
+  if(!c3dState.creature)return;
+  c3dWireframe=!c3dWireframe;
+  c3dState.creature.traverse(ch=>{
+    if(ch.isMesh&&ch.material){
+      if(Array.isArray(ch.material)) ch.material.forEach(m=>m.wireframe=c3dWireframe);
+      else ch.material.wireframe=c3dWireframe;
+    }
+  });
+  const b=document.getElementById('c3d-wire-btn');
+  if(b){b.style.background=c3dWireframe?'rgba(0,212,170,0.15)':'';b.style.borderColor=c3dWireframe?'var(--teal)':'var(--border)';}
+}
+
+function c3dExplode(){
+  if(!c3dState.creature)return;
+  c3dExploded=!c3dExploded;
+  const factor=c3dExploded?1.8:1.0;
+  c3dState.creature.children.forEach((ch,i)=>{
+    const orig=ch.userData.origPos||(ch.userData.origPos=ch.position.clone());
+    ch.position.copy(orig).multiplyScalar(factor);
+  });
+}
+
+
+
+
+// ═══════════════════════════════════════════════════════
+// NASA EXOPLANET API
+// ═══════════════════════════════════════════════════════
+
+// ─── Carga un exoplaneta de la base de datos local ────
+function loadExoplanet(name){
+  const exo = EXOPLANETS[name];
+  if(!exo) return;
+  const E = lang==='en';
+
+  // Aplicar parámetros
+  const keys=['Ca','Fe','Si','P','Mg','Cu','S','Ni','V','O2','CO2','H2S','H2O','Temp','pH','pressure','gravity'];
+  keys.forEach(k=>{
+    if(exo[k]===undefined) return;
+    const m=SLIDERS.find(s=>s.sym===k);
+    if(!m) return;
+    const v=Math.max(m.min, Math.min(m.max, exo[k]));
+    vals[k]=v;
+    const sl=document.getElementById('sl-'+k);
+    if(sl){
+      sl.value=v;
+      const pct=Math.round((v-m.min)/(m.max-m.min)*100);
+      sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+    }
+    const vl=document.getElementById('vl-'+k);
+    if(vl){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  });
+
+  // Actualizar Three.js y panel
+  if(threeState.update) threeState.update(vals);
+  updatePlanetPanel();
+
+  // Mostrar info del exoplaneta
+  const info = exo.info||{};
+  const el = document.getElementById('exo-info');
+  if(el){
+    el.style.display='block';
+    const esiColor = info.esi>=0.80?'#00D4AA':info.esi>=0.60?'#FBBF24':'#F87171';
+    el.innerHTML=`
+      <div style="font-size:9px;font-weight:700;color:rgba(0,212,170,0.90);margin-bottom:5px;">
+        🔭 ${name}
+      </div>
+      ${info.note?`<div style="font-style:italic;margin-bottom:5px;color:rgba(255,255,255,0.55);">${info.note}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">
+        ${[
+          ['Star',    info.star],
+          ['Distance',info.distance],
+          ['Radius',  info.radius],
+          ['Mass',    info.mass],
+          ['Discovered',info.year>0?info.year:'Ancient'],
+          ['Discovery',info.discovery],
+          ['Zone',    info.zone],
+        ].filter(([,v])=>v).map(([l,v])=>`
+          <div>
+            <span style="color:rgba(0,212,170,0.40);">${l}: </span>
+            <span style="color:rgba(255,255,255,0.65);">${v}</span>
+          </div>`).join('')}
+        <div style="grid-column:1/-1;margin-top:3px;">
+          <span style="color:rgba(0,212,170,0.40);">ESI: </span>
+          <span style="color:${esiColor};font-weight:700;">${info.esi}</span>
+          <span style="color:rgba(255,255,255,0.30);font-size:7px;"> (Earth Similarity Index)</span>
+        </div>
+      </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// BUSCADOR EN VIVO — NASA Exoplanet Archive (TAP API, sin key)
+// Tabla pscomppars: 5,900+ exoplanetas confirmados con datos reales
+// ═══════════════════════════════════════════════════════
+let nasaSearchTimer=null;
+let nasaSearchCache={};
+
+function nasaSearchInput(q){
+  q=(q||'').trim();
+  const box=document.getElementById('nasa-results');
+  const ico=document.getElementById('nasa-search-ico');
+  if(!box) return;
+
+  if(q.length<2){ box.style.display='none'; if(ico)ico.textContent='🔍'; return; }
+
+  // Debounce — espera 350ms tras dejar de escribir
+  if(nasaSearchTimer) clearTimeout(nasaSearchTimer);
+  if(ico) ico.textContent='⟳';
+  nasaSearchTimer=setTimeout(()=>doNasaSearch(q), 350);
+}
+
+async function doNasaSearch(q){
+  const E=lang==='en';
+  const box=document.getElementById('nasa-results');
+  const ico=document.getElementById('nasa-search-ico');
+  if(!box) return;
+
+  // Cache
+  if(nasaSearchCache[q]){ renderNasaResults(nasaSearchCache[q]); if(ico)ico.textContent='🔍'; return; }
+
+  try{
+    // Escapar comillas simples para ADQL
+    const safe=q.replace(/'/g,"''");
+    const query=`SELECT TOP 25 pl_name,pl_rade,pl_bmasse,pl_eqt,pl_orbsmax,st_teff,sy_dist,disc_year,discoverymethod `
+      +`FROM pscomppars WHERE UPPER(pl_name) LIKE UPPER('%${safe}%') ORDER BY pl_name`;
+    const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+    const res=await fetch(url);
+    const data=await res.json();
+    nasaSearchCache[q]=data;
+    renderNasaResults(data);
+  }catch(err){
+    box.style.display='block';
+    box.innerHTML=`<div style="padding:10px;font-size:8px;color:#F87171;">
+      ${E?'NASA API unreachable. Check connection.':'NASA API no disponible. Verifica conexión.'}
+    </div>`;
+  } finally {
+    if(ico) ico.textContent='🔍';
+  }
+}
+
+function renderNasaResults(data){
+  const E=lang==='en';
+  const box=document.getElementById('nasa-results');
+  if(!box) return;
+  box.style.display='block';
+
+  if(!data || !data.length){
+    box.innerHTML=`<div style="padding:10px;font-size:8px;color:rgba(255,255,255,0.4);">
+      ${E?'No exoplanets found.':'No se encontraron exoplanetas.'}
+    </div>`;
+    return;
+  }
+
+  box.innerHTML=data.map((p,i)=>{
+    const name=p.pl_name||'—';
+    const rad=p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'—';
+    const mass=p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'—';
+    const temp=p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'—';
+    const dist=p.sy_dist?Math.round(parseFloat(p.sy_dist)*3.262)+' ly':'—';
+    const year=p.disc_year||'';
+    // Guardar el planeta en window para el onclick
+    const key='nasaP_'+i;
+    window[key]=p;
+    return `
+      <div onclick="applyNasaPlanet(window.${key})"
+        style="padding:7px 10px;border-bottom:0.5px solid rgba(255,255,255,0.04);cursor:pointer;transition:background .12s;"
+        onmouseover="this.style.background='rgba(0,212,170,0.10)'"
+        onmouseout="this.style.background='transparent'">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.85);">${name}</span>
+          <span style="font-size:7.5px;color:rgba(0,212,170,0.6);white-space:nowrap;">${dist}</span>
+        </div>
+        <div style="font-size:7.5px;color:rgba(255,255,255,0.4);margin-top:2px;">
+          ${rad} · ${mass} · ${temp}${year?' · '+year:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Aplica un planeta de la búsqueda NASA a los sliders
+function applyNasaPlanet(p){
+  if(!p) return;
+  const E=lang==='en';
+  loadNASAPlanet(p);  // reutiliza la conversión existente
+
+  // Cerrar resultados y poner el nombre en el buscador
+  const box=document.getElementById('nasa-results');
+  if(box) box.style.display='none';
+  const inp=document.getElementById('nasa-search');
+  if(inp) inp.value=p.pl_name||'';
+
+  // Mostrar info
+  const el=document.getElementById('exo-info');
+  if(el){
+    el.style.display='block';
+    const rad=p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'—';
+    const mass=p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'—';
+    const tempC=p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'—';
+    const dist=p.sy_dist?Math.round(parseFloat(p.sy_dist)*3.262)+' ly':'—';
+    const star=p.st_teff?Math.round(parseFloat(p.st_teff))+' K':'—';
+    el.innerHTML=`
+      <div style="font-size:9px;font-weight:700;color:rgba(0,212,170,0.9);margin-bottom:4px;">
+        🛰 ${p.pl_name}
+      </div>
+      <div style="font-size:7.5px;color:rgba(255,255,255,0.4);font-style:italic;margin-bottom:5px;">
+        ${E?'Real data from NASA Exoplanet Archive':'Datos reales del NASA Exoplanet Archive'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;">
+        ${[
+          [E?'Radius':'Radio',rad],
+          [E?'Mass':'Masa',mass],
+          [E?'Eq. temp':'Temp. eq.',tempC],
+          [E?'Distance':'Distancia',dist],
+          [E?'Star temp':'Temp. estelar',star],
+          [E?'Discovery':'Descubrimiento',p.discoverymethod||'—'],
+        ].map(([l,v])=>`<div><span style="color:rgba(0,212,170,0.4);">${l}: </span><span style="color:rgba(255,255,255,0.65);">${v}</span></div>`).join('')}
+      </div>
+      <div style="font-size:7px;color:rgba(255,255,255,0.3);margin-top:5px;line-height:1.5;">
+        ${E?'⚠ Mineralogy estimated from mass/radius — NASA provides physical data only.':'⚠ Mineralogía estimada de masa/radio — NASA provee solo datos físicos.'}
+      </div>`;
+  }
+  syncTaxTree();
+}
+
+// Cerrar resultados al hacer clic fuera
+document.addEventListener('click',function(e){
+  const box=document.getElementById('nasa-results');
+  const inp=document.getElementById('nasa-search');
+  if(box && inp && !box.contains(e.target) && e.target!==inp){
+    box.style.display='none';
+  }
+});
+
+// ─── Carga exoplanetas LIVE desde la API de la NASA ───
+async function loadNASALive(){
+  const E = lang==='en';
+  const btn = document.getElementById('nasa-live-btn');
+  if(btn){ btn.textContent='⟳ Loading…'; btn.style.color='rgba(0,212,170,1)'; }
+
+  const el = document.getElementById('exo-info');
+  if(el){
+    el.style.display='block';
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;">
+      <div style="width:12px;height:12px;border:2px solid rgba(0,212,170,0.3);
+        border-top:2px solid var(--teal);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <span>${E?'Querying NASA Exoplanet Archive…':'Consultando NASA Exoplanet Archive…'}</span>
+    </div>`;
+  }
+
+  try{
+    // NASA Exoplanet Archive TAP API — gratis, sin API key
+    const query=`SELECT TOP 10 pl_name,pl_rade,pl_bmasse,pl_orbper,pl_eqt,st_teff,st_dist,pl_esi
+      FROM ps WHERE pl_esi IS NOT NULL AND pl_esi > 0.5
+      ORDER BY pl_esi DESC`;
+    const url=`https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=${encodeURIComponent(query)}&format=json`;
+
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    if(!data||!data.length){
+      if(el) el.innerHTML=`<div style="color:#F87171;">${E?'No data from NASA API. Using local database.':'Sin datos de NASA API. Usando base de datos local.'}</div>`;
+      if(btn){ btn.textContent='⟳ Live API'; }
+      return;
+    }
+
+    // Mostrar resultados con botones de carga
+    if(el){
+      el.innerHTML=`
+        <div style="font-size:8px;font-weight:700;color:rgba(0,212,170,0.8);margin-bottom:6px;">
+          🛰 ${E?'Live from NASA Exoplanet Archive — top habitable candidates:':'En vivo desde NASA Exoplanet Archive — mejores candidatos habitables:'}
+        </div>
+        ${data.map((p,i)=>{
+          const name  = p.pl_name||`Planet ${i+1}`;
+          const esi   = p.pl_esi?parseFloat(p.pl_esi).toFixed(3):'-';
+          const rad   = p.pl_rade?parseFloat(p.pl_rade).toFixed(2)+' R⊕':'-';
+          const mass  = p.pl_bmasse?parseFloat(p.pl_bmasse).toFixed(2)+' M⊕':'-';
+          const temp  = p.pl_eqt?Math.round(parseFloat(p.pl_eqt)-273.15)+'°C':'-';
+          const dist  = p.st_dist?Math.round(parseFloat(p.st_dist))+' ly':'-';
+          const esiCol= parseFloat(esi)>=0.80?'#00D4AA':parseFloat(esi)>=0.60?'#FBBF24':'#94A3B8';
+          return`
+          <div style="background:rgba(0,212,170,0.03);border:0.5px solid rgba(0,212,170,0.12);
+            border-radius:4px;padding:5px 7px;margin-bottom:4px;cursor:pointer;transition:all .15s;"
+            onclick="loadNASAPlanet(${JSON.stringify({pl_name:name,pl_rade:p.pl_rade,pl_bmasse:p.pl_bmasse,pl_eqt:p.pl_eqt,pl_esi:esi}).replace(/"/g,'&quot;')})"
+            onmouseover="this.style.background='rgba(0,212,170,0.08)'"
+            onmouseout="this.style.background='rgba(0,212,170,0.03)'">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <span style="font-size:8.5px;font-weight:700;color:rgba(255,255,255,0.80);">${name}</span>
+              <span style="font-size:9px;color:${esiCol};font-weight:700;">ESI ${esi}</span>
+            </div>
+            <div style="font-size:7.5px;color:rgba(255,255,255,0.35);margin-top:1px;">
+              ${rad} · ${mass} · ${temp} · ${dist}
+            </div>
+          </div>`;
+        }).join('')}`;
+    }
+  } catch(err){
+    if(el) el.innerHTML=`<div style="font-size:8px;color:#F87171;">
+      ${E?'NASA API not reachable. Using local database instead.':'NASA API no disponible. Usando base de datos local.'}
+    </div>`;
+  } finally {
+    if(btn){ btn.textContent='⟳ Live API'; }
+  }
+}
+
+// ─── Aplica parámetros de planeta NASA live ───────────
+function loadNASAPlanet(p){
+  const E = lang==='en';
+  // ── Datos observacionales reales de la NASA ──
+  const rad    = parseFloat(p.pl_rade)  || 1.0;   // radios terrestres
+  const mass   = parseFloat(p.pl_bmasse)|| (rad*rad*rad); // masas terrestres (estimada si falta)
+  const tempK  = parseFloat(p.pl_eqt)   || 288;   // temperatura de equilibrio (K)
+  const tempC  = Math.round(tempK - 273.15);
+  const stTeff = parseFloat(p.st_teff)  || 5772;  // temperatura estelar (K)
+
+  // ── Gravedad superficial real: g = M/R² (en g terrestres) ──
+  const grav   = parseFloat(Math.max(0.1, Math.min(5, mass/(rad*rad))).toFixed(2));
+
+  // ── Densidad relativa → tipo de planeta (determinista, sin azar) ──
+  // densidad ∝ M/R³ ; >1 rocoso denso (más Fe), <0.5 gaseoso/hielo
+  const density = mass/(rad*rad*rad);
+  const rocky   = density >= 0.6;            // rocoso tipo Tierra/Marte
+  const dense   = density >= 1.3;            // núcleo metálico grande
+  const gassy   = density < 0.35;            // mini-Neptuno/gaseoso
+
+  // ── Composición mineral escalada por densidad y tamaño ──
+  // Planetas densos → más hierro/níquel (núcleo metálico)
+  const feBase  = dense ? 80 : rocky ? 56 : 30;
+  const Fe = Math.round(Math.min(100, feBase * Math.sqrt(rad)));
+  const Ni = Math.round(Math.min(50, (dense?40:20) * Math.sqrt(rad)));
+  const Si = Math.round(Math.min(350, (rocky?282:180) * Math.cbrt(rad)));
+  const Mg = Math.round(Math.min(100, 23 * Math.sqrt(rad) * (rocky?1.2:0.8)));
+  const Ca = Math.round(Math.min(80, 41 * Math.cbrt(rad)));
+  const P  = parseFloat(Math.min(5, 1.0 * Math.cbrt(rad)).toFixed(1));
+  const Cu = Math.round(Math.min(300, 60 * Math.cbrt(rad)));
+  const V  = Math.round(Math.min(500, 120 * Math.cbrt(rad)));
+
+  // ── Atmósfera/química por temperatura (zona habitable) ──
+  let O2, CO2, H2S, H2O, S, pH, pressure;
+  if(tempC > 100){
+    // Caliente tipo Venus — CO₂ denso, sin O₂, azufre volcánico
+    O2=0.1; CO2=Math.min(96, 60+rad*10); H2S=tempC>300?2:0.5;
+    H2O=Math.max(0, 5-tempC/100); S=Math.round(8000);
+    pH=tempC>300?1.5:4; pressure=Math.min(100, grav*20);
+  } else if(tempC >= -20 && tempC <= 60){
+    // Zona habitable — posible O₂, agua líquida
+    O2=Math.min(35, 8+rad*6); CO2=0.04+rad*0.1; H2S=0;
+    H2O=Math.min(100, 40+rad*15); S=350;
+    pH=7.0; pressure=parseFloat(Math.max(0.3, Math.min(5, grav*0.9)).toFixed(2));
+  } else if(tempC < -20){
+    // Frío — hielo, atmósfera fina, poco O₂
+    O2=Math.min(10, 2+rad); CO2=0.5; H2S=0;
+    H2O=Math.min(100, 60+rad*10); S=200;
+    pH=7.5; pressure=parseFloat(Math.max(0.1, grav*0.5).toFixed(2));
+  } else {
+    O2=15; CO2=0.04; H2S=0; H2O=50; S=350; pH=7; pressure=1;
+  }
+  // Mundos gaseosos → presión alta, sin superficie sólida de agua
+  if(gassy){ pressure=Math.min(100, pressure*10); H2O=Math.min(H2O, 20); }
+
+  const params={
+    Ca, Fe, Si, P, Mg, Cu, S, Ni, V,
+    O2: parseFloat(O2.toFixed(1)),
+    CO2: parseFloat(CO2.toFixed(2)),
+    H2S: parseFloat(H2S.toFixed(1)),
+    H2O: Math.round(H2O),
+    Temp: Math.max(-200, Math.min(500, tempC)),
+    pH: parseFloat(pH.toFixed(1)),
+    pressure,
+    gravity: grav,
+  };
+
+  // Aplicar a sliders
+  SLIDERS.forEach(m=>{
+    if(params[m.sym]===undefined) return;
+    const v=Math.max(m.min,Math.min(m.max,params[m.sym]));
+    vals[m.sym]=v;
+    const sl=document.getElementById('sl-'+m.sym);
+    if(sl){sl.value=v;const pct=Math.round((v-m.min)/(m.max-m.min)*100);sl.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;}
+    const vl=document.getElementById('vl-'+m.sym);
+    if(vl){const dec=m.step<1?(m.step<0.01?4:2):0;vl.textContent=v.toFixed(dec);}
+  });
+
+  if(threeState.update) threeState.update(vals);
+  updatePlanetPanel();
+  syncTaxTree();
+}
+
+
+// ═══════════════════════════════════════════════════════
+window._dragging = false;
+
+function startDrag(e, side){
+  e.preventDefault();
+  window._dragging = true;
+  const startX   = e.clientX;
+  const colLeft  = document.getElementById('col-left');
+  const colRight = document.getElementById('col-right');
+  if(!colLeft||!colRight) return;
+
+  const startLeft  = colLeft.offsetWidth;
+  const startRight = colRight.offsetWidth;
+  const handle = document.getElementById('drag-' + side);
+  if(handle) handle.style.background = 'rgba(0,212,170,0.35)';
+
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  const onMove = (ev)=>{
+    const dx = ev.clientX - startX;
+    if(side === 'left'){
+      const nW = Math.max(140, Math.min(340, startLeft + dx));
+      colLeft.style.width = nW + 'px';
+    } else {
+      const nW = Math.max(160, Math.min(360, startRight - dx));
+      colRight.style.width = nW + 'px';
+    }
+  };
+
+  const onUp = ()=>{
+    window._dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if(handle) handle.style.background = 'transparent';
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup',   onUp);
+    // Notificar resize al globo Three.js
+    const col2 = document.getElementById('col-center');
+    if(col2 && threeState.renderer){
+      const nW=col2.clientWidth, nH=col2.clientHeight;
+      threeState.renderer.setSize(nW, nH);
+      if(threeState.cam){ threeState.cam.aspect=nW/nH; threeState.cam.updateProjectionMatrix(); }
+    }
+  };
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup',   onUp);
+}
+
+// ═══════════════════════════════════════════════════════
+// ONBOARDING — Tour de bienvenida (solo la primera vez)
+// ═══════════════════════════════════════════════════════
+const ONBOARDING_STEPS = [
+  {
+    icon:'🌍',
+    titleEs:'Bienvenido a BioPlanet',
+    titleEn:'Welcome to BioPlanet',
+    bodyEs:'Un simulador científico donde diseñas planetas alienígenas ajustando su composición fisicoquímica — minerales, atmósfera, temperatura, gravedad — y descubres qué vida podría evolucionar en ellos.',
+    bodyEn:'A scientific simulator where you design alien planets by adjusting their physicochemical composition — minerals, atmosphere, temperature, gravity — and discover what life could evolve on them.',
+  },
+  {
+    icon:'🎛️',
+    titleEs:'Ajusta los parámetros',
+    titleEn:'Adjust the parameters',
+    bodyEs:'Usa los sliders de la izquierda para cambiar las condiciones del planeta. El globo 3D y los rasgos de vida reaccionan en tiempo real. ¿No sabes por dónde empezar? Prueba un preset como «Tierra» o busca un exoplaneta real de la NASA.',
+    bodyEn:'Use the sliders on the left to change planet conditions. The 3D globe and life traits react in real time. Not sure where to start? Try a preset like "Earth" or search a real NASA exoplanet.',
+  },
+  {
+    icon:'🦎',
+    titleEs:'Genera criaturas y vida',
+    titleEn:'Generate creatures and life',
+    bodyEs:'En la pestaña Criaturas verás los organismos que podrían sobrevivir en tu mundo, con su anatomía completa. Genera imágenes IA de cada criatura para estudiarlas en detalle.',
+    bodyEn:'In the Creatures tab you\'ll see the organisms that could survive on your world, with full anatomy. Generate AI images of each creature to study them in detail.',
+  },
+  {
+    icon:'💾',
+    titleEs:'Crea y guarda tu planeta',
+    titleEn:'Create and save your planet',
+    bodyEs:'Cuando estés conforme, pulsa «Crear Planeta». Se guardará permanentemente en la nube con sus criaturas e imágenes. Podrás verlo y eliminarlo en la pestaña «Mis Planetas».',
+    bodyEn:'When you\'re happy, click "Create Planet". It will be saved permanently to the cloud with its creatures and images. You can view and delete it in the "My Planets" tab.',
+  },
+];
+
+let onbStep = 0;
+
+function showOnboarding(){
+  const E = lang==='en';
+  let ov=document.getElementById('onboarding-overlay');
+  if(ov) ov.remove();
+  ov=document.createElement('div');
+  ov.id='onboarding-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(2,4,8,0.88);'
+    +'backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:24px;';
+  ov.innerHTML=renderOnbStep();
+  document.body.appendChild(ov);
+}
+
+function renderOnbStep(){
+  const E = lang==='en';
+  const s = ONBOARDING_STEPS[onbStep];
+  const isLast = onbStep === ONBOARDING_STEPS.length-1;
+  const dots = ONBOARDING_STEPS.map((_,i)=>
+    `<div style="width:7px;height:7px;border-radius:50%;background:${i===onbStep?'#00D4AA':'rgba(255,255,255,0.2)'};transition:background .2s;"></div>`
+  ).join('');
+  return `
+    <div style="max-width:440px;width:100%;background:linear-gradient(160deg,#0d1119,#070a10);
+      border:1px solid rgba(0,212,170,0.25);border-radius:18px;padding:32px 30px;
+      box-shadow:0 24px 70px rgba(0,0,0,0.7);animation:fadeIn .3s ease;">
+      <div style="font-size:46px;text-align:center;margin-bottom:14px;">${s.icon}</div>
+      <div style="font-size:19px;font-weight:800;text-align:center;color:#fff;margin-bottom:12px;">
+        ${E?s.titleEn:s.titleEs}
+      </div>
+      <div style="font-size:13px;line-height:1.75;color:rgba(255,255,255,0.6);text-align:center;margin-bottom:24px;">
+        ${E?s.bodyEn:s.bodyEs}
+      </div>
+      <div style="display:flex;justify-content:center;gap:7px;margin-bottom:22px;">${dots}</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        ${onbStep>0?`<button onclick="onbPrev()" style="padding:10px 20px;border-radius:9px;cursor:pointer;
+          font-family:inherit;font-size:12px;font-weight:600;border:0.5px solid rgba(255,255,255,0.15);
+          background:transparent;color:rgba(255,255,255,0.6);">← ${E?'Back':'Atrás'}</button>`:''}
+        <button onclick="${isLast?'finishOnboarding()':'onbNext()'}"
+          style="padding:10px 26px;border-radius:9px;cursor:pointer;font-family:inherit;
+          font-size:12px;font-weight:700;border:none;background:#00D4AA;color:#000;">
+          ${isLast?(E?'Start exploring 🚀':'Empezar a explorar 🚀'):(E?'Next →':'Siguiente →')}
+        </button>
+      </div>
+      ${!isLast?`<div style="text-align:center;margin-top:14px;">
+        <button onclick="finishOnboarding()" style="background:none;border:none;cursor:pointer;
+          font-size:10px;color:rgba(255,255,255,0.3);font-family:inherit;text-decoration:underline;">
+          ${E?'Skip tour':'Saltar tour'}
+        </button>
+      </div>`:''}
+    </div>`;
+}
+
+function onbNext(){
+  if(onbStep < ONBOARDING_STEPS.length-1){
+    onbStep++;
+    const ov=document.getElementById('onboarding-overlay');
+    if(ov) ov.innerHTML=renderOnbStep();
+  }
+}
+function onbPrev(){
+  if(onbStep>0){
+    onbStep--;
+    const ov=document.getElementById('onboarding-overlay');
+    if(ov) ov.innerHTML=renderOnbStep();
+  }
+}
+function finishOnboarding(){
+  const ov=document.getElementById('onboarding-overlay');
+  if(ov){ ov.style.opacity='0'; ov.style.transition='opacity .3s'; setTimeout(()=>ov.remove(),300); }
+  try{ localStorage.setItem('bioplanet_onboarded','1'); }catch(e){}
+}
+
+// Lanza el onboarding solo si es la primera visita
+function maybeShowOnboarding(){
+  let seen=false;
+  try{ seen = localStorage.getItem('bioplanet_onboarded')==='1'; }catch(e){}
+  if(!seen) setTimeout(showOnboarding, 700);
+}
+
+// Permite reabrir el tour manualmente (ej. desde un botón de ayuda)
+function restartOnboarding(){ onbStep=0; showOnboarding(); }
+
+buildTabBtns();
+renderMain();
+maybeShowOnboarding();
