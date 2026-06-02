@@ -2885,10 +2885,14 @@ function renderGalleryGrid(planets){
     // Mini planeta SVG basado en vals
     const planetCol = v.H2S>2?'#B8860B':v.Temp<-20?'#7AA0C4':v.Temp>50?'#C0441A':v.H2O>30?'#1D6B8C':'#4A7A4A';
     return`
-    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .2s;"
-      onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'"
-      onclick="loadPlanetFromGallery('${p.code}')">
-      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .2s;position:relative;"
+      onmouseover="this.style.borderColor='var(--teal)';this.querySelector('.uni-del').style.opacity='1'" onmouseout="this.style.borderColor='var(--border)';this.querySelector('.uni-del').style.opacity='0'">
+      <button class="uni-del" onclick="event.stopPropagation();deletePlanetFromUniverse('${p.id}','${p.code}')"
+        title="${lang==='en'?'Delete planet':'Eliminar planeta'}"
+        style="position:absolute;top:6px;right:6px;opacity:0;transition:opacity .2s;
+          background:rgba(248,113,113,0.9);border:none;color:#fff;width:22px;height:22px;
+          border-radius:6px;cursor:pointer;font-size:11px;z-index:2;">🗑</button>
+      <div style="display:flex;justify-content:center;margin-bottom:8px;" onclick="loadPlanetFromGallery('${p.code}')">
         <svg viewBox="0 0 60 60" width="60" height="60">
           <circle cx="30" cy="30" r="24" fill="${planetCol}"/>
           <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
@@ -2898,21 +2902,23 @@ function renderGalleryGrid(planets){
           <ellipse cx="30" cy="30" rx="24" ry="6" fill="none" stroke="${scoreCol}30" stroke-width="0.8" stroke-dasharray="3 3"/>
         </svg>
       </div>
-      <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--teal);text-align:center;margin-bottom:4px;letter-spacing:.05em;">${p.code}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-size:9px;color:var(--dim);">${date}</div>
-        <div style="font-size:10px;font-weight:700;color:${scoreCol};">${Math.round(score*100)}%</div>
-      </div>
-      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">
-        ${[
-          v.O2>15?{l:'O₂',c:'#00D4AA'}:null,
-          v.H2O>30?{l:'H₂O',c:'#60A5FA'}:null,
-          v.H2S>1?{l:'H₂S',c:'#FBBF24'}:null,
-          v.Temp<-20?{l:'❄',c:'#60A5FA'}:null,
-          v.Temp>50?{l:'🌋',c:'#F87171'}:null,
-        ].filter(Boolean).slice(0,3).map(t=>`
-          <span style="font-size:8px;padding:1px 5px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
-        `).join('')}
+      <div onclick="loadPlanetFromGallery('${p.code}')">
+        <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--teal);text-align:center;margin-bottom:4px;letter-spacing:.05em;">${p.code}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:9px;color:var(--dim);">${date}</div>
+          <div style="font-size:10px;font-weight:700;color:${scoreCol};">${Math.round(score*100)}%</div>
+        </div>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">
+          ${[
+            v.O2>15?{l:'O₂',c:'#00D4AA'}:null,
+            v.H2O>30?{l:'H₂O',c:'#60A5FA'}:null,
+            v.H2S>1?{l:'H₂S',c:'#FBBF24'}:null,
+            v.Temp<-20?{l:'❄',c:'#60A5FA'}:null,
+            v.Temp>50?{l:'🌋',c:'#F87171'}:null,
+          ].filter(Boolean).slice(0,3).map(t=>`
+            <span style="font-size:8px;padding:1px 5px;border-radius:99px;background:${t.c}18;color:${t.c};">${t.l}</span>
+          `).join('')}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -3942,6 +3948,36 @@ async function deletePlanet(id, code){
   // Recargar la lista
   const main = document.getElementById('main');
   if(main) renderMyPlanets(main);
+}
+
+// Eliminar planeta desde el modal del Universo
+async function deletePlanetFromUniverse(id, code){
+  const E = lang==='en';
+  const ok = confirm(E
+    ? `Delete planet ${code}? This cannot be undone.`
+    : `¿Eliminar el planeta ${code}? Esta acción no se puede deshacer.`);
+  if(!ok) return;
+
+  const { error, count } = await sb
+    .from('planets')
+    .delete({ count: 'exact' })
+    .eq('id', id);
+
+  if(error){
+    console.error('Delete error:', error);
+    showToast((E?'Error: ':'Error: ') + (error.message||error.code||'unknown'), 'error');
+    return;
+  }
+  if(count===0){
+    showToast(E ? 'Could not delete — permission denied (RLS policy).'
+                : 'No se pudo eliminar — permiso denegado (política RLS).', 'error');
+    return;
+  }
+
+  showToast(E ? '✓ Planet deleted' : '✓ Planeta eliminado', 'success');
+  // Recargar la grilla del universo
+  const planets = await loadRecentPlanets(48);
+  renderGalleryGrid(planets);
 }
 
 // ─── Árbol Taxonómico — toggle y sincronización ───────
