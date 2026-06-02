@@ -1351,7 +1351,7 @@ function renderPlanet(el){
       <!-- Botón crear — siempre visible -->
       <div style="flex:0 0 auto;padding:10px 11px;
         border-top:0.5px solid rgba(255,255,255,0.06);background:#070C14;">
-        <button onclick="createPlanet()" class="btn btn-teal"
+        <button onclick="createPlanetWithLimit()" class="btn btn-teal"
           style="width:100%;font-size:10px;font-weight:700;padding:9px;">
           ✦ ${E?'Create Planet':'Crear Planeta'}
         </button>
@@ -1864,7 +1864,21 @@ function renderCreatures(el){
     <div style="padding:18px 20px;overflow-y:auto;height:100%;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <div><div style="font-size:17px;font-weight:700;margin-bottom:3px;">${t('creaturesTitle')} ${code}</div><div style="font-size:11px;color:var(--muted);">${t('creaturesDesc')}</div></div>
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10px;color:var(--muted);">Criaturas:</span>${[1,2,3,4,5,6].map(n=>`<button onclick="numCreatures=${n};renderMain();" style="width:28px;height:28px;border-radius:5px;border:0.5px solid ${numCreatures===n?'var(--teal)':'var(--border)'};background:${numCreatures===n?'var(--teal-d)':'transparent'};color:${numCreatures===n?'var(--teal)':'var(--muted)'};cursor:pointer;font-size:11px;font-family:inherit;">${n}</button>`).join('')}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:var(--muted);">
+            ${lang==='en'?'Creatures:':'Criaturas:'}
+          </span>
+          ${[1,2,3,4,5,6].map(n=>`
+            <button onclick="${n===1?`numCreatures=${n};renderMain();`:`requestPremiumCreatures(${n})`}"
+              title="${n>1?(lang==='en'?'Premium feature':'Función Premium'):''}"
+              style="width:28px;height:28px;border-radius:5px;
+                border:0.5px solid ${numCreatures===n?'var(--teal)':n>1?'rgba(251,191,36,0.25)':'var(--border)'};
+                background:${numCreatures===n?'var(--teal-d)':n>1?'rgba(251,191,36,0.06)':'transparent'};
+                color:${numCreatures===n?'var(--teal)':n>1?'rgba(251,191,36,0.65)':'var(--muted)'};
+                cursor:pointer;font-size:11px;font-family:inherit;position:relative;">
+              ${n}${n>1?`<span style="position:absolute;top:-4px;right:-4px;font-size:7px;line-height:1;">🔒</span>`:''}
+            </button>`).join('')}
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;">
         ${creatures.map((cr,i)=>{const imgId=`cr-img-${i}`;
@@ -2789,6 +2803,87 @@ function applyPreset(name){
   });
   if(threeState.update)threeState.update(vals);
 }
+// ── Límite FREE: 1 planeta, 1 criatura ──────────────────
+// Cuenta los planetas del usuario actual (por user_id o por sesión)
+async function createPlanetWithLimit(){
+  const E = lang==='en';
+  try{
+    // Contar planetas del usuario actual
+    const uid = clerkUser?.id || null;
+    let count = 0;
+    if(uid){
+      const { count:c } = await sb.from('planets')
+        .select('id', {count:'exact',head:true})
+        .eq('user_id', uid);
+      count = c || 0;
+    }
+    // Usuarios sin cuenta: límite 1 por sesión (usando sessionStorage)
+    if(!uid){
+      const created = sessionStorage.getItem('bp_planets_created')||'0';
+      count = parseInt(created);
+    }
+
+    if(count >= 1){
+      showPremiumGate(
+        E ? '🔒 You already have 1 free planet saved.\n\nUpgrade to BioPlanet Pro to create unlimited planets, unlock more creatures, AI descriptions, and RayMarching HD surface.'
+          : '🔒 Ya tienes 1 planeta gratuito guardado.\n\nActualiza a BioPlanet Pro para crear planetas ilimitados, desbloquear más criaturas, descripciones IA y superficie RayMarching HD.'
+      );
+      return;
+    }
+  }catch(e){
+    // Si falla la consulta, dejamos pasar (no rompemos el flujo)
+    console.warn('limit check failed:', e);
+  }
+  createPlanet();
+}
+
+// Gate Premium genérico — muestra un modal en vez de un alert básico
+function showPremiumGate(message){
+  const E = lang==='en';
+  let ov = document.getElementById('premium-gate-overlay');
+  if(ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'premium-gate-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(2,4,8,0.88);'
+    + 'backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:24px;';
+  ov.innerHTML = `
+    <div style="max-width:400px;width:100%;background:linear-gradient(160deg,#0d1119,#070a10);
+      border:1px solid rgba(251,191,36,0.30);border-radius:18px;padding:28px 26px;
+      box-shadow:0 24px 70px rgba(0,0,0,0.7);animation:fadeIn .25s ease;">
+      <div style="font-size:40px;text-align:center;margin-bottom:12px;">🔒</div>
+      <div style="font-size:16px;font-weight:800;text-align:center;color:#FBBF24;margin-bottom:12px;">
+        ${E?'BioPlanet Pro':'BioPlanet Pro'}
+      </div>
+      <div style="font-size:12px;line-height:1.75;color:rgba(255,255,255,0.60);text-align:center;margin-bottom:20px;white-space:pre-line;">
+        ${message}
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button onclick="document.getElementById('premium-gate-overlay').remove()"
+          style="padding:9px 20px;border-radius:9px;cursor:pointer;font-family:inherit;
+            font-size:12px;font-weight:600;border:0.5px solid rgba(255,255,255,0.15);
+            background:transparent;color:rgba(255,255,255,0.5);">
+          ${E?'Back':'Volver'}
+        </button>
+        <button onclick="document.getElementById('premium-gate-overlay').remove()"
+          style="padding:9px 24px;border-radius:9px;cursor:pointer;font-family:inherit;
+            font-size:12px;font-weight:700;border:none;
+            background:linear-gradient(135deg,#FBBF24,#F59E0B);color:#000;">
+          ${E?'Upgrade to Pro (coming soon)':'Actualizar a Pro (próximamente)'}
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+// Gate Premium para número de criaturas
+function requestPremiumCreatures(n){
+  const E = lang==='en';
+  showPremiumGate(
+    E ? `🔒 Generating ${n} creatures simultaneously is a Premium feature.\n\nFree plan includes 1 creature per planet.\nUpgrade to BioPlanet Pro for up to 6 creatures with full AI descriptions.`
+      : `🔒 Generar ${n} criaturas simultáneamente es una función Premium.\n\nEl plan gratuito incluye 1 criatura por planeta.\nActualiza a BioPlanet Pro para hasta 6 criaturas con descripciones IA completas.`
+  );
+}
+
 async function createPlanet(){
   const code=planetCode(vals);
   const score=calcScore(vals);
@@ -2837,6 +2932,11 @@ async function createPlanet(){
           <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--muted);">${result.id?.substring(0,8)}…</span>
         </div>`;
       showToast(lang==='en'?'✓ Planet saved to cloud':'✓ Planeta guardado en la nube', 'success');
+      // Registrar para el límite free (usuarios sin cuenta)
+      try{
+        const prev = parseInt(sessionStorage.getItem('bp_planets_created')||'0');
+        sessionStorage.setItem('bp_planets_created', prev+1);
+      }catch(e){}
     } else {
       statusEl.innerHTML=`<div style="font-size:9px;color:#F87171;">⚠ ${lang==='en'?'Could not save to cloud':'No se pudo guardar en la nube'}</div>`;
       showToast(lang==='en'?'⚠ Could not save planet':'⚠ No se pudo guardar el planeta', 'error');
@@ -6022,9 +6122,44 @@ function buildUndulator(g,mat,matD,matM,cr,T){
 
 // ─── Mostrar criatura 3D ─────────────────────────────
 function show3DCreature(index){
+  const E = lang==='en';
   const cr = makeCreatureI18n(vals, generateCreatureSeed(vals, index));
+
+  // Verificar si existe imagen IA generada para esta criatura
+  const hasCachedImg = !!imgCache[cr.seed];
+  const hasSavedImg  = !!(window.loadedAImages
+    && window.loadedAImages.creatures
+    && window.loadedAImages.creatures[cr.latinName]);
+  const hasImg = hasCachedImg || hasSavedImg;
+
+  if(!hasImg){
+    // Advertencia: debes generar la imagen IA primero
+    showPremiumGate(
+      E
+        ? `⚠ Generate the AI image first\n\nBefore viewing ${cr.latinName} in 3D, you must generate its AI image in the Creatures tab.\n\nThe 3D model is procedurally generated from the creature\'s traits — generating the AI image first lets you compare both visualizations.`
+        : `⚠ Genera primero la imagen IA\n\nAntes de visualizar ${cr.latinName} en 3D, debes generar su imagen IA en la pestaña Criaturas.\n\nEl modelo 3D se genera proceduralmente desde los rasgos de la criatura — generar la imagen IA primero te permite comparar ambas visualizaciones.`
+    );
+    // Cambiar el color del botón del modal a amarillo (advertencia)
+    const ov = document.getElementById('premium-gate-overlay');
+    if(ov){
+      const title = ov.querySelector('[style*="FBBF24"]');
+      if(title) title.textContent = E ? '⚠ Step required' : '⚠ Paso requerido';
+      const upgradeBtn = ov.querySelectorAll('button')[1];
+      if(upgradeBtn){
+        upgradeBtn.textContent = E ? '→ Go to Creatures tab' : '→ Ir a pestaña Criaturas';
+        upgradeBtn.style.background = 'linear-gradient(135deg,#00D4AA,#0099AA)';
+        upgradeBtn.style.color = '#000';
+        upgradeBtn.onclick = ()=>{
+          ov.remove();
+          switchTab('creatures');
+        };
+      }
+    }
+    return;
+  }
+
   const modal = document.getElementById('creature-3d-modal');
-  if(!modal)return;
+  if(!modal) return;
 
   // Info
   document.getElementById('c3d-name').textContent = cr.latinName;
@@ -6034,7 +6169,6 @@ function show3DCreature(index){
   // Info panel
   const rgb = getBloodColor3D(cr.blood);
   const col = `rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
-  const E   = lang==='en';
   document.getElementById('c3d-info').innerHTML=`
     <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">
       ${E?'Morphology':'Morfología'}
@@ -6060,14 +6194,14 @@ function show3DCreature(index){
         <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
         <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
       </div>`).join('')||`<div style="font-size:9px;color:var(--dim);">${E?'None detected':'Ninguna detectada'}</div>`}
-    <div style="margin-top:12px;padding:8px;background:rgba(0,212,170,0.06);border-radius:6px;border:0.5px solid rgba(0,212,170,0.2);">
-      <div style="font-size:8px;color:var(--teal);font-weight:600;margin-bottom:3px;">
-        🔬 ${E?'3D Generation method':'Método de generación 3D'}
+    <div style="margin-top:12px;padding:8px;background:rgba(251,191,36,0.06);border-radius:6px;border:0.5px solid rgba(251,191,36,0.25);">
+      <div style="font-size:8px;color:#FBBF24;font-weight:600;margin-bottom:3px;">
+        ⚠ ${E?'About this 3D view':'Sobre esta vista 3D'}
       </div>
       <div style="font-size:8px;color:var(--muted);line-height:1.6;">
         ${E
-          ?'Procedural geometry based on evolutionary traits. Locomotion → body plan. Blood → color. Abilities → special features.'
-          :'Geometría procedural basada en rasgos evolutivos. Locomoción → plan corporal. Sangre → color. Habilidades → características especiales.'}
+          ?'This is a procedural geometric model based on the creature\'s traits (locomotion, skeleton, blood color). It does not replicate the AI image. A future version will generate a 3D model directly from the AI image using image-to-3D technology.'
+          :'Este es un modelo geométrico procedural basado en los rasgos de la criatura (locomoción, esqueleto, color de sangre). No replica la imagen IA. Una versión futura generará el modelo 3D directamente desde la imagen IA usando tecnología image-to-3D.'}
       </div>
     </div>`;
 
