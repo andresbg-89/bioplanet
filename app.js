@@ -702,93 +702,126 @@ function planetCode(v){
   const pfx=v.H2O>50?"OCN":v.H2S>3?"VLC":v.Temp<-30?"GLC":v.O2>20?"TER":"XEN";
   return`BP-${pfx}-${b.slice(0,3)}-${b.slice(3,6)}-${b.slice(6,8)}`;
 }
+// ══════════════════════════════════════════════════════════
+// PERFIL VISUAL COMPARTIDO — garantiza coherencia entre
+// Vista Orbital y Vista Superficie del mismo planeta.
+// Ambos prompts derivan del mismo "biome profile" base.
+// ══════════════════════════════════════════════════════════
+function getPlanetVisualProfile(v){
+  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Si,Mg,S,pressure}=v;
+  const sulf   = H2S>2||S>5000;
+  const vCold  = Temp<-80;
+  const cold   = Temp<-15;
+  const hot    = Temp>60;
+  const iron   = Fe>55&&!sulf;
+  const calc   = Ca>45&&!sulf;
+  const hasLife= O2>15&&Mg>12&&!sulf&&!hot&&!vCold;
+
+  // ── Paleta de colores única por bioma ──────────────────
+  // Definir colores dominantes que serán idénticos en ambas imágenes
+  let palette, skyColor, groundColor, starType, atmDesc, mood;
+
+  if(sulf){
+    palette    = 'sulfur yellow, toxic orange, black basalt';
+    skyColor   = 'thick yellow-orange sulfuric clouds, toxic atmosphere';
+    groundColor= 'yellow sulfur plains, black volcanic rocks, orange lava pools';
+    starType   = 'hazy dim star barely visible through acid clouds';
+    atmDesc    = 'dense toxic yellow atmosphere';
+    mood       = 'hellish, toxic, volcanic, eerie glow';
+  } else if(vCold){
+    palette    = 'dark blue-black, white nitrogen frost, faint teal ice';
+    skyColor   = 'pitch-black near-vacuum sky, stars and nebula visible, large gas giant on horizon';
+    groundColor= 'dark frozen rocky terrain, black ice plains, white nitrogen frost patches';
+    starType   = 'tiny distant red star, barely lighting the surface';
+    atmDesc    = 'near-vacuum thin haze';
+    mood       = 'vast, lonely, desolate, barely lit, mysterious';
+  } else if(cold){
+    palette    = 'golden sand, dark methane blue, ice white';
+    skyColor   = 'orange-brown hazy sky, thick hydrocarbon clouds like Titan';
+    groundColor= 'golden sandy dunes, dark liquid methane lakes, ice formations';
+    starType   = 'dim sun low on horizon, warm orange light through haze';
+    atmDesc    = 'thick orange hydrocarbon haze';
+    mood       = 'eerie golden light, alien cold beauty, vast dunes';
+  } else if(hot){
+    palette    = 'black basalt, glowing orange lava, blood red sky';
+    skyColor   = 'dark red-orange volcanic sky, thick ash clouds, ember glow';
+    groundColor= 'black volcanic basalt, rivers of glowing orange lava, dark jagged mountains';
+    starType   = 'harsh bright star through ash clouds, orange glare';
+    atmDesc    = 'dense volcanic ash atmosphere';
+    mood       = 'hellish, dramatic, infernal, volcanic eruptions';
+  } else if(iron){
+    palette    = 'rusty red, ochre orange, dark brown rock';
+    skyColor   = 'dusty pink-orange sky, thin iron-rich haze, distant dust storm on horizon';
+    groundColor= 'rust-red iron oxide desert, wind-carved rock formations, ochre dust dunes';
+    starType   = 'pale yellow-white star through dusty haze, long shadows';
+    atmDesc    = 'thin rusty iron-dust atmosphere';
+    mood       = 'desolate, ancient, Martian, epic scale';
+  } else if(calc){
+    palette    = 'pale tan limestone, white chalk, turquoise water';
+    skyColor   = 'clear pale blue sky, high wispy white clouds';
+    groundColor= 'pale tan limestone plains, white chalk cliffs, turquoise shallow seas';
+    starType   = 'warm white star, soft diffuse light';
+    atmDesc    = 'clear thin blue atmosphere';
+    mood       = 'ancient, mineral, crystalline, peaceful';
+  } else if(hasLife){
+    palette    = 'deep blue ocean, alien blue-green vegetation, white clouds';
+    skyColor   = 'deep azure blue sky, white cumulus clouds, warm golden sunlight';
+    groundColor= 'alien blue-green vegetation, dark rocky outcrops, white sandy beaches';
+    starType   = 'warm yellow-white star, god rays through atmosphere';
+    atmDesc    = 'clear blue nitrogen-oxygen atmosphere';
+    mood       = 'alive, lush, hopeful, vibrant alien ecosystem';
+  } else {
+    palette    = 'dark grey rock, dusty brown soil, pale sky';
+    skyColor   = 'hazy grey-blue sky, thin cloud layer, muted light';
+    groundColor= 'dark grey rocky plains, ancient weathered boulders, fine dust';
+    starType   = 'pale star, flat even lighting';
+    atmDesc    = 'thin grey haze atmosphere';
+    mood       = 'ancient, silent, desolate, barren';
+  }
+
+  // Features adicionales coherentes en ambas vistas
+  const features=[];
+  if(H2O>40&&!sulf&&!hot&&!vCold) features.push('dark alien ocean visible');
+  if(H2O>15&&cold) features.push('frozen methane lake surface');
+  if(H2S>3||hot)   features.push('volcanic steam vents and geysers');
+  if(hasLife)      features.push('patches of alien bioluminescent life');
+  if(pressure>5)   features.push('thick atmosphere haze layers');
+
+  const style='SpaceEngine quality, photorealistic, physically-based rendering, '
+    +'cinematic lighting, 8K ultra-detailed, no text, no watermark, no UI';
+
+  return { palette, skyColor, groundColor, starType, atmDesc, mood, features, style };
+}
+
+// ── Vista Orbital — usa el perfil visual compartido ────────
 function planetImgPrompt(v){
-  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Si,Mg,S,pressure,gravity}=v;
-  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
-  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
-  const isIron=Fe>55&&!sulf;
-
-  // Atmosphere
-  const atm=sulf
-    ?'thick yellow sulfuric acid clouds, toxic atmosphere with orange-yellow haze'
-    :CO2>8?'dense rusty orange CO₂ atmosphere, thick clouds'
-    :O2>18?'clear thin blue atmosphere, wispy white clouds'
-    :cold?'near-vacuum dark blue-black atmosphere with thin haze'
-    :'translucent blue-grey haze atmosphere';
-
-  // Surface
-  const surf=sulf
-    ?'volcanic sulfur yellow plains, orange lava flows, black basalt mountains'
-    :vCold?'deep frozen dark world, black ice plains, nitrogen frost, barely lit surface'
-    :cold?'grey-blue icy tundra, frozen methane lakes, nitrogen geysers'
-    :hot?'glowing red lava rivers, black volcanic mountains, ash clouds'
-    :isIron?'rusty red iron oxide desert, wind-carved canyons, ochre dust dunes'
-    :hasLife?'alien blue-green vegetation, dark ocean, white sandy beaches, rolling hills'
-    :Ca>45?'pale tan limestone plains, white chalk cliffs, crystal formations'
-    :'grey rocky terrain, ancient craters, dark mountain ridges';
-
-  // Features
-  const ft=[];
-  if(H2O>40&&!sulf&&!hot) ft.push('vast dark alien ocean reflecting the star');
-  if(H2O>15&&cold)         ft.push('frozen polar caps, ice sheets');
-  if(H2S>3||hot)           ft.push('volcanic geysers, steam vents');
-  if(hasLife)              ft.push('alien bioluminescent forests, glowing organisms');
-  if(cold&&H2O>20)         ft.push('nitrogen ice geysers like Triton');
-  if(pressure>5)           ft.push('crushed thick atmosphere visible as orange band on limb');
-
-  // Star and lighting — key for SpaceEngine look
-  const star=Temp<-50?'distant small dim red star, low on horizon, dramatic long shadows'
-    :Temp>80?'blazingly close white star, intense harsh shadows'
-    :'yellow-white star, god rays through atmosphere';
-
-  const style='SpaceEngine screenshot style, photorealistic planetary rendering, '
-    +'cinematic volumetric atmosphere, physically based rendering PBR, '
-    +'subsurface scattering terrain, specular water reflections, '
-    +'lens flare, bloom effect, 8K ultra-detailed, no text, no watermark';
-
-  return`${surf}, ${atm}, ${star}${ft.length?', '+ft.join(', '):''}, alien planet from orbit, ${style}`;
+  const p = getPlanetVisualProfile(v);
+  const ft = p.features.length ? ', '+p.features.join(', ') : '';
+  return `Alien planet seen from low orbit, `
+    +`dominant colors: ${p.palette}, `
+    +`surface: ${p.groundColor}, `
+    +`atmosphere: ${p.atmDesc}, ${p.skyColor}, `
+    +`${p.starType}${ft}, `
+    +`mood: ${p.mood}, `
+    +`orbital view from space showing full planet curvature, `
+    +`${p.style}`;
 }
 
-// ── Surface landscape prompt (SpaceEngine ground-level) ─
+// ── Vista Superficie — usa el mismo perfil visual compartido ─
 function surfaceImgPrompt(v){
-  const{H2O,Temp,H2S,O2,CO2,Fe,Ca,Mg,S,pressure}=v;
-  const sulf=H2S>2||S>5000,hot=Temp>50,cold=Temp<-30,vCold=Temp<-80;
-  const hasLife=O2>15&&Mg>12&&!sulf&&!hot;
-  const isIron=Fe>55&&!sulf;
-
-  const sky=sulf
-    ?'yellow-orange sulfuric sky, thick acid clouds, eerie toxic glow'
-    :vCold?'pitch-black near-vacuum sky filled with stars and nebula, giant blue planet visible overhead'
-    :cold?'dark blue-grey sky, thin atmosphere, stars partially visible, faint aurora'
-    :hot?'orange-red glowing sky, volcanic ash clouds, ember glow horizon'
-    :isIron?'dusty pink-orange Martian sky, thin haze, distant dust storm'
-    :hasLife?'clear azure-blue sky, white cumulus clouds, warm sunlight'
-    :'hazy grey-blue sky, thin cloud layer';
-
-  const terrain=sulf
-    ?'yellow sulfur plains with black volcanic rocks, orange lava pools reflecting sky'
-    :vCold?'dark frozen rocky terrain, black ice plains, white nitrogen frost, faint reflective patches like image from Triton'
-    :cold?'golden sandy snow dunes meeting dark liquid methane ocean, like Titan, warm sunset glow'
-    :hot?'black volcanic basalt, glowing lava cracks, dark mountains'
-    :isIron?'red iron oxide desert, wind-eroded rock formations, fine rust-colored sand'
-    :hasLife?'alien landscape with blue-green vegetation, rocky outcrops, distant mountains'
-    :'grey rocky plains, ancient weathered boulders, dust';
-
-  const mood=vCold
-    ?'mysterious, dark, vast, lonely, barely lit by distant star'
-    :cold?'golden hour, warm light on cold landscape, dramatic contrast, SpaceEngine Titan screenshot'
-    :hot?'hellish, dramatic, volcanic eruption in background'
-    :hasLife?'serene, beautiful, hopeful, afternoon sunlight'
-    :'desolate, ancient, epic scale';
-
-  const style='SpaceEngine ground-level screenshot, photorealistic planetary surface, '
-    +'physically-based rendering, cinematic atmosphere scattering, '
-    +'specular highlights on liquid surfaces, detailed micro-texture terrain, '
-    +'realistic rock materials, volumetric clouds, sun bloom and lens flare, '
-    +'8K ultra-detailed, no text, no watermark, no UI';
-
-  return`${terrain}, ${sky}, ${mood}, first-person ground view alien planet, ${style}`;
+  const p = getPlanetVisualProfile(v);
+  const ft = p.features.length ? ', '+p.features.join(', ') : '';
+  return `Alien planet surface, ground-level first-person view, `
+    +`dominant colors: ${p.palette}, `
+    +`terrain: ${p.groundColor}, `
+    +`sky: ${p.skyColor}, `
+    +`lighting: ${p.starType}${ft}, `
+    +`mood: ${p.mood}, `
+    +`wide cinematic landscape, horizon visible, immersive ground view, `
+    +`${p.style}`;
 }
+
+
 
 
 // ─── Caché global de imágenes IA ─────────────────────
@@ -6161,64 +6194,132 @@ function show3DCreature(index){
   const modal = document.getElementById('creature-3d-modal');
   if(!modal) return;
 
-  // Info
+  // Info básica de cabecera
   document.getElementById('c3d-name').textContent = cr.latinName;
-  document.getElementById('c3d-desc').textContent =
-    `${cr.complexity} · ${cr.meta} · ${cr.skeleton}`;
+  document.getElementById('c3d-desc').textContent = `${cr.complexity} · ${cr.meta} · ${cr.skeleton}`;
 
-  // Info panel
+  // Colores
   const rgb = getBloodColor3D(cr.blood);
   const col = `rgb(${Math.round(rgb[0]*255)},${Math.round(rgb[1]*255)},${Math.round(rgb[2]*255)})`;
+
+  // ── PANEL DERECHO: info + flujo Meshy ─────────────────────
+  // Recuperar imagen 3D guardada si existe
+  const saved3dUrl  = window.c3dImages && window.c3dImages[cr.latinName];
+  const savedGlbUrl = window.c3dGlbs   && window.c3dGlbs[cr.latinName];
+
   document.getElementById('c3d-info').innerHTML=`
+
+    <!-- Morfología -->
     <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:10px;">
       ${E?'Morphology':'Morfología'}
     </div>
     ${[
-      {l:E?'Skeleton':'Esqueleto',   v:cr.skeleton,  c:'#FBBF24'},
-      {l:E?'Blood':'Sangre',         v:cr.blood,     c:col},
-      {l:E?'Metabolism':'Metabolismo',v:cr.meta,     c:'#00D4AA'},
-      {l:E?'Nervous':'Nervioso',     v:cr.nervous,   c:'#A78BFA'},
-      {l:E?'Thermoreg.':'Termoreg.', v:cr.thermo,    c:'#F87171'},
-      {l:E?'Locomotion':'Locomoción',v:cr.loco,      c:'#60A5FA'},
-      {l:E?'Size':'Tamaño',          v:cr.size,      c:'#94A3B8'},
+      {l:E?'Skeleton':'Esqueleto',   v:cr.skeleton, c:'#FBBF24'},
+      {l:E?'Blood':'Sangre',         v:cr.blood,    c:col},
+      {l:E?'Metabolism':'Metabolismo',v:cr.meta,    c:'#00D4AA'},
+      {l:E?'Nervous':'Nervioso',     v:cr.nervous,  c:'#A78BFA'},
+      {l:E?'Thermoreg.':'Termoreg.', v:cr.thermo,   c:'#F87171'},
+      {l:E?'Locomotion':'Locomoción',v:cr.loco,     c:'#60A5FA'},
+      {l:E?'Size':'Tamaño',          v:cr.size,     c:'#94A3B8'},
     ].map(({l,v,c})=>`
-      <div style="margin-bottom:8px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:7px;">
+      <div style="margin-bottom:7px;border-bottom:0.5px solid rgba(255,255,255,0.04);padding-bottom:6px;">
         <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${l}</div>
         <div style="font-size:10px;color:${c};font-weight:600;">${v}</div>
       </div>`).join('')}
+
+    <!-- Habilidades -->
     <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:8px;margin-top:4px;">
       ✨ ${E?'Abilities':'Habilidades'}
     </div>
-    ${(cr.abilities||[]).slice(0,6).map(ab=>`
+    ${(cr.abilities||[]).slice(0,5).map(ab=>`
       <div style="display:flex;align-items:flex-start;gap:5px;margin-bottom:5px;">
         <span style="font-size:10px;flex-shrink:0;">${ab.cat.split(' ')[0]}</span>
         <div style="font-size:9px;color:${ab.col};line-height:1.4;">${ab.name}</div>
-      </div>`).join('')||`<div style="font-size:9px;color:var(--dim);">${E?'None detected':'Ninguna detectada'}</div>`}
-    <div style="margin-top:12px;padding:8px;background:rgba(251,191,36,0.06);border-radius:6px;border:0.5px solid rgba(251,191,36,0.25);">
-      <div style="font-size:8px;color:#FBBF24;font-weight:600;margin-bottom:3px;">
-        ⚠ ${E?'About this 3D view':'Sobre esta vista 3D'}
+      </div>`).join('')}
+
+    <!-- ══ FLUJO MESHY ══ -->
+    <div style="margin-top:14px;border-top:0.5px solid rgba(255,255,255,0.06);padding-top:12px;">
+
+      <div style="font-size:9px;font-weight:700;color:var(--teal);margin-bottom:10px;letter-spacing:.04em;">
+        🔮 ${E?'Convert to Real 3D (Meshy)':'Convertir a 3D Real (Meshy)'}
       </div>
-      <div style="font-size:8px;color:var(--muted);line-height:1.6;">
-        ${E
-          ?'This is a procedural geometric model based on the creature\'s traits (locomotion, skeleton, blood color). It does not replicate the AI image. A future version will generate a 3D model directly from the AI image using image-to-3D technology.'
-          :'Este es un modelo geométrico procedural basado en los rasgos de la criatura (locomoción, esqueleto, color de sangre). No replica la imagen IA. Una versión futura generará el modelo 3D directamente desde la imagen IA usando tecnología image-to-3D.'}
+
+      <!-- Paso 1: imagen optimizada -->
+      <div style="background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.08);
+        border-radius:7px;padding:9px 10px;margin-bottom:8px;">
+        <div style="font-size:8px;font-weight:700;color:rgba(255,255,255,0.60);margin-bottom:6px;">
+          ${E?'Step 1 — Optimized image (white bg)':'Paso 1 — Imagen optimizada (fondo blanco)'}
+        </div>
+        <div id="c3d-img-preview" style="height:80px;border-radius:5px;background:var(--bg3);
+          overflow:hidden;margin-bottom:7px;display:flex;align-items:center;justify-content:center;">
+          ${saved3dUrl
+            ?`<img src="${saved3dUrl}" style="width:100%;height:100%;object-fit:contain;" />`
+            :`<span style="font-size:9px;color:var(--dim);">${E?'No image yet':'Sin imagen aún'}</span>`}
+        </div>
+        <button id="c3d-gen-img-btn" onclick="c3dGenOptimizedImage('${cr.latinName.replace(/'/g,"\\'")}')"
+          style="width:100%;padding:6px;border-radius:6px;cursor:pointer;font-family:inherit;
+            font-size:9px;font-weight:600;border:0.5px solid rgba(0,212,170,0.35);
+            background:rgba(0,212,170,0.08);color:var(--teal);transition:all .2s;"
+          onmouseover="this.style.background='rgba(0,212,170,0.16)'"
+          onmouseout="this.style.background='rgba(0,212,170,0.08)'">
+          🎨 ${E?'Generate optimized image':'Generar imagen optimizada'}
+        </button>
       </div>
+
+      <!-- Paso 2: Meshy -->
+      <div style="background:rgba(251,191,36,0.04);border:0.5px solid rgba(251,191,36,0.2);
+        border-radius:7px;padding:9px 10px;">
+        <div style="font-size:8px;font-weight:700;color:#FBBF24;margin-bottom:6px;">
+          ${E?'Step 2 — Generate 3D model':'Paso 2 — Generar modelo 3D'}
+        </div>
+        <div id="c3d-meshy-status" style="font-size:8px;color:var(--dim);margin-bottom:7px;line-height:1.5;">
+          ${savedGlbUrl
+            ?`✓ ${E?'Model ready':'Modelo listo'}`
+            :saved3dUrl
+            ?`${E?'Image ready. Click to generate 3D.':'Imagen lista. Pulsa para generar 3D.'}`
+            :`${E?'Complete Step 1 first.':'Completa el Paso 1 primero.'}`}
+        </div>
+        <div id="c3d-progress-bar" style="display:none;height:3px;background:rgba(255,255,255,0.06);
+          border-radius:2px;overflow:hidden;margin-bottom:7px;">
+          <div id="c3d-progress-fill" style="height:100%;background:#FBBF24;width:0%;transition:width .5s;"></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button id="c3d-meshy-btn"
+            onclick="c3dGenerateMeshy('${cr.latinName.replace(/'/g,"\\'")}')"
+            ${!saved3dUrl&&!savedGlbUrl?'disabled':''}
+            style="flex:1;padding:6px;border-radius:6px;cursor:pointer;font-family:inherit;
+              font-size:9px;font-weight:700;transition:all .2s;
+              border:0.5px solid rgba(251,191,36,0.40);
+              background:${savedGlbUrl?'rgba(0,212,170,0.1)':'rgba(251,191,36,0.10)'};
+              color:${savedGlbUrl?'var(--teal)':'#FBBF24'};">
+            ${savedGlbUrl?(E?'🔄 Regenerate':'🔄 Regenerar'):(E?'🔮 Convert to 3D':'🔮 Convertir a 3D')}
+          </button>
+          ${savedGlbUrl?`
+          <a href="${savedGlbUrl}" download="${cr.latinName.replace(/\s/g,'_')}.glb"
+            style="padding:6px 10px;border-radius:6px;text-decoration:none;font-size:9px;font-weight:600;
+              border:0.5px solid rgba(255,255,255,0.12);color:var(--muted);background:transparent;
+              display:flex;align-items:center;">
+            ⬇
+          </a>`:''}
+        </div>
+      </div>
+
     </div>`;
 
   modal.style.display='flex';
-  setTimeout(()=>init3DCreature(cr), 60);
+  // Arrancar 3D: si hay GLB guardado → cargar; si no → procedural
+  setTimeout(()=>init3DCreature(cr, savedGlbUrl||null), 60);
 }
 
-function init3DCreature(cr){
+function init3DCreature(cr, glbUrl){
   const canvas = document.getElementById('c3d-canvas');
   if(!canvas||!window.THREE){ return; }
-  const T  = window.THREE;
+  const T = window.THREE;
   const container3 = canvas.parentElement;
-  const W  = container3.clientWidth  || 560;
-  const H  = container3.clientHeight || 400;
+  const W = container3.clientWidth  || 560;
+  const H = container3.clientHeight || 400;
   canvas.width=W; canvas.height=H;
 
-  // Cleanup anterior
   if(c3dState.cleanup) c3dState.cleanup();
   c3dAnimating=true; c3dWireframe=false; c3dExploded=false;
   const btnAnim=document.getElementById('c3d-anim-btn');
@@ -6235,8 +6336,8 @@ function init3DCreature(cr){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.toneMapping = T.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = true;
 
-  // ResizeObserver criatura 3D
   const ro3 = new ResizeObserver(()=>{
     const nW=container3.clientWidth, nH=container3.clientHeight;
     if(nW>0&&nH>0){ renderer.setSize(nW,nH); camera.aspect=nW/nH; camera.updateProjectionMatrix(); }
@@ -6253,43 +6354,19 @@ function init3DCreature(cr){
   // Lighting
   const rgb=getBloodColor3D(cr.blood);
   const creatureColor=new T.Color(...rgb);
-  const keyLight  = new T.DirectionalLight(0xFFF8F0,1.8);
-  keyLight.position.set(3,4,3);
-  scene.add(keyLight);
-  const fillLight = new T.DirectionalLight(0x8090B0,0.6);
-  fillLight.position.set(-3,1,-2);
-  scene.add(fillLight);
-  const rimLight  = new T.DirectionalLight(creatureColor,0.9);
-  rimLight.position.set(0,-2,-3);
-  scene.add(rimLight);
+  const keyLight = new T.DirectionalLight(0xFFF8F0,1.8); keyLight.position.set(3,4,3); scene.add(keyLight);
+  const fillLight= new T.DirectionalLight(0x8090B0,0.6); fillLight.position.set(-3,1,-2); scene.add(fillLight);
+  const rimLight = new T.DirectionalLight(creatureColor,0.9); rimLight.position.set(0,-2,-3); scene.add(rimLight);
   scene.add(new T.AmbientLight(0x0A1020,0.8));
 
   // Ground glow disc
   const discGeo=new T.CircleGeometry(1.2,48);
   const discMat=new T.MeshBasicMaterial({color:creatureColor,transparent:true,opacity:0.04,side:T.DoubleSide});
-  const disc=new T.Mesh(discGeo,discMat);
-  disc.rotation.x=-Math.PI/2; disc.position.y=-0.65;
+  const disc=new T.Mesh(discGeo,discMat); disc.rotation.x=-Math.PI/2; disc.position.y=-0.65;
   scene.add(disc);
 
-  // Criatura
-  const creature = buildCreatureMesh(cr,T);
-  // Scale by size
-  const sizeScale = cr.size?.includes('Mega')?1.6:cr.size?.includes('Grand')||cr.size?.includes('Large')?1.3:
-                    cr.size?.includes('Micro')?0.55:1.0;
-  creature.scale.setScalar(sizeScale);
-  scene.add(creature);
-  c3dState.creature=creature;
-
-  // Órganos internos (ocultos por defecto)
-  const organs = buildInternalOrgans(cr,T);
-  organs.scale.setScalar(sizeScale);
-  scene.add(organs);
-  c3dState.organs=organs;
-  c3dState.currentCr=cr;
-
-  // Orbit
-  let isDrag=false,prev={x:0,y:0};
-  let rotY=0,rotX=0.12,dist=3.2;
+  // Orbit controls
+  let isDrag=false,prev={x:0,y:0},rotY=0,rotX=0.12,dist=3.2;
   function updateCam(){
     camera.position.x=dist*Math.sin(rotY)*Math.cos(rotX);
     camera.position.y=dist*Math.sin(rotX)+0.1;
@@ -6300,38 +6377,86 @@ function init3DCreature(cr){
   const onMU=()=>{isDrag=false;canvas.style.cursor='grab';};
   const onMM=e=>{if(!isDrag)return;rotY-=(e.clientX-prev.x)*0.006;rotX=Math.max(-0.8,Math.min(1.0,rotX+(e.clientY-prev.y)*0.004));prev={x:e.clientX,y:e.clientY};updateCam();};
   const onWH=e=>{dist=Math.max(1.0,Math.min(8,dist+e.deltaY*0.005));updateCam();e.preventDefault();};
-  const onTD=e=>{isDrag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};};
-  const onTM=e=>{if(!isDrag)return;rotY-=(e.touches[0].clientX-prev.x)*0.006;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();};
   canvas.addEventListener('mousedown',onMD);
   window.addEventListener('mouseup',onMU);
   window.addEventListener('mousemove',onMM);
   canvas.addEventListener('wheel',onWH,{passive:false});
-  canvas.addEventListener('touchstart',onTD,{passive:true});
-  canvas.addEventListener('touchmove',onTM,{passive:true});
-  window.addEventListener('touchend',onMU);
   updateCam();
 
-  // Animate
-  let animId,time=0;
-  function animate(){
-    animId=requestAnimationFrame(animate);
-    time+=0.016;
-    if(c3dAnimating) creature.rotation.y+=0.008;
-    // Breathing
-    const breath=1.0+Math.sin(time*1.2)*0.012;
-    creature.scale.setScalar(sizeScale*breath);
-    // Wing flap for flyers
-    if(cr.loco?.includes('Flota')||cr.loco?.includes('Float')||cr.loco?.includes('vuelo')||cr.loco?.includes('fly')){
-      creature.children.forEach(ch=>{
-        if(ch.name==='wing1')  ch.rotation.x= 0.28+Math.sin(time*3)*0.18;
-        if(ch.name==='wing-1') ch.rotation.x=-0.28-Math.sin(time*3)*0.18;
-      });
-    }
-    renderer.render(scene,camera);
-  }
-  animate();
+  let animId, mainMesh=null;
 
-  c3dState={scene,renderer,camera,creature,
+  function startAnimation(mesh, isMeshy){
+    mainMesh=mesh; scene.add(mesh);
+    c3dState.creature=mesh;
+    const sizeScale = isMeshy?1.0 : (cr.size?.includes('Mega')?1.6:cr.size?.includes('Grand')||cr.size?.includes('Large')?1.3:cr.size?.includes('Micro')?0.55:1.0);
+    mesh.scale.setScalar(sizeScale);
+    let time=0;
+    cancelAnimationFrame(animId);
+    function animate(){
+      animId=requestAnimationFrame(animate);
+      time+=0.016;
+      if(c3dAnimating) mesh.rotation.y+=isMeshy?0.004:0.008;
+      if(!isMeshy){
+        const breath=1.0+Math.sin(time*1.2)*0.012;
+        mesh.scale.setScalar(sizeScale*breath);
+        if(cr.loco?.includes('Flota')||cr.loco?.includes('vuelo')){
+          mesh.children.forEach(ch=>{
+            if(ch.name==='wing1') ch.rotation.x=0.28+Math.sin(time*3)*0.18;
+            if(ch.name==='wing-1') ch.rotation.x=-0.28-Math.sin(time*3)*0.18;
+          });
+        }
+      }
+      renderer.render(scene,camera);
+    }
+    animate();
+  }
+
+  if(glbUrl && window.THREE.GLTFLoader){
+    // ── MODO MESHY: cargar GLB real ──────────────────────────
+    const statusEl = document.getElementById('c3d-meshy-status');
+    if(statusEl){ statusEl.textContent = lang==='en'?'Loading 3D model…':'Cargando modelo 3D…'; }
+
+    const loader = new T.GLTFLoader();
+    if(T.DRACOLoader){
+      const draco = new T.DRACOLoader();
+      draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/gltf/');
+      loader.setDRACOLoader(draco);
+    }
+
+    loader.load(glbUrl,
+      (gltf) => {
+        const model = gltf.scene;
+        // Centrar y escalar automáticamente
+        const box = new T.Box3().setFromObject(model);
+        const size = box.getSize(new T.Vector3());
+        const center = box.getCenter(new T.Vector3());
+        const maxDim = Math.max(size.x,size.y,size.z);
+        model.scale.setScalar(1.8/maxDim);
+        model.position.sub(center.multiplyScalar(1.8/maxDim));
+        model.position.y += size.y*(1.8/maxDim)*0.5;
+        model.traverse(ch=>{ if(ch.isMesh){ ch.castShadow=true; ch.receiveShadow=true; }});
+        dist = 3.5;
+        if(statusEl) statusEl.textContent = '✓ Meshy 3D';
+        startAnimation(model, true);
+      },
+      null,
+      (err) => {
+        console.error('GLTFLoader error:', err);
+        if(statusEl) statusEl.textContent = lang==='en'?'⚠ GLB error, showing procedural':'⚠ Error GLB, usando procedural';
+        // Fallback al modelo procedural
+        startAnimation(buildCreatureMesh(cr,T), false);
+        const organs=buildInternalOrgans(cr,T); scene.add(organs); c3dState.organs=organs;
+      }
+    );
+  } else {
+    // ── MODO PROCEDURAL: geometría generada ─────────────────
+    const creature = buildCreatureMesh(cr,T);
+    startAnimation(creature, false);
+    const organs=buildInternalOrgans(cr,T); scene.add(organs); c3dState.organs=organs;
+  }
+
+  c3dState={
+    scene, renderer, camera,
     cleanup:()=>{
       cancelAnimationFrame(animId);
       ro3.disconnect();
@@ -6339,18 +6464,176 @@ function init3DCreature(cr){
       window.removeEventListener('mouseup',onMU);
       window.removeEventListener('mousemove',onMM);
       canvas.removeEventListener('wheel',onWH);
-      canvas.removeEventListener('touchstart',onTD);
-      canvas.removeEventListener('touchmove',onTM);
-      window.removeEventListener('touchend',onMU);
       renderer.dispose();
     }
   };
 }
 
+
 function close3D(){
   document.getElementById('creature-3d-modal').style.display='none';
   if(c3dState.cleanup){c3dState.cleanup();c3dState={};}
   c3dXRayMode=false; c3dWireframe=false; c3dExploded=false;
+  if(c3dPollInterval){ clearInterval(c3dPollInterval); c3dPollInterval=null; }
+}
+
+// Almacén de imágenes optimizadas para 3D y GLBs generados
+window.c3dImages = window.c3dImages || {};
+window.c3dGlbs   = window.c3dGlbs   || {};
+let c3dPollInterval = null;
+
+// ── Paso 1: generar imagen con fondo blanco (optimizada para Meshy) ──
+function c3dGenOptimizedImage(latinName){
+  const E = lang==='en';
+  const btn = document.getElementById('c3d-gen-img-btn');
+  const preview = document.getElementById('c3d-img-preview');
+  const meshyBtn = document.getElementById('c3d-meshy-btn');
+  const statusEl = document.getElementById('c3d-meshy-status');
+  if(btn) btn.disabled = true;
+
+  // Buscar la criatura actual por nombre
+  const cr = (window._currentCreatures||creatures).find(c=>c.latinName===latinName)
+    || makeCreatureI18n(vals, generateCreatureSeed(vals, 0));
+
+  // Prompt optimizado para Meshy: fondo blanco, cuerpo completo, centrado
+  const prompt = `${cr.latinName} alien creature, ${cr.skeleton.toLowerCase()}, `
+    + `${cr.blood.toLowerCase()}, ${cr.meta.toLowerCase()} metabolism, `
+    + `${cr.loco.toLowerCase()} locomotion, full body visible, centered, `
+    + `pure white background, soft studio lighting, scientific concept art, `
+    + `sharp focus, high detail, 8k, no text`;
+
+  const seed = cr.seed + 9999; // seed diferente a la imagen dramática
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+    + `?width=512&height=512&seed=${seed}&nologo=true`;
+
+  // Mostrar cargando
+  if(preview) preview.innerHTML = `<div style="font-size:9px;color:var(--dim);">
+    <div style="width:20px;height:20px;border:2px solid rgba(0,212,170,0.3);border-top:2px solid var(--teal);
+      border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 6px;"></div>
+    ${E?'Generating…':'Generando…'}
+  </div>`;
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    window.c3dImages[latinName] = url;
+    if(preview) preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:contain;"/>`;
+    if(btn){ btn.disabled=false; btn.textContent = E?'🔄 Regenerate':'🔄 Regenerar'; }
+    if(meshyBtn){ meshyBtn.disabled=false; }
+    if(statusEl) statusEl.textContent = E?'Image ready. Click to generate 3D.':'Imagen lista. Pulsa para generar 3D.';
+    showToast(E?'✓ Optimized image ready':'✓ Imagen optimizada lista', 'success');
+  };
+  img.onerror = () => {
+    if(btn) btn.disabled=false;
+    if(preview) preview.innerHTML = `<span style="font-size:9px;color:#F87171;">${E?'Error generating image':'Error generando imagen'}</span>`;
+    showToast(E?'Error generating image':'Error generando imagen','error');
+  };
+  img.src = url;
+}
+
+// ── Paso 2: enviar imagen a Meshy y generar el 3D ──────────
+async function c3dGenerateMeshy(latinName){
+  const E = lang==='en';
+  const imageUrl = window.c3dImages[latinName];
+  const meshyBtn = document.getElementById('c3d-meshy-btn');
+  const statusEl = document.getElementById('c3d-meshy-status');
+  const progressBar = document.getElementById('c3d-progress-bar');
+  const progressFill = document.getElementById('c3d-progress-fill');
+
+  if(!imageUrl){
+    showToast(E?'Generate the optimized image first (Step 1)':'Genera la imagen optimizada primero (Paso 1)','error');
+    return;
+  }
+  if(meshyBtn) meshyBtn.disabled = true;
+  if(progressBar) progressBar.style.display = 'block';
+  if(progressFill) progressFill.style.width = '5%';
+  if(statusEl) statusEl.textContent = E?'Sending to Meshy…':'Enviando a Meshy…';
+
+  if(c3dPollInterval){ clearInterval(c3dPollInterval); c3dPollInterval=null; }
+
+  try{
+    // Crear tarea en Meshy vía proxy
+    const res = await fetch('/api/meshy', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ imageUrl, creatureName: latinName }),
+    });
+    const data = await res.json();
+
+    if(!res.ok || data.error){
+      throw new Error(data.error || data.detail || `HTTP ${res.status}`);
+    }
+
+    const taskId = data.taskId;
+    if(statusEl) statusEl.textContent = E?`Task created — generating…`:`Tarea creada — generando…`;
+    if(progressFill) progressFill.style.width = '10%';
+
+    // Polling cada 5 segundos
+    let attempts = 0;
+    c3dPollInterval = setInterval(async ()=>{
+      attempts++;
+      if(attempts > 72){ // 6 min máx
+        clearInterval(c3dPollInterval);
+        if(statusEl) statusEl.textContent = E?'Timeout. Try again.':'Timeout. Intenta de nuevo.';
+        if(meshyBtn) meshyBtn.disabled=false;
+        return;
+      }
+      try{
+        const pr = await fetch(`/api/meshy?taskId=${taskId}`);
+        const pd = await pr.json();
+
+        if(pd.status === 'SUCCEEDED' && pd.glbUrl){
+          clearInterval(c3dPollInterval);
+          if(progressFill) progressFill.style.width = '100%';
+          if(statusEl) statusEl.textContent = E?'✓ 3D model ready!':'✓ ¡Modelo 3D listo!';
+          if(meshyBtn){ meshyBtn.disabled=false; meshyBtn.textContent=E?'🔄 Regenerate':'🔄 Regenerar'; }
+
+          // Guardar GLB URL
+          window.c3dGlbs[latinName] = pd.glbUrl;
+
+          // Guardar en Supabase (asociado al planeta)
+          if(currentPlanetId) saveAIImage('creature_3d_'+latinName.replace(/\s/g,'_'), pd.glbUrl);
+
+          // Cargar el GLB en el visor
+          showToast(E?'✓ Loading 3D model…':'✓ Cargando modelo 3D…','success');
+          init3DCreature(c3dState.currentCr||{blood:cr?.blood||'Hemoglobina'}, pd.glbUrl);
+
+          // Mostrar botón de descarga
+          const dlBtn = document.querySelector('#c3d-info a[download]');
+          if(!dlBtn){
+            const btn2 = document.getElementById('c3d-meshy-btn');
+            if(btn2) btn2.insertAdjacentHTML('afterend',
+              `<a href="${pd.glbUrl}" download="${latinName.replace(/\s/g,'_')}.glb"
+                style="padding:6px 10px;border-radius:6px;text-decoration:none;font-size:9px;font-weight:600;
+                  border:0.5px solid rgba(255,255,255,0.12);color:var(--muted);">⬇</a>`);
+          }
+
+        } else if(pd.status === 'FAILED'){
+          clearInterval(c3dPollInterval);
+          if(statusEl) statusEl.textContent = E?`Failed: ${pd.error||'unknown error'}`:`Falló: ${pd.error||'error desconocido'}`;
+          if(meshyBtn) meshyBtn.disabled=false;
+          showToast(E?'Meshy generation failed':'Meshy falló al generar','error');
+
+        } else {
+          // IN_PROGRESS o PENDING
+          const pct = pd.progress||0;
+          if(progressFill) progressFill.style.width = Math.max(10,pct) + '%';
+          if(statusEl) statusEl.textContent = pd.status==='PENDING'
+            ?(E?`In queue… (${attempts*5}s)`:`En cola… (${attempts*5}s)`)
+            :(E?`Generating… ${pct}%`:`Generando… ${pct}%`);
+        }
+      }catch(pollErr){ console.error('Polling error:',pollErr); }
+    }, 5000);
+
+  }catch(err){
+    if(meshyBtn) meshyBtn.disabled=false;
+    if(progressBar) progressBar.style.display='none';
+    const msg = err.message.includes('MESHY_API_KEY')
+      ? (E?'MESHY_API_KEY not configured in Vercel. Add it to Environment Variables.':'MESHY_API_KEY no configurado en Vercel. Añádelo a las variables de entorno.')
+      : err.message;
+    if(statusEl) statusEl.textContent = '❌ ' + msg;
+    showToast('❌ ' + msg, 'error', 5000);
+  }
 }
 
 let c3dXRayMode = false;
