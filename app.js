@@ -1121,7 +1121,7 @@ const TABS=[
 ];
 
 function buildTabBtns(){
-  const tabIds=['planet','ecosystem','creatures','gallery','minerals','myplanets','validation','phenomena','surface'];
+  const tabIds=['planet','ecosystem','creatures','gallery','minerals','myplanets','validation','phenomena','surface','planetearth'];
   document.getElementById('tab-btns').innerHTML=tabIds.map((id,i)=>`<button onclick="switchTab('${id}')" id="tab-${id}" style="padding:4px 12px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:${id===currentTab?'var(--teal)':'transparent'};color:${id===currentTab?'#000':'var(--muted)'};transition:all .15s;font-family:inherit;">${t('tabs')[i]}</button>`).join('');
 }
 
@@ -1143,6 +1143,7 @@ function renderMain(){
   else if(currentTab==='validation') renderValidation(el);
   else if(currentTab==='phenomena')  renderPhenomena(el);
   else if(currentTab==='surface')    renderSurface(el);
+  else if(currentTab==='planetearth') renderPlanetEarth(el);
 }
 
 // ─── PLANET TAB ──────────────────────────────────────
@@ -2854,7 +2855,7 @@ let lang = 'es';
 
 const T = {
   es: {
-    tabs: ['🌍 Planeta','🕸 Ecosistema','🦎 Criaturas','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie'],
+    tabs: ['🌍 Planeta','🕸 Ecosistema','🦎 Criaturas','🎨 Galería IA','⬡ Minerales','🪐 Mis Planetas','🔬 Validación','🌪 Fenómenos','🏔 Superficie','🌎 Planet Earth'],
     createBtn: '✦ Crear Planeta',
     presets: 'Presets',
     sliderGroups: {Suelo:'Suelo',Atmósfera:'Atmósfera',Entorno:'Entorno'},
@@ -2915,7 +2916,7 @@ const T = {
     copied: '✓ Copiado',
   },
   en: {
-    tabs: ['🌍 Planet','🕸 Ecosystem','🦎 Creatures','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface'],
+    tabs: ['🌍 Planet','🕸 Ecosystem','🦎 Creatures','🎨 AI Gallery','⬡ Minerals','🪐 My Planets','🔬 Validation','🌪 Phenomena','🏔 Surface','🌎 Planet Earth'],
     createBtn: 'Create Planet',
     presets: 'Presets',
     sliderGroups: {Suelo:'Soil',Atmósfera:'Atmosphere',Entorno:'Environment'},
