@@ -1887,7 +1887,7 @@ function setValDash(sym,v){
   updatePlanetPanel();
   // Sincronizar con el árbol taxonómico (si está abierto)
   syncTaxTree();
-  // 🌍 Actualizar ecosistema en tiempo real si la pestaña está activa
+  // 🌍 Actualizar ecosistema si la pestaña está activa
   if(typeof refreshBioPlanet==='function') refreshBioPlanet();
 }
 
@@ -2156,7 +2156,7 @@ function simulateDualApex(apex1, apex2, score, v){
   return {scenario, outcome, timeline, details, evolutionEffect, differentHabitat, hab1, hab2};
 }
 
-// renderEcosystem → implementada en bioplanet-ecosystem.js
+// renderEcosystem → bioplanet-ecosystem.js
 
 // ─── GALLERY TAB ──────────────────────────────────────
 function renderGallery(el){
