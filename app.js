@@ -831,7 +831,8 @@ const imgCache = {};
 function makeAIImg(prompt, w, h, containerId, cacheKey, saveKind, creatureName){
   const el=document.getElementById(containerId);if(!el)return;
   const seed=Math.floor(Math.random()*99999);
-  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
+  // Nuevo endpoint unificado de Pollinations (gen.pollinations.ai)
+  const url=`https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true&model=flux`;
 
   // Guardar en caché si se proporcionó key
   if(cacheKey !== undefined) imgCache[cacheKey] = {url, w, h};
@@ -1887,8 +1888,6 @@ function setValDash(sym,v){
   updatePlanetPanel();
   // Sincronizar con el árbol taxonómico (si está abierto)
   syncTaxTree();
-  // 🌍 Actualizar ecosistema si la pestaña está activa
-  if(typeof refreshBioPlanet==='function') refreshBioPlanet();
 }
 
 // ─── CREATURES TAB ────────────────────────────────────
@@ -2156,7 +2155,249 @@ function simulateDualApex(apex1, apex2, score, v){
   return {scenario, outcome, timeline, details, evolutionEffect, differentHabitat, hab1, hab2};
 }
 
-// renderEcosystem → bioplanet-ecosystem.js
+function renderEcosystem(el){
+  const score = calcScore(vals);
+  const creatures = Array.from({length:Math.max(numCreatures,2)},(_,i)=>makeCreature(vals,generateCreatureSeed(vals,i)));
+
+  // Calcular score de depredación para cada criatura
+  const scores = creatures.map(cr=>calcPredationScore(cr,vals));
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+
+  // Asignar rol trófico
+  const creaturesWithRoles = creatures.map((cr,i)=>({
+    cr, predScore:scores[i],
+    ...assignTrophicRole(scores[i], maxScore, minScore, cr)
+  }));
+
+  // Ordenar por score (ápex primero)
+  const sorted = [...creaturesWithRoles].sort((a,b)=>b.predScore-a.predScore);
+
+  // Identificar ápex (pueden ser 1 o 2)
+  const apexCreatures = sorted.filter(c=>c.tier===5);
+  const hasDoubleApex = apexCreatures.length >= 2;
+  const dualApexResult = hasDoubleApex ? simulateDualApex(apexCreatures[0], apexCreatures[1], score, vals) : null;
+
+  // Pirámide de biomasa (Lotka-Volterra simplificado)
+  const producers   = score>0.5?100:score>0.3?55:20;
+  const herbivores  = Math.round(producers * 0.12);
+  const carnivores  = Math.round(herbivores * 0.10);
+  const apex        = Math.round(carnivores * 0.08);
+  const decomp      = Math.round(producers * 0.8);
+
+  const scoreCol = score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171';
+
+  el.innerHTML=`
+<div style="overflow-y:auto;height:100%;padding:18px 20px;">
+  <div style="font-size:17px;font-weight:700;margin-bottom:3px;">${lang==='en'?'Food Web & Predation Theory':'Red Trófica y Teoría de Depredación'}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${lang==='en'?'Based on Lotka-Volterra · Gause principle · Ecological Niche Theory':'Basado en Lotka-Volterra · Principio de Gause · Teoría de Nicho Ecológico'}</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+    <!-- Jerarquía de depredación -->
+    <div class="card">
+      <div class="label">${lang==='en'?'Predation hierarchy — Trophic Score':'Jerarquía de depredación — Score Trófico'}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${sorted.map((c,i)=>{
+          const barW = Math.round((c.predScore/Math.max(maxScore,1))*100);
+          const isApex = c.tier===5;
+          return`
+          <div style="background:${c.col}0D;border:0.5px solid ${c.col}${isApex?'60':'25'};border-radius:8px;padding:10px 12px;${isApex?`box-shadow:0 0 12px ${c.col}30;`:''}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:16px;">${c.icon}</span>
+              <div style="flex:1;">
+                <div style="font-size:11px;font-style:italic;font-weight:700;color:${c.col};">${c.cr.latinName}</div>
+                <div style="font-size:9px;color:var(--muted);">${c.role}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:16px;font-weight:800;color:${c.col};font-family:'JetBrains Mono',monospace;">${c.predScore}</div>
+                <div style="font-size:8px;color:var(--muted);">score</div>
+              </div>
+            </div>
+            <!-- Barra de score -->
+            <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;margin-bottom:6px;">
+              <div style="height:100%;width:${barW}%;background:${c.col};border-radius:2px;box-shadow:0 0 6px ${c.col}60;transition:width .5s;"></div>
+            </div>
+            <!-- Factores clave -->
+            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.nervous}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.size}</span>
+              <span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${c.col}15;color:${c.col};">${c.cr.loco}</span>
+              ${c.cr.abilities?.slice(0,1).map(ab=>`<span style="font-size:8px;padding:1px 6px;border-radius:99px;background:${ab.col}15;color:${ab.col};">✨ ${ab.name.split(' ').slice(0,2).join(' ')}</span>`).join('')||''}
+            </div>
+            ${isApex?`<div style="margin-top:6px;font-size:8px;color:${c.col};font-weight:600;letter-spacing:.06em;">▲ ${lang==='en'?'APEX PREDATOR':'DEPREDADOR ÁPEX'}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Columna derecha -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <!-- Pirámide de biomasa -->
+      <div class="card">
+        <div class="label">${lang==='en'?'Biomass pyramid (Eltonian)':'Pirámide de biomasa (Eltonian)'}</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;">
+          ${[
+            {label:`Ápex (${apex} ind)`,     w:15,  col:"#F87171", icon:"👑"},
+            {label:`Carnívoros (${carnivores})`,w:28, col:"#FBBF24", icon:"🦁"},
+            {label:`Herbívoros (${herbivores})`,w:50, col:"#60A5FA", icon:"🦌"},
+            {label:`Productores (${producers})`,w:80, col:"#4ADE80", icon:"🌿"},
+            {label:`Descomp. (${decomp})`,    w:65,  col:"#A78BFA", icon:"🍄"},
+          ].map(({label,w,col,icon})=>`
+            <div style="display:flex;align-items:center;gap:8px;width:100%;">
+              <div style="width:${w}%;background:${col}25;border:0.5px solid ${col}50;border-radius:4px;padding:3px 8px;text-align:center;font-size:9px;color:${col};transition:width .5s;white-space:nowrap;overflow:hidden;">${icon} ${label}</div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:9px;color:var(--dim);margin-top:6px;line-height:1.6;">
+          ${lang==='en'
+            ?`10% rule: only 10% of energy passes between levels. Producers: ${producers*10} energy units → Apex: ${Math.round(producers*0.01)} units.`
+            :`Regla del 10%: solo el 10% de energía pasa de un nivel al siguiente. Productores: ${producers*10} unidades energéticas → Ápex: ${Math.round(producers*0.01)} unidades.`}
+        </div>
+      </div>
+
+      <!-- Estado del ecosistema -->
+      <div class="card">
+        <div class="label">${lang==='en'?'Ecosystem status':'Estado del ecosistema'}</div>
+        ${[
+          {l:lang==='en'?'Habitability score':'Score habitabilidad',v:`${Math.round(score*100)}%`,c:scoreCol},
+          {l:lang==='en'?'Temperature':'Temperatura',v:`${vals.Temp}°C`,c:vals.Temp<-20?'#60A5FA':vals.Temp>50?'#F87171':'#4ADE80'},
+          {l:lang==='en'?'Mineral cycles':'Ciclos minerales',v:[vals.Fe>=10&&'Fe',vals.Ca>=10&&'Ca',vals.P>=0.1&&'P',vals.Mg>=10&&'Mg',vals.H2S>0.1&&'S'].filter(Boolean).join(', ')||(lang==='en'?'none':'ninguno'),c:'#4ADE80'},
+          {l:lang==='en'?'Apex predators':'Depredadores ápex',v:`${apexCreatures.length}`,c:apexCreatures.length>=2?'#F87171':apexCreatures.length===1?'#FBBF24':'#94A3B8'},
+          {l:lang==='en'?'Trophic stability':'Estabilidad trófica',v:score>=0.7?(lang==='en'?'High':'Alta'):score>=0.4?(lang==='en'?'Medium':'Media'):(lang==='en'?'Fragile':'Frágil'),c:score>=0.7?'#00D4AA':score>=0.4?'#FBBF24':'#F87171'},
+        ].map(({l,v,c})=>`
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);">
+            <span style="font-size:10px;color:var(--muted);">${l}</span>
+            <span style="font-size:10px;font-weight:600;color:${c};">${v}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- ESCENARIO DOBLE ÁPEX -->
+  ${hasDoubleApex && dualApexResult ? `
+  <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.3);border-radius:14px;padding:18px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="font-size:24px;">⚔️</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#F87171;">${lang==='en'?'Two Apex Predators Detected':'Dos Depredadores Ápex Detectados'}</div>
+        <div style="font-size:10px;color:var(--muted);">${lang==='en'?'Competitive Exclusion Principle — Gause (1934)':'Principio de Exclusión Competitiva — Gause (1934)'}</div>
+      </div>
+      <div style="margin-left:auto;text-align:right;">
+        <div style="font-size:11px;font-weight:700;color:#F87171;">${dualApexResult.outcome}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.timeline}</div>
+      </div>
+    </div>
+
+    <!-- Combate de scores -->
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:14px;">
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[0].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[0].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[0].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[0].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab1}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:22px;">⚔</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">VS</div>
+      </div>
+      <div style="background:rgba(248,113,113,0.1);border:0.5px solid rgba(248,113,113,0.4);border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-style:italic;color:#F87171;font-weight:700;margin-bottom:4px;">${apexCreatures[1].cr.latinName}</div>
+        <div style="font-size:28px;font-weight:900;color:#F87171;font-family:'JetBrains Mono',monospace;">${apexCreatures[1].predScore}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:4px;">${apexCreatures[1].cr.nervous}</div>
+        <div style="font-size:9px;color:var(--muted);">${apexCreatures[1].cr.size}</div>
+        <div style="font-size:9px;color:var(--muted);">${dualApexResult.hab2}</div>
+      </div>
+    </div>
+
+    <!-- Escenario y resultado -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Scientific scenario':'Escenario científico'}</div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:8px;">${dualApexResult.scenario}</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.details}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">${lang==='en'?'Long-term evolutionary effect':'Efecto evolutivo a largo plazo'}</div>
+        <div style="font-size:10px;color:#9BAEC8;line-height:1.7;">${dualApexResult.evolutionEffect}</div>
+        <div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);">
+          <div style="font-size:9px;color:var(--muted);">${lang==='en'?'Habitats:':'Hábitats:'}</div>
+          <div style="font-size:10px;color:#60A5FA;">
+            ${dualApexResult.differentHabitat
+              ?`✓ ${lang==='en'?'Different':'Distintos'} — ${dualApexResult.hab1} vs ${dualApexResult.hab2}`
+              :`✗ ${lang==='en'?'Identical':'Idénticos'} — ${dualApexResult.hab1} ${lang==='en'?'shared':'compartido'}`}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escala de tiempo evolutivo -->
+    <div style="background:var(--bg3);border-radius:8px;padding:12px;">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">${lang==='en'?'Evolutionary timeline':'Línea de tiempo evolutiva'}</div>
+      <div style="display:flex;gap:0;position:relative;">
+        <div style="position:absolute;top:10px;left:0;right:0;height:2px;background:rgba(255,255,255,0.06);border-radius:1px;"></div>
+        ${[
+          {t:"0",           label:lang==='en'?'Current state':'Estado actual',    desc:lang==='en'?'Two apex compete':'Dos ápex compiten'},
+          {t:"100–500 gen", label:lang==='en'?'Peak tension':'Tensión máxima',    desc:lang==='en'?'Resources split':'Recursos se dividen'},
+          {t:"500–2K gen",  label:lang==='en'?'Tipping point':'Punto de inflexión',desc:lang==='en'?'Scenario determined':'Escenario se determina'},
+          {t:"10K+ gen",    label:lang==='en'?'New equilibrium':'Equilibrio nuevo', desc:lang==='en'?'Ecosystem stabilized':'Ecosistema estabilizado'},
+        ].map((pt,i,arr)=>`
+          <div style="flex:1;position:relative;padding-top:22px;text-align:center;">
+            <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#F87171;box-shadow:0 0 8px rgba(248,113,113,0.6);z-index:1;"></div>
+            <div style="font-size:8px;color:#F87171;font-weight:600;margin-bottom:2px;">${pt.t}</div>
+            <div style="font-size:9px;color:var(--text);font-weight:600;">${pt.label}</div>
+            <div style="font-size:8px;color:var(--muted);">${pt.desc}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  ` : apexCreatures.length===1 ? `
+  <div style="background:rgba(251,191,36,0.06);border:0.5px solid rgba(251,191,36,0.3);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">👑</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#FBBF24;">${lang==='en'?'One apex predator — Stable ecosystem':'Un depredador ápex — Ecosistema estable'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+          <i>${apexCreatures[0].cr.latinName}</i> (score ${apexCreatures[0].predScore}) domina la cadena trófica.
+          Ninguna otra especie compite por su posición. Análogo a los grandes felinos en sabanas aisladas.
+        </div>
+      </div>
+    </div>
+  </div>
+  ` : `
+  <div style="background:rgba(148,163,184,0.06);border:0.5px solid rgba(148,163,184,0.2);border-radius:12px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--muted);">${lang==='en'?'No clear apex predators — producer/decomposer ecosystem. Add more creatures or improve habitability.':'Sin depredadores ápex claros — ecosistema de productores/descomponedores. Añade más criaturas o mejora la habitabilidad.'}</div>
+  </div>
+  `}
+
+  <!-- Red de interacciones -->
+  <div class="card">
+    <div class="label">${lang==='en'?'Trophic interaction network':'Red de interacciones tróficas'}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+      ${sorted.map(c=>`
+        <div style="background:${c.col}08;border:0.5px solid ${c.col}25;border-radius:8px;padding:10px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:14px;">${c.icon}</span>
+            <div>
+              <div style="font-size:9px;font-style:italic;color:${c.col};font-weight:600;">${c.cr.latinName.split(' ')[0]}</div>
+              <div style="font-size:8px;color:var(--muted);">${c.role}</div>
+            </div>
+          </div>
+          ${sorted.filter(other=>other.cr.latinName!==c.cr.latinName&&other.predScore<c.predScore).slice(0,2).map(prey=>`
+            <div style="font-size:8px;color:var(--muted);display:flex;align-items:center;gap:3px;">
+              <span style="color:${c.col};">→</span> ${lang==='en'?'hunts':'caza a'} <i style="color:${prey.col};">${prey.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+          ${sorted.filter(other=>other.predScore>c.predScore).slice(0,1).map(pred=>`
+            <div style="font-size:8px;color:#F87171;display:flex;align-items:center;gap:3px;margin-top:2px;">
+              <span>←</span> ${lang==='en'?'hunted by':'cazado por'} <i>${pred.cr.latinName.split(' ')[0]}</i>
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>
+  </div>
+
+</div>`;
+}
 
 // ─── GALLERY TAB ──────────────────────────────────────
 function renderGallery(el){
@@ -6017,8 +6258,8 @@ function c3dGenOptimizedImage(latinName){
     + `sharp focus, high detail, 8k, no text`;
 
   const seed = cr.seed + 9999; // seed diferente a la imagen dramática
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
-    + `?width=512&height=512&seed=${seed}&nologo=true`;
+  const url = `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}`
+    + `?width=512&height=512&seed=${seed}&nologo=true&model=flux`;
 
   // Mostrar cargando
   if(preview) preview.innerHTML = `<div style="font-size:9px;color:var(--dim);">
